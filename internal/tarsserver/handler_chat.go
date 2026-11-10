@@ -1201,6 +1201,8 @@ type chatToolingOptions struct {
 	// config.ToolsProcessMaxTimeoutMS into the per-call cap on
 	// background (process-managed) commands.
 	ExecMaxBackgroundTimeoutMS int
+	// ExecSandbox forwards tools.exec.sandbox; nil leaves exec unsandboxed.
+	ExecSandbox *tool.ExecSandbox
 	// PlanClarifyMode forwards config.PlanClarifyMode into the prompt
 	// builder so the Planning section's clarifying-questions stance can
 	// be tuned without forking the prompt source.

@@ -48,6 +48,9 @@ type ExecToolOptions struct {
 	// `gh pr checks --watch` and long builds run here, so this cap is
 	// independently larger than MaxTimeoutMS.
 	MaxBackgroundTimeoutMS int
+	// Sandbox runs every command, foreground and background, inside an OS
+	// sandbox. Nil runs them as the user, unrestricted.
+	Sandbox *ExecSandbox
 }
 
 type execResponse struct {
@@ -105,9 +108,10 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
   "required":["command"],
   "additionalProperties":false
 }`, minExecTimeoutMS, maxBackgroundTimeoutMS, defaultExecTimeoutMS, maxTimeoutMS, maxBackgroundTimeoutMS))
+	sandbox := newShellSandbox(opts.Sandbox, policy)
 	return Tool{
 		Name:        "exec",
-		Description: "Run a shell command in workspace with timeout and safety restrictions. For commands expected to run longer than ~30s (builds, installs, CI watchers), set background:true and use the `process` tool's `wait` action instead of blocking the chat.",
+		Description: "Run a shell command in workspace with timeout and safety restrictions. For commands expected to run longer than ~30s (builds, installs, CI watchers), set background:true and use the `process` tool's `wait` action instead of blocking the chat." + sandbox.description(),
 		Parameters:  parameters,
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			commandLine, timeoutMS, background, err := parseExecInput(params)
@@ -140,7 +144,7 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 				if manager == nil {
 					return execErrorResult(commandLine, "background execution requires process manager", -1, "", "", 0, false), nil
 				}
-				snap, err := manager.Start(ctx, policy.PrimaryDir, commandLine, timeoutMS)
+				snap, err := manager.start(ctx, policy.PrimaryDir, commandLine, timeoutMS, sandbox)
 				if err != nil {
 					return execErrorResult(commandLine, err.Error(), -1, "", "", 0, false), nil
 				}
@@ -155,7 +159,7 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 			runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
 			defer cancel()
 
-			cmd, err := newShellCommand(runCtx, policy.PrimaryDir, commandLine)
+			cmd, err := newShellCommand(runCtx, policy.PrimaryDir, commandLine, sandbox)
 			if err != nil {
 				return execErrorResult(commandLine, err.Error(), -1, "", "", 0, false), nil
 			}

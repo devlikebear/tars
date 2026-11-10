@@ -14,6 +14,7 @@ import pkgtools "github.com/devlikebear/tars/pkg/tools"
 type (
 	BlockedToolError   = pkgtools.BlockedToolError
 	ContentBlock       = pkgtools.ContentBlock
+	ExecSandbox        = pkgtools.ExecSandbox
 	ExecToolOptions    = pkgtools.ExecToolOptions
 	FileChange         = pkgtools.FileChange
 	FileChangeHunk     = pkgtools.FileChangeHunk

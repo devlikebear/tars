@@ -147,6 +147,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 		checkDoctorEmbodiment(&report, cfg)
 		checkDoctorInitiative(&report, cfg)
 		checkDoctorComputerUse(&report, cfg)
+		checkDoctorExecSandbox(&report, cfg)
 	}
 
 	if report.failureCount() > 0 {
