@@ -17,6 +17,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -223,10 +224,18 @@ func (b *policyBuilder) addCaches(home string) {
 	}
 	for _, dir := range []string{gocache, gomodcache, npmCache} {
 		// GOCACHE=off and other non-paths are not directories to allow.
-		if filepath.IsAbs(dir) {
+		if isRootedPath(dir) {
 			b.add(&b.writable, dir)
 		}
 	}
+}
+
+// isRootedPath reports whether p names a directory from the root rather than
+// a word such as "off". A path rooted at "/" counts even on Windows, where
+// filepath.IsAbs wants a drive letter: the sandbox itself runs only on macOS
+// and Linux, and Resolve's tests describe those hosts on every platform.
+func isRootedPath(p string) bool {
+	return filepath.IsAbs(p) || path.IsAbs(filepath.ToSlash(p))
 }
 
 type policyBuilder struct {
