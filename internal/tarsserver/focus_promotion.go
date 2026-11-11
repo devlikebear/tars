@@ -17,7 +17,7 @@ import (
 )
 
 // Verify promotion's server side (tars#1292, docs/decisions/focus-mode.md
-// §5.3). A pipeline created with verify_promotion: true remembers its
+// §5.4). A pipeline created with verify_promotion: true remembers its
 // repository (PromotionOptIn.Repo). When it finishes with its work merged
 // (focusDriver.pipelineFinished), the driver — in the background, never
 // holding the session — records the recurrence keys of its facts in the

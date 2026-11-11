@@ -58,7 +58,12 @@ type serveAPIRuntime struct {
 	pulseRuntime            *pulse.Runtime
 	reflectionRuntime       *reflection.Runtime
 	initiativeRuntime       *initiative.Runtime
-	workLedger              *workstore.Store
+	// initiativeReminders queues cron reminders for initiative.remind
+	// (tars#1001); when remind is not active, start-up hands any left from
+	// an earlier run back to cron's own delivery.
+	initiativeReminders    *initiativeReminderQueue
+	initiativeRemindActive bool
+	workLedger             *workstore.Store
 	// workLedgerMaintenance waits for the ledger's background pass to stop;
 	// nil until startBackgrounds runs.
 	workLedgerMaintenance func()
@@ -406,7 +411,12 @@ func buildAPIMux(
 		ActionDispatcher: embodiment.NewMCPTransport(mcpClient, logger),
 	})
 	presenceStore := initiative.OpenPresenceStore(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "presence.json"))
+	// The cron runner binds its fallback, once cron's reminder sender exists.
+	reminderQueue := newInitiativeReminderQueue(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "reminders.json"), nil, logger)
+	memoryBackend := buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg))
 	initiativeSetup := buildInitiativeRuntime(initiativeSetupInputs{
+		Reminders:        reminderQueue,
+		MemoryBackend:    memoryBackend,
 		Config:           cfg,
 		WorkspaceDir:     cfg.WorkspaceDir,
 		SessionStore:     sessionStore,
@@ -490,6 +500,8 @@ func buildAPIMux(
 	// itself when no backend or driver is configured.
 	focusDriver.e2e = newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker))
 	focusDriver.secondOpinionTiers = newFocusSecondOpinionTiers(cfg)
+	focusDriver.tierKind = newFocusTierKind(cfg)
+	focusDriver.execCosts = focusExecCosts(deps.usageTracker)
 	focusDriver.harnessLLM = newFocusHarnessLLM(deps.llmRouter)
 	focusDriver.harnessCost = focusHarnessCost(deps.usageTracker)
 	chatTooling.Focus = focusDriver
@@ -553,7 +565,7 @@ func buildAPIMux(
 		tooling:       chatTooling,
 		extraTools:    chatTools,
 	}
-	baseCronRunner := newCronJobRunnerWithNotify(
+	baseCronRunner := newCronJobRunner(
 		cfg.WorkspaceDir,
 		sessionStore,
 		newCronPromptRunnerWithSessionContext(apiRunPromptWithTools, cronPromptDeps),
@@ -622,6 +634,8 @@ func buildAPIMux(
 			}
 			return nil
 		},
+		reminderQueue,
+		initiativeSetup.RemindActive,
 	)
 	cronRunner = func(ctx context.Context, job cron.Job) (string, error) {
 		if baseCronRunner != nil {
@@ -760,7 +774,7 @@ func buildAPIMux(
 	filesystemHandler := newFilesystemBrowseHandler(logger)
 	workspaceFilesHandler := newWorkspaceFilesHandler(cfg.WorkspaceDir, logger)
 	terminalHandler := newTerminalAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
-	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg)), logger)
+	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, memoryBackend, logger)
 	codexUsageHandler := newCodexRateLimitAPIHandler(deps.llmRouter, cfg.APIAuthMode)
 	agentRunsHandler := newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(agentRuntime, workLedger, logger, cfg.APIMaxInflightAgentRuns)
 	sessionHandler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir}, workLedger)
@@ -853,6 +867,8 @@ func buildAPIMux(
 		pulseRuntime:            pulseSetup.Runtime,
 		reflectionRuntime:       reflectionSetup.Runtime,
 		initiativeRuntime:       initiativeSetup.Runtime,
+		initiativeReminders:     reminderQueue,
+		initiativeRemindActive:  initiativeSetup.RemindActive,
 		workLedger:              workLedger,
 		workScheduler:           workScheduler,
 		telegramPoller:          telegramPoller,
@@ -916,6 +932,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 		mux.Handle("/v1/focus/pipelines", handlers.focus)
 		mux.Handle("/v1/focus/pipelines/", handlers.focus)
 		mux.Handle("/v1/focus/templates", handlers.focus)
+		mux.Handle("/v1/focus/exec-report", handlers.focus)
 	}
 	if handlers.focusTemplateEdit != nil {
 		mux.Handle("/v1/focus/templates/", handlers.focusTemplateEdit)
@@ -1167,6 +1184,9 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		return err
 	}
 	if err := runBackgroundStartupStep(logger, "initiative_runtime", func() error {
+		if runtime.initiativeReminders != nil && !runtime.initiativeRemindActive {
+			runtime.initiativeReminders.FlushAll(ctx)
+		}
 		if runtime.initiativeRuntime != nil {
 			runtime.initiativeRuntime.Start(ctx)
 		}

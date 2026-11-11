@@ -286,6 +286,11 @@ type Pipeline struct {
 	// review-kind stage. Nil — every pipeline that did not ask for it —
 	// is off.
 	SecondOpinion *SecondOpinion `json:"second_opinion,omitempty"`
+	// ExecTier opts the pipeline in to running its execution turns (build,
+	// fix rounds) on another tier, and labels it for the measurement report
+	// (exec_tier.go). Nil — every pipeline that did not ask for it — runs
+	// every turn on the session's tier.
+	ExecTier *ExecTier `json:"exec_tier,omitempty"`
 	// Harness opts the pipeline in to a harness proposal once it finishes
 	// with its work merged (harness.go). Nil — every pipeline that did not
 	// ask for it — is off. HarnessFrom marks a pipeline that is itself a
@@ -498,6 +503,10 @@ func (p Pipeline) clone() Pipeline {
 		so := *p.SecondOpinion
 		so.Done = append([]StageID(nil), p.SecondOpinion.Done...)
 		out.SecondOpinion = &so
+	}
+	if p.ExecTier != nil {
+		et := *p.ExecTier
+		out.ExecTier = &et
 	}
 	if p.Harness != nil {
 		h := *p.Harness

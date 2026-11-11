@@ -68,6 +68,8 @@ export type FocusCreateRequest = {
   harness_proposal?: boolean
   // Opt in to verify promotion once the pipeline finishes merged; off when absent.
   verify_promotion?: boolean
+  // Opt in to running build and fix turns on heavy|standard|light; off when absent.
+  exec_tier?: string
   // A release's list and the cut-off it started from (the group's since).
   release_items?: string[]
   release_since?: string
@@ -88,7 +90,9 @@ export async function startFocusRelease(request: FocusCreateRequest): Promise<{ 
 
 // second_opinion_warning is 'same_model_as_chat' when the second opinion's
 // tier resolves to the chat's own provider and model.
-export function createFocusPipeline(request: FocusCreateRequest): Promise<{ session_id: string; pipeline: FocusPipeline; second_opinion_warning?: string }> {
+// exec_tier_warning is 'resume_provider' when the execution tier's
+// provider cannot take turns from the chat's own (a resumed CLI session).
+export function createFocusPipeline(request: FocusCreateRequest): Promise<{ session_id: string; pipeline: FocusPipeline; second_opinion_warning?: string; exec_tier_warning?: string }> {
   return requestJSON(base, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

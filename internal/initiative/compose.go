@@ -18,6 +18,7 @@ const (
 	maxSpeechIdentity   = 1200
 	maxSpeechProfile    = 600
 	maxComposeMessages  = 5
+	maxSpeechSubject    = 320
 	composeTextWindow   = 6 * time.Hour
 )
 
@@ -48,14 +49,20 @@ type ComposeInput struct {
 	SendsText  bool
 	Profile    string
 	RecentUser []UserMessage
+	// Subject is the reminder text or memory candidate summary for a
+	// remind/confirm_memory speak (tars#1001). Used only when SendsText:
+	// otherwise the caller writes FixedSpeech and never composes.
+	Subject string
 }
 
 // speechIntentGuidance names what to say for each Speak intent. Greet and
 // check_in are the only intents this package ever composes for (tars#1220
 // scope); any other intent is a programming error in the caller.
 var speechIntentGuidance = map[Intent]string{
-	IntentGreet:   "This is a greeting: the user just arrived after being away for a while (or it is a special day). Welcome them back briefly and warmly. Do not ask what they want yet.",
-	IntentCheckIn: "This is a check-in: the user has been in a long session, been away a long time, or seemed strained, and has not been checked on recently. Ask, briefly and gently, how they are doing or whether they need anything — do not assume what is wrong.",
+	IntentGreet:         "This is a greeting: the user just arrived after being away for a while (or it is a special day). Welcome them back briefly and warmly. Do not ask what they want yet.",
+	IntentRemind:        "This is a reminder the user asked you to give them at this time. Tell them what the subject says, naturally and briefly; keep every concrete detail (names, times, numbers) exactly as given. Do not add advice.",
+	IntentConfirmMemory: "This is a question: reflection noticed something about the user and you want to ask whether to keep it in memory. Restate the subject in a few words and ask, in one line, whether you should remember it. The user answers with buttons under your message, so do not explain how to answer.",
+	IntentCheckIn:       "This is a check-in: the user has been in a long session, been away a long time, or seemed strained, and has not been checked on recently. Ask, briefly and gently, how they are doing or whether they need anything — do not assume what is wrong.",
 }
 
 const speechSystemPrompt = `You are TARS, speaking first and unprompted, to someone you already know well. Write what you would actually say — 1 to 3 short lines, plain text only.
@@ -98,6 +105,9 @@ func buildSpeechMessages(in ComposeInput) []llm.ChatMessage {
 	user.WriteString("\nnow: ")
 	user.WriteString(now.Format("Mon 2006-01-02 15:04"))
 	user.WriteString("\n")
+	if subject := truncateRunes(strings.TrimSpace(in.Subject), maxSpeechSubject); in.SendsText && subject != "" {
+		fmt.Fprintf(&user, "subject: %q\n", subject)
+	}
 
 	if in.SendsText {
 		var recent []UserMessage
@@ -128,6 +138,32 @@ func buildSpeechMessages(in ComposeInput) []llm.ChatMessage {
 		{Role: "system", Content: sys.String()},
 		{Role: "user", Content: user.String()},
 	}
+}
+
+// FixedSpeech is the words for a remind or confirm_memory speak when its
+// subject may not go to the speak model (SendsText false, tars#1001): the
+// subject itself in a fixed frame, no LLM call. Korean when the subject is
+// written in Hangul, English otherwise. Empty for any other intent or an
+// empty subject — greet/check_in always compose.
+func FixedSpeech(intent Intent, subject string) string {
+	subject = truncateRunes(strings.TrimSpace(subject), maxSpeechSubject)
+	if subject == "" {
+		return ""
+	}
+	korean := strings.IndexFunc(subject, func(r rune) bool { return unicode.Is(unicode.Hangul, r) }) >= 0
+	switch intent {
+	case IntentRemind:
+		if korean {
+			return "알려 드릴 시간이에요: " + subject
+		}
+		return "Reminder: " + subject
+	case IntentConfirmMemory:
+		if korean {
+			return "이걸 기억해 둘까요? " + subject
+		}
+		return "Should I remember this? " + subject
+	}
+	return ""
 }
 
 // SpeechComposer calls the configured speak-role LLM to write one

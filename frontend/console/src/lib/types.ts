@@ -783,10 +783,11 @@ export type SessionMessage = {
   // follow it; the turn's reply is its last assistant message without it.
   interim?: boolean
   // Set when TARS wrote this message on its own, not in reply to a chat
-  // turn (tars#1220's live mode: a delivered greet/check_in). intent is
-  // "greet" or "check_in"; entry_id correlates it with the initiative
-  // ledger but is not otherwise used by the console.
-  initiative?: { intent: string; entry_id?: string }
+  // turn (tars#1220's live mode). intent is "greet", "check_in", "remind"
+  // or "confirm_memory"; entry_id correlates it with the initiative ledger
+  // and names a confirm_memory question to the answer route (tars#1001),
+  // whose ref is the memory candidate it asks about.
+  initiative?: { intent: string; entry_id?: string; ref?: string }
 }
 
 export type OpsStatus = {
@@ -2811,10 +2812,16 @@ export type FocusPipeline = {
   verify_promotion?: FocusPromotionOptIn
   // The repository's default verify (.tars/verify.json), carried into every plan.
   repo_verify?: string[]
+  // The execution tier (tars#1293): build and fix turns run on it, and the
+  // label the execution tier report groups by.
+  exec_tier?: FocusExecTier
 }
 
 // outcome: proposed | no_candidates | no_checks | failed | unavailable; absent until it ran.
 export type FocusPromotionOptIn = { repo: string; outcome?: string; proposal?: string; at?: string }
+
+// lessons: adopted harness lessons in the repository's library at creation.
+export type FocusExecTier = { tier: string; repo?: string; lessons?: number; at: string }
 
 // outcome: proposed | no_evidence | no_edits | failed | unavailable; absent until it ran.
 export type FocusHarnessOptIn = { repo: string; outcome?: string; proposal?: string; at?: string }

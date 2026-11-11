@@ -34,3 +34,10 @@
 {"name":"idle at the desk right after a body expression does nothing","signals":{"idle_at_desk":true,"body_available":true,"body_recently":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
 {"name":"special day alone, not arriving, does nothing","signals":{"reachable":true},"text":{"special_day":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
 {"name":"nothing at all","signals":{},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"a due reminder is said","signals":{"reminder_due":true},"want":{"intent":"remind","speak":true,"reason":"reminder_due"}}
+{"name":"a reminder the user asked for passes a quiet request, quiet hours, cooldown, the cap and a stop","signals":{"reminder_due":true,"quiet_hours":true,"cooldown_active":true,"daily_cap_reached":true,"stopped_today":true},"text":{"quiet_requested":true},"want":{"intent":"remind","speak":true,"reason":"reminder_due"}}
+{"name":"a reminder waits while the user types","signals":{"reminder_due":true,"busy":true},"want":{"intent":"none","speak":false,"reason":"busy"}}
+{"name":"a pending memory candidate is asked about at the desk","signals":{"memory_pending":true,"idle_at_desk":true,"body_available":true,"reachable":true},"want":{"intent":"confirm_memory","speak":true,"reason":"memory_pending"}}
+{"name":"memory is asked once a day, then the body expression returns","signals":{"memory_pending":true,"memory_asked_today":true,"idle_at_desk":true,"body_available":true,"reachable":true},"want":{"intent":"body_only","speak":false,"reason":"idle_at_desk"}}
+{"name":"a quiet request holds back a memory question","signals":{"memory_pending":true,"idle_at_desk":true,"reachable":true},"text":{"quiet_requested":true},"want":{"intent":"none","speak":false,"reason":"quiet_requested"}}
+{"name":"a strained user gets a check-in before a memory question","signals":{"memory_pending":true,"idle_at_desk":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"check_in","speak":true,"reason":"strained"}}

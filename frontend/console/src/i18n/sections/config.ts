@@ -352,6 +352,14 @@ const fieldsKo: Record<string, ConfigFieldOverride> = {
     label: 'Telegram으로 전달',
     description: '콘솔이 연결되어 있지 않을 때 live 모드로 말한 내용을 Telegram 기본 페어링 채팅으로 대신 전달합니다. 실제 메시지가 사용자 휴대폰으로 갑니다',
   },
+  initiative_remind: {
+    label: '리마인더 전달',
+    description: 'live 모드에서 cron 리마인더를 [REMINDER] 메모 대신 자연스러운 메시지로 전합니다. 10분 안에 전하지 못한 리마인더는 cron이 원래 방식으로 전달합니다',
+  },
+  initiative_confirm_memory: {
+    label: '기억 확인',
+    description: '하루 한 번, reflection이 찾은 대기 중인 기억 후보를 저장할지 묻습니다. 콘솔의 버튼으로 답합니다',
+  },
   jev_base_url: { label: 'jev 서버 주소', description: '사용자 원문은 루프백 호스트일 때만 보내는 /v1/systemone 서버의 기본 주소입니다' },
   jev_api_key: { label: 'jev용 API 키', description: '호스팅된 jev 서버에 쓰는 베어러 토큰' },
   jev_model: { label: 'jev 모델', description: '요청마다 함께 보낼 모델 이름' },

@@ -108,3 +108,43 @@ func TestTracker_SummaryFilteredByRun(t *testing.T) {
 		t.Fatalf("run_4 cost: got %v want 0.03", got.TotalCostUSD)
 	}
 }
+
+func TestTracker_SessionCostsSince(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	tracker, err := NewTracker(t.TempDir(), TrackerOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	for _, entry := range []Entry{
+		// s1: one call before its start is left out.
+		{Timestamp: now.AddDate(0, 0, -60), Provider: "p", InputTokens: 1, PricingKnown: true, EstimatedCostUSD: 9, SessionID: "s1"},
+		{Timestamp: now.AddDate(0, 0, -40), Provider: "p", InputTokens: 1, PricingKnown: true, EstimatedCostUSD: 0.5, SessionID: "s1"},
+		{Timestamp: now, Provider: "p", InputTokens: 1, PricingKnown: true, EstimatedCostUSD: 0.25, SessionID: "s1"},
+		{Timestamp: now, Provider: "p", InputTokens: 10, SessionID: "s2"},
+		// s2: read (s1 starts earlier) but before s2's own start.
+		{Timestamp: now.Add(-2 * time.Hour), Provider: "p", InputTokens: 1, PricingKnown: true, EstimatedCostUSD: 5, SessionID: "s2"},
+		{Timestamp: now, Provider: "p", InputTokens: 1, PricingKnown: true, EstimatedCostUSD: 3, SessionID: "other"},
+	} {
+		if err := tracker.Record(entry); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+	got := tracker.SessionCostsSince(map[string]time.Time{
+		"s1": now.AddDate(0, 0, -41), "s2": now.Add(-time.Hour), "s3": now.Add(-time.Hour),
+	})
+	if len(got) != 2 {
+		t.Fatalf("costs %+v", got)
+	}
+	if c := got["s1"]; c.CostUSD < 0.7499 || c.CostUSD > 0.7501 || c.UnpricedCalls != 0 {
+		t.Fatalf("s1 %+v", c)
+	}
+	if c := got["s2"]; c.CostUSD != 0 || c.UnpricedCalls != 1 {
+		t.Fatalf("s2 %+v", c)
+	}
+	if got := (*Tracker)(nil).SessionCostsSince(map[string]time.Time{"s1": now}); len(got) != 0 {
+		t.Fatalf("nil tracker %+v", got)
+	}
+	if got := tracker.SessionCostsSince(nil); len(got) != 0 {
+		t.Fatalf("no sessions %+v", got)
+	}
+}

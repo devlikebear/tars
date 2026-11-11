@@ -57,13 +57,19 @@ type Message struct {
 // live only in Content, same as any other message; the initiative ledger
 // (internal/initiative) also never stores them, only this message does.
 type MessageInitiative struct {
-	// Intent is "greet" or "check_in" (internal/initiative.Intent as a
-	// plain string, so this package does not import internal/initiative).
+	// Intent is "greet", "check_in", "remind" or "confirm_memory"
+	// (internal/initiative.Intent as a plain string, so this package does
+	// not import internal/initiative).
 	Intent string `json:"intent"`
 	// EntryID references the internal/initiative ledger entry this speak
 	// attempt recorded, for correlating the message with its delivery
 	// outcome without storing the words twice.
 	EntryID string `json:"entry_id,omitempty"`
+	// Ref is what the message is about, when that is something the server
+	// can act on later: the memory inbox candidate id a confirm_memory
+	// question asks about (tars#1001). Kept on the message, never in the
+	// initiative ledger.
+	Ref string `json:"ref,omitempty"`
 }
 
 // ReasoningBlock mirrors llm.ReasoningBlock on the transcript.

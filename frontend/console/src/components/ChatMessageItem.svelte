@@ -11,6 +11,7 @@
   import MarkdownContent from './MarkdownContent.svelte'
   import SubagentProgressCard from './SubagentProgressCard.svelte'
   import ChatStreamingStatus from './ChatStreamingStatus.svelte'
+  import ChatMemoryQuestion from './ChatMemoryQuestion.svelte'
   import ToolCallChanges from './ToolCallChanges.svelte'
   import { totalFileChanges } from '../lib/toolFileChanges'
   import { buildSubagentProgress } from '../lib/subagentProgress'
@@ -149,6 +150,9 @@
         </div>
       {:else}
         <div class="chat-text"><MarkdownContent text={replyText} {artifacts} {onArtifactOpen} /></div>
+        {#if message.memoryQuestionEntryId}
+          <ChatMemoryQuestion entryId={message.memoryQuestionEntryId} />
+        {/if}
       {/if}
     {:else}
       {@const split = splitReviewNotes(message.text)}

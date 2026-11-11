@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/initiative"
+	"github.com/devlikebear/tars/internal/memory"
 )
 
 func TestCheckDoctorInitiative(t *testing.T) {
@@ -521,5 +523,62 @@ func TestCheckDoctorInitiativeTelegram(t *testing.T) {
 	checkDoctorInitiativeTelegram(&manyPaired, cfgWithToken)
 	if c := only(t, manyPaired); c.status != "warn" || !strings.Contains(c.detail, "2 chats") {
 		t.Fatalf("multiple paired chats = %+v", c)
+	}
+}
+
+func TestCheckDoctorInitiativeSubjects(t *testing.T) {
+	root := t.TempDir()
+	shared := filepath.Join(root, "_shared", "initiative")
+	now := time.Now()
+	ledger := initiative.OpenLedger(filepath.Join(shared, "ledger.jsonl"), 0)
+	for _, e := range []initiative.Entry{
+		{At: now, Mode: initiative.ModeLive, Decision: initiative.Decision{Intent: initiative.IntentRemind, Speak: true}, Delivery: initiative.DeliveryDelivered},
+		{At: now, Mode: initiative.ModeLive, Decision: initiative.Decision{Intent: initiative.IntentConfirmMemory, Speak: true}, Delivery: initiative.DeliveryDelivered},
+	} {
+		if err := ledger.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(shared, "reminders.json"), []byte(`[{"id":"a"},{"id":"b"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := memory.AppendInboxCandidateIfNew(context.Background(), root, nil, memory.MemoryCandidate{Category: "preference", Summary: "likes tea"}); err != nil {
+		t.Fatal(err)
+	}
+	detail := func(r doctorReport, name string) string {
+		for _, c := range r.checks {
+			if c.name == name {
+				return c.detail
+			}
+		}
+		return ""
+	}
+
+	var off doctorReport
+	base := config.Config{}
+	base.WorkspaceDir = root
+	checkDoctorInitiativeSubjects(&off, base, initiative.ModeLive, now)
+	if len(off.checks) != 0 {
+		t.Fatalf("off = %+v, want no lines", off.checks)
+	}
+
+	cfg := base
+	cfg.Initiative = config.InitiativeConfig{Remind: true, ConfirmMemory: true}
+	var live doctorReport
+	checkDoctorInitiativeSubjects(&live, cfg, initiative.ModeLive, now)
+	if got := detail(live, "initiative remind"); got != "on: 1 said today, 2 queued" {
+		t.Fatalf("remind = %q", got)
+	}
+	if got := detail(live, "initiative confirm_memory"); got != "on: 1 pending preference candidates, asked today: 1" {
+		t.Fatalf("confirm_memory = %q", got)
+	}
+
+	var shadow doctorReport
+	checkDoctorInitiativeSubjects(&shadow, cfg, initiative.ModeShadow, now)
+	if got := detail(shadow, "initiative remind"); !strings.Contains(got, "shadow") {
+		t.Fatalf("shadow remind = %q", got)
+	}
+	if doctorQueuedReminders(filepath.Join(root, "nope.json")) != 0 {
+		t.Fatal("missing queue file must count 0")
 	}
 }

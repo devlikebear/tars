@@ -805,3 +805,47 @@ export function secondOpinionNotice(card: Pick<FocusCard, 'kind' | 'title' | 'pa
   }
   return null
 }
+
+// --- Execution tier (docs/decisions/focus-mode.md §5.3, #1293) ---
+
+// The tiers a pipeline's execution turns (build, fix rounds) can run on,
+// each with its provider and model. resumeRisk marks a tier whose provider
+// kind differs from the chat default's while one of the two resumes an
+// upstream CLI session (claude-code-cli, antigravity-cli): the server keeps
+// those turns on the session's tier and leaves a notice, so the option does
+// nothing as configured.
+export type ExecTierChoice = { name: string; provider: string; model: string; resumeRisk: boolean }
+
+const resumeProviderKinds = new Set(['claude-code-cli', 'antigravity-cli'])
+
+export function execTierChoices(options: readonly AgentRuntimeTierOption[], defaultTier: string): ExecTierChoice[] {
+  const chat = options.find((o) => o.name === defaultTier.trim())
+  const chatKind = chat && !chat.error ? (chat.kind ?? '') : ''
+  const out: ExecTierChoice[] = []
+  for (const name of secondOpinionTiers) {
+    const option = options.find((o) => o.name === name)
+    if (!option || option.error) continue
+    const kind = option.kind ?? ''
+    const resumeRisk = chatKind !== '' && kind !== chatKind && (resumeProviderKinds.has(kind) || resumeProviderKinds.has(chatKind))
+    out.push({ name, provider: option.provider_alias ?? '', model: option.model ?? '', resumeRisk })
+  }
+  return out
+}
+
+// defaultExecTier is the cheapest tier that can take turns from the chat's
+// own (light, then standard, then heavy), else the first one ("" with none).
+export function defaultExecTier(choices: readonly ExecTierChoice[]): string {
+  const safe = choices.filter((c) => !c.resumeRisk)
+  return (safe[safe.length - 1] ?? choices[choices.length - 1])?.name ?? ''
+}
+
+// The notice an execution turn leaves when it stayed on the session's tier
+// (focuspipeline's NoticeExecTierFallback), localized; null for any other
+// card.
+export function execTierNotice(card: Pick<FocusCard, 'kind' | 'title' | 'payload'>, text: FocusTranslations['notice'] = focusEn.notice): { title: string; body: string } | null {
+  if (card.kind !== 'notice' || card.title !== 'execution tier not used') return null
+  const p = (card.payload ?? {}) as { reason?: unknown; tier?: unknown; session_provider?: unknown; exec_provider?: unknown }
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  const reason = str(p.reason) === 'unresolved' ? 'unresolved' : 'resume_provider'
+  return { title: text.execTierFallback, body: text.execTierFallbackReason[reason](str(p.tier), str(p.session_provider), str(p.exec_provider)) }
+}

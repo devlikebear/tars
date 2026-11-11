@@ -29,6 +29,12 @@ const (
 	bodySpacing      = 30 * time.Minute
 )
 
+// ReminderGrace is how long a queued reminder may wait for the speak path
+// (typing, a turn in flight, nobody reachable, a failed compose) before the
+// server hands it back to cron's own delivery, so a reminder is late by at
+// most this much and never lost (tars#1001).
+const ReminderGrace = 10 * time.Minute
+
 // Thresholds turn System One probabilities into signals. Defaults come from
 // the Kev-0.8B measurements in tars#998.
 type Thresholds struct {
@@ -64,6 +70,12 @@ type Config struct {
 	// P2c). False (the default) means deliverLocked behaves exactly as
 	// before this field existed.
 	Telegram bool
+	// Remind routes cron reminders through the speak path (tars#1001).
+	// Off (the default), cron keeps writing its own [REMINDER] note.
+	Remind bool
+	// ConfirmMemory lets TARS ask whether to keep a pending reflection
+	// inbox candidate (tars#1001). Off by default.
+	ConfirmMemory bool
 }
 
 // WithDefaults fills zero values. Mode defaults to shadow when unset, but an

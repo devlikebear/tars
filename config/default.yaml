@@ -106,6 +106,8 @@ initiative:
   daily_speak_calls: 12
   reply_window: 30m
   telegram: false
+  remind: false
+  confirm_memory: false
   body_provider: ""
   thresholds:
     quiet_requested: 0.55

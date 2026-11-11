@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-// Verify promotion (tars#1292, docs/decisions/focus-mode.md §5.3). The
+// Verify promotion (tars#1292, docs/decisions/focus-mode.md §5.4). The
 // harness proposal (harness.go) turns a finished pipeline's facts into
 // prose and skills — instructions a model may miss again. Promotion is the
 // stronger rung of the same ladder: a defect that keeps coming back in the

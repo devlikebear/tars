@@ -11,7 +11,7 @@
   import { onDestroy, onMount, tick } from 'svelte'
   import { t } from '../../i18n'
   import { APIRequestError, checkSessionFolder, createFocusPipeline, listAgentRuntimeSubagents, listFocusTemplates, listRecentSessionFolders, type SessionFolder } from '../../lib/api'
-  import { defaultSecondOpinionTier, secondOpinionTierChoices, stageLabel, templateText, type SecondOpinionTierChoice } from '../../lib/focus'
+  import { defaultExecTier, defaultSecondOpinionTier, execTierChoices, secondOpinionTierChoices, stageLabel, templateText, type ExecTierChoice, type SecondOpinionTierChoice } from '../../lib/focus'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { clipboardImageFiles, filesToAttachments } from '../../lib/chatAttachments'
   import { stashKickoffAttachments } from '../../lib/focusKickoff'
@@ -50,6 +50,12 @@
   let secondOpinionLoaded = $state(false)
   let secondOpinionRequested = false
   let secondOpinionChoice = $derived(secondOpinionChoices.find((c) => c.name === secondOpinionTier) ?? null)
+  // Build and fix turns on another tier (#1293), opt-in per task; the tiers
+  // load with the second opinion's, the first time either box is ticked.
+  let execTierOn = $state(false)
+  let execTier = $state('')
+  let execChoices = $state<ExecTierChoice[]>([])
+  let execChoice = $derived(execChoices.find((c) => c.name === execTier) ?? null)
   let check = $state<Check>({ state: 'idle' })
   let busy = $state(false)
   let error = $state('')
@@ -137,19 +143,22 @@
   // Every extra row with a non-empty path must resolve to 'ok' (an empty
   // row is just not sent, so it never blocks Start).
   let extraDirsValid = $derived(extraDirs.every((row) => row.path.trim() === '' || row.check.state === 'ok'))
-  let canStart = $derived(!!folder && !!goal.trim() && extraDirsValid && !busy && (!secondOpinion || !!secondOpinionChoice))
+  let canStart = $derived(!!folder && !!goal.trim() && extraDirsValid && !busy && (!secondOpinion || !!secondOpinionChoice) && (!execTierOn || !!execChoice))
 
   // The tiers load the first time the box is ticked.
   $effect(() => {
-    if (!secondOpinion || secondOpinionRequested) return
+    if ((!secondOpinion && !execTierOn) || secondOpinionRequested) return
     secondOpinionRequested = true
     void listAgentRuntimeSubagents()
       .then((resp) => {
         secondOpinionChoices = secondOpinionTierChoices(resp.tiers ?? [], resp.default_tier ?? '')
         if (!secondOpinionTier) secondOpinionTier = defaultSecondOpinionTier(secondOpinionChoices)
+        execChoices = execTierChoices(resp.tiers ?? [], resp.default_tier ?? '')
+        if (!execTier) execTier = defaultExecTier(execChoices)
       })
       .catch(() => {
         secondOpinionChoices = []
+        execChoices = []
       })
       .finally(() => {
         secondOpinionLoaded = true
@@ -361,6 +370,7 @@
         ...(secondOpinion && secondOpinionChoice ? { second_opinion: { tier: secondOpinionChoice.name } } : {}),
         ...(harnessProposal ? { harness_proposal: true } : {}),
         ...(verifyPromotion ? { verify_promotion: true } : {}),
+        ...(execTierOn && execChoice ? { exec_tier: execChoice.name } : {}),
       })
       if (attachments) stashKickoffAttachments(created.session_id, attachments)
       onCreated(created.session_id)
@@ -516,6 +526,27 @@
         {#if secondOpinionChoice?.sameAsChat}<p class="status warn" data-testid="focus-new-second-opinion-same">{$t.focus.newTask.secondOpinionSameModel}</p>{/if}
       {:else if secondOpinionLoaded}
         <p class="status error" data-testid="focus-new-second-opinion-none">{$t.focus.newTask.secondOpinionNoTiers}</p>
+      {/if}
+    {/if}
+  </div>
+
+  <div class="field">
+    <label class="check">
+      <input type="checkbox" bind:checked={execTierOn} data-testid="focus-new-exec-tier" />
+      {$t.focus.newTask.execTier}
+    </label>
+    {#if execTierOn}
+      <p class="status" data-testid="focus-new-exec-tier-hint">{$t.focus.newTask.execTierHint}</p>
+      {#if execChoices.length > 0}
+        <label class="label" for="focus-new-exec-tier-select">{$t.focus.newTask.execTierLabel}</label>
+        <select id="focus-new-exec-tier-select" bind:value={execTier} data-testid="focus-new-exec-tier-select">
+          {#each execChoices as choice (choice.name)}
+            <option value={choice.name}>{$t.focus.newTask.secondOpinionTierOption(choice.name, choice.provider, choice.model)}</option>
+          {/each}
+        </select>
+        {#if execChoice?.resumeRisk}<p class="status warn" data-testid="focus-new-exec-tier-risk">{$t.focus.newTask.execTierResumeRisk}</p>{/if}
+      {:else if secondOpinionLoaded}
+        <p class="status error" data-testid="focus-new-exec-tier-none">{$t.focus.newTask.execTierNoTiers}</p>
       {/if}
     {/if}
   </div>
