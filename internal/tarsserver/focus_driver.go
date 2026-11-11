@@ -14,6 +14,7 @@ import (
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -63,6 +64,11 @@ type focusDriver struct {
 	// the configuration. Without both, pipelines cannot opt in.
 	secondOpinionTurn  focusSecondOpinionTurnRunner
 	secondOpinionTiers focusSecondOpinionTiers
+	// tierKind resolves a tier to its provider kind for the execution tier
+	// (focus_exec_tier.go); without it, pipelines cannot opt in. execCosts
+	// reads pipeline sessions' costs for its report.
+	tierKind  focusTierKind
+	execCosts func(starts map[string]time.Time) map[string]usage.SessionCost
 	// harnessLLM asks the focus_harness role for harness lessons, harnessCost
 	// reads a session's recorded cost, and openPipeline opens the proposal
 	// pipeline through the create path (focus_harness.go). Without the
@@ -257,7 +263,8 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 	d.cancels = deps.cancelRegistry
 	d.bindPR(deps.tooling)
 	d.runTurn = func(ctx context.Context, sessionID, message string) error {
-		_, err := runServerChatTurn(ctx, deps, sessionID, message, "")
+		tier := d.execTurnTier(sessionID, d.logger.With().Str("session_id", sessionID).Logger())
+		_, err := runServerChatTurnOnTier(ctx, deps, sessionID, message, tier)
 		return err
 	}
 	d.qaTurn = func(ctx context.Context, qaSessionID, question, consoleContext string) error {

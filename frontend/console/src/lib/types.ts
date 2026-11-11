@@ -2808,7 +2808,13 @@ export type FocusPipeline = {
   // pipeline that is itself a proposal, where it came from.
   harness?: FocusHarnessOptIn
   harness_from?: { session_id: string; repo: string }
+  // The execution tier (tars#1293): build and fix turns run on it, and the
+  // label the execution tier report groups by.
+  exec_tier?: FocusExecTier
 }
+
+// lessons: adopted harness lessons in the repository's library at creation.
+export type FocusExecTier = { tier: string; repo?: string; lessons?: number; at: string }
 
 // outcome: proposed | no_evidence | no_edits | failed | unavailable; absent until it ran.
 export type FocusHarnessOptIn = { repo: string; outcome?: string; proposal?: string; at?: string }

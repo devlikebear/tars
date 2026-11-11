@@ -394,6 +394,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/goal", api.goal)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/plan", api.planEdit)
 	mux.HandleFunc("GET /v1/focus/templates", api.templates)
+	mux.HandleFunc("GET /v1/focus/exec-report", api.execReport)
 	return mux
 }
 
@@ -435,6 +436,10 @@ type focusCreateRequest struct {
 	// HarnessProposal opts the pipeline in to a harness proposal once it
 	// finishes merged (focus_harness.go). Off unless asked for.
 	HarnessProposal bool `json:"harness_proposal,omitempty"`
+	// ExecTier opts the pipeline in to running its execution turns (build,
+	// fix rounds) on heavy|standard|light (focus_exec_tier.go). Empty is
+	// off: every turn on the session's tier.
+	ExecTier string `json:"exec_tier,omitempty"`
 	// harnessFrom marks a pipeline the server opens as a harness proposal;
 	// never read from a request.
 	harnessFrom *focuspipeline.HarnessSource
@@ -493,6 +498,10 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	if err != nil {
 		return status, map[string]any{"error": err.Error()}
 	}
+	execTier, execTierWarning, status, err := a.driver.checkExecTier(ctx, req, kind)
+	if err != nil {
+		return status, map[string]any{"error": err.Error()}
+	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = focusTitleFromGoal(goal)
@@ -529,6 +538,7 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	}
 	p.E2E = req.E2E
 	p.SecondOpinion = secondOpinion
+	p.ExecTier = execTier
 	p.Harness, p.HarnessFrom = harness, req.harnessFrom
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
@@ -565,6 +575,9 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	resp := map[string]any{"session_id": sess.ID, "pipeline": p, "started": req.Start}
 	if secondOpinionWarning != "" {
 		resp["second_opinion_warning"] = secondOpinionWarning
+	}
+	if execTierWarning != "" {
+		resp["exec_tier_warning"] = execTierWarning
 	}
 	if worktreeNoticeResult != nil {
 		resp["worktree_base"] = worktreeNoticeResult.Base

@@ -74,6 +74,35 @@ test('end-to-end goals are off unless the new task turns them on', async ({ page
   expect((await pipelineOf(page, sessionId(page))).e2e_enabled).toBe(true)
 })
 
+test('the execution tier is off unless the new task picks one, and the report groups by it', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-exec-tier-')
+  const plain = await (await page.request.post('/v1/focus/pipelines', { data: { goal: 'no exec tier', cwd: repo } })).json()
+  expect((plain.pipeline as { exec_tier?: unknown }).exec_tier).toBeUndefined()
+
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+  await page.getByTestId('focus-new-goal').fill(goal)
+  await expect(page.getByTestId('focus-new-exec-tier')).not.toBeChecked()
+  await expect(page.getByTestId('focus-new-exec-tier-select')).toHaveCount(0)
+  await page.getByTestId('focus-new-exec-tier').check()
+  await expect(page.getByTestId('focus-new-exec-tier-hint')).toBeVisible()
+  // The E2E config maps every tier to the mock's one provider, so the
+  // cheapest one is picked and no provider switch is in the way.
+  await expect(page.getByTestId('focus-new-exec-tier-select')).toHaveValue('light')
+  await expect(page.getByTestId('focus-new-exec-tier-risk')).toHaveCount(0)
+  await page.getByTestId('focus-new-start').click()
+  await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
+  const id = sessionId(page)
+  expect((await pipelineOf(page, id)) as unknown as { exec_tier?: { tier: string; repo?: string } }).toMatchObject({ exec_tier: { tier: 'light', repo } })
+
+  const report = await (await page.request.get(`/v1/focus/exec-report?repo=${encodeURIComponent(repo)}`)).json()
+  expect(report.repo).toBe(repo)
+  expect(report.pipelines.map((p: { session_id: string }) => p.session_id)).toEqual([id])
+  expect(report.rows).toMatchObject([{ tier: 'light', library: 'none', pipelines: 1 }])
+})
+
 test('the new task goal field takes multiple lines: Enter adds a line, ⌘/Ctrl+Enter starts', async ({ page }) => {
   const repo = newRepo('tars-e2e-focus-multiline-')
   await page.goto('/console/focus')
@@ -990,6 +1019,8 @@ test.describe('Korean', () => {
     await page.getByTestId('focus-new-task-open').click()
     await page.getByTestId('focus-new-second-opinion').check()
     await expect(page.getByTestId('focus-new-second-opinion-same')).toBeVisible()
+    await page.getByTestId('focus-new-exec-tier').check()
+    await expect(page.getByTestId('focus-new-exec-tier-hint')).toBeVisible()
     const form = await chromeTexts(page.getByTestId('focus-new-task'))
     expect(form.filter(untranslated)).toEqual([])
 
