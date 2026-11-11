@@ -15,6 +15,8 @@ var presenceFieldKeys = map[string]bool{
 	"session_auto_delete_days":         true,
 	"tools_computer_use_enabled":       true,
 	"tools_computer_use_expose_values": true,
+	"initiative_arrival_brief":         true,
+	"initiative_check_in_buttons":      true,
 }
 
 func TestPresenceFieldListIsComplete(t *testing.T) {
@@ -64,11 +66,13 @@ func TestSchemaPresenceFieldsMatchRuntimeWhenUnset(t *testing.T) {
 		"session_auto_delete_days":         runtimeCfg.SessionAutoDeleteDays,
 		"tools_computer_use_enabled":       runtimeCfg.ToolsComputerUseEnabled,
 		"tools_computer_use_expose_values": runtimeCfg.ToolsComputerUseExposeValues,
+		"initiative_arrival_brief":         runtimeCfg.Initiative.ArrivalBrief,
+		"initiative_check_in_buttons":      runtimeCfg.Initiative.CheckInButtons,
 	}
 	if len(want) != len(presenceFieldKeys) {
 		t.Fatalf("want covers %d fields, presenceFieldKeys has %d", len(want), len(presenceFieldKeys))
 	}
-	if want["session_auto_archive_days"] != 7 || want["session_auto_delete_days"] != 30 || want["tools_computer_use_enabled"] != true {
+	if want["session_auto_archive_days"] != 7 || want["session_auto_delete_days"] != 30 || want["tools_computer_use_enabled"] != true || want["initiative_arrival_brief"] != true || want["initiative_check_in_buttons"] != true {
 		t.Fatalf("runtime defaults changed: %v", want)
 	}
 	for key, w := range want {
@@ -92,6 +96,8 @@ func TestSchemaPresenceFieldsKeepExplicitZero(t *testing.T) {
 		"session_auto_delete_days":         0,
 		"tools_computer_use_enabled":       false,
 		"tools_computer_use_expose_values": false,
+		"initiative_arrival_brief":         false,
+		"initiative_check_in_buttons":      false,
 	}
 	if err := PatchYAML(path, updates); err != nil {
 		t.Fatal(err)
@@ -104,7 +110,7 @@ func TestSchemaPresenceFieldsKeepExplicitZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtimeCfg.SessionAutoArchiveDays != 0 || runtimeCfg.SessionAutoDeleteDays != 0 || runtimeCfg.ToolsComputerUseEnabled || runtimeCfg.ToolsComputerUseExposeValues {
+	if runtimeCfg.SessionAutoArchiveDays != 0 || runtimeCfg.SessionAutoDeleteDays != 0 || runtimeCfg.ToolsComputerUseEnabled || runtimeCfg.ToolsComputerUseExposeValues || runtimeCfg.Initiative.ArrivalBrief || runtimeCfg.Initiative.CheckInButtons {
 		t.Fatalf("runtime did not keep explicit zeros: %+v", runtimeCfg)
 	}
 	for name, values := range map[string]map[string]any{"file": ConfigToMap(fileCfg), "runtime": ConfigToMap(runtimeCfg)} {

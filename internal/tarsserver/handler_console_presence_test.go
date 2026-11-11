@@ -14,7 +14,7 @@ import (
 func TestConsolePresenceHandlerRecordsAndRejectsWrongMethod(t *testing.T) {
 	store := initiative.OpenPresenceStore(filepath.Join(t.TempDir(), "presence.json"))
 	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
-	h := newConsolePresenceAPIHandler(store, func() time.Time { return now }, zerolog.Nop())
+	h := newConsolePresenceAPIHandler(store, nil, func() time.Time { return now }, zerolog.Nop())
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/console/presence", nil))
@@ -39,7 +39,7 @@ func TestConsolePresenceHandlerRecordsAndRejectsWrongMethod(t *testing.T) {
 func TestConsolePresenceHandlerAcceptsNoBody(t *testing.T) {
 	store := initiative.OpenPresenceStore(filepath.Join(t.TempDir(), "presence.json"))
 	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
-	h := newConsolePresenceAPIHandler(store, func() time.Time { return now }, zerolog.Nop())
+	h := newConsolePresenceAPIHandler(store, nil, func() time.Time { return now }, zerolog.Nop())
 	req := httptest.NewRequest(http.MethodPost, "/v1/console/presence", nil)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -50,7 +50,7 @@ func TestConsolePresenceHandlerAcceptsNoBody(t *testing.T) {
 }
 
 func TestConsolePresenceHandlerNilStoreStillAnswers(t *testing.T) {
-	h := newConsolePresenceAPIHandler(nil, nil, zerolog.Nop())
+	h := newConsolePresenceAPIHandler(nil, nil, nil, zerolog.Nop())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/console/presence", nil))
 	if rec.Code != http.StatusNoContent {

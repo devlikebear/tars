@@ -19,6 +19,7 @@
     companionShouldOpen,
     companionShouldRecordInput,
     companionAskContext,
+    companionBriefText,
     companionSleepActive,
     companionSleepFor,
     companionSleepFromStorage,
@@ -30,6 +31,8 @@
     COMPANION_CUE_NONE,
     COMPANION_SLEEP_STORAGE_KEY,
     type CompanionAction,
+    type CompanionBriefLine,
+    type CompanionCheckInAction,
     type CompanionCueState,
     type CompanionExpression,
     type CompanionFailure,
@@ -51,6 +54,7 @@
   import { chatCommands } from '../lib/stores/chatCommandQueue.svelte'
   import { sessionActivity } from '../lib/stores/sessionActivity'
   import { locale as localeStore } from '../i18n'
+  import { answerInitiativeCheckIn } from '../lib/api'
   import type { ActivityMap } from '../lib/sessionBoard'
 
   interface Props {
@@ -630,6 +634,49 @@
     autoOpened = false
   }
 
+  // An arrival brief line (case-companion phase 3) goes where the server
+  // pointed it, like the server line itself, and the bubble closes.
+  function goToBrief(line: CompanionBriefLine) {
+    onNavigate?.(line.href)
+    cueState = companionCueDismissServer(cueState)
+    open = false
+    autoOpened = false
+  }
+
+  // A check-in's answer buttons (case-companion phase 3). The button is the
+  // answer: the server records it against the check-in's entry, nothing
+  // reads the user's words. "I'm fine" closes at once; the other two close
+  // once the server has the answer, and stay open with an error otherwise
+  // so a lost "quiet for today" is never silently dropped.
+  let checkInBusy = $state(false)
+  let checkInError = $state(false)
+
+  async function answerCheckIn(action: CompanionCheckInAction) {
+    const entryId = serverLine?.entryId
+    if (!entryId || checkInBusy) return
+    checkInError = false
+    if (action === 'ok') {
+      void answerInitiativeCheckIn(entryId, action).catch(() => {})
+      closeBubble()
+      return
+    }
+    checkInBusy = true
+    try {
+      await answerInitiativeCheckIn(entryId, action)
+      closeBubble()
+    } catch {
+      checkInError = true
+    } finally {
+      checkInBusy = false
+    }
+  }
+
+  function checkInLabel(action: CompanionCheckInAction): string {
+    if (action === 'ok') return $t.companion.checkIn.ok
+    if (action === 'snooze') return $t.companion.checkIn.snooze
+    return $t.companion.checkIn.quietToday
+  }
+
   function dismissFailure(key: string) {
     onDismissFailure?.(key)
   }
@@ -770,6 +817,39 @@
             </button>
           {:else}
             <p class="companion-line companion-line-server companion-line-server-static">{serverLine.line}</p>
+          {/if}
+          {#if serverLine.brief?.length}
+            <!-- The arrival brief (case-companion phase 3): what changed
+                 while the user was away, worked out by the server and
+                 written in both languages there. Each line opens its
+                 screen; the chip carries the urgency in words as well as
+                 colour. -->
+            <ul class="companion-brief" aria-label={$t.companion.brief.listAria}>
+              {#each serverLine.brief as item, i (i)}
+                <li>
+                  <button type="button" class={`companion-line companion-brief-line companion-brief-${item.severity}`} onclick={() => goToBrief(item)}>
+                    <span class="companion-brief-chip">{$t.companion.brief.severity[item.severity]}</span>
+                    <span class="companion-brief-text">{companionBriefText(item, $localeStore)}</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          {#if serverLine.actions?.length && serverLine.entryId}
+            <div class="companion-checkin" role="group" aria-label={$t.companion.checkIn.groupAria}>
+              {#each serverLine.actions as checkInAction (checkInAction)}
+                <button
+                  type="button"
+                  class="companion-checkin-button"
+                  data-action={checkInAction}
+                  disabled={checkInBusy}
+                  onclick={() => answerCheckIn(checkInAction)}
+                >{checkInLabel(checkInAction)}</button>
+              {/each}
+            </div>
+            {#if checkInError}
+              <p class="companion-checkin-error" role="alert">{$t.companion.checkIn.error}</p>
+            {/if}
           {/if}
         </div>
       {/if}
@@ -1094,6 +1174,80 @@
   .companion-line-server-static {
     margin: 0;
     cursor: default;
+  }
+
+  /* Arrival brief (case-companion phase 3): up to three lines under the
+     greeting, each a link. The chip says the urgency in words; the
+     block/info border tint repeats it, never alone. */
+  .companion-brief {
+    display: grid;
+    gap: var(--space-1);
+    margin: var(--space-1) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .companion-brief-line {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    width: 100%;
+  }
+
+  .companion-brief-block {
+    border-color: rgba(var(--primary-rgb), 0.45);
+  }
+
+  .companion-brief-chip {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--secondary-text);
+  }
+
+  .companion-brief-block .companion-brief-chip {
+    color: var(--primary);
+  }
+
+  .companion-brief-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* Check-in answers (case-companion phase 3): three plain buttons in one
+     row under the check-in line; they wrap on a narrow bubble. */
+  .companion-checkin {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+  }
+
+  .companion-checkin-button {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    color: var(--primary-text);
+    cursor: pointer;
+    font-size: 0.76rem;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .companion-checkin-button:hover:not(:disabled) {
+    border-color: rgba(var(--primary-rgb), 0.42);
+  }
+
+  .companion-checkin-button:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+
+  .companion-checkin-error {
+    margin: var(--space-1) 0 0;
+    color: rgb(229, 62, 62);
+    font-size: 0.76rem;
   }
 
   .companion-line-dismiss {

@@ -27,7 +27,15 @@ async function gotoAndWaitForStream(page: Page, path: string) {
 
 async function postCompanionEvent(
   page: Page,
-  overrides: { expression: string; message?: string; session_id?: string; timestamp?: string },
+  overrides: {
+    expression: string
+    message?: string
+    session_id?: string
+    timestamp?: string
+    brief?: unknown[]
+    actions?: string[]
+    entry_id?: string
+  },
 ) {
   const response = await page.request.post('/v1/e2e/events', {
     data: {
@@ -39,6 +47,9 @@ async function postCompanionEvent(
       timestamp: overrides.timestamp ?? new Date().toISOString(),
       expression: overrides.expression,
       session_id: overrides.session_id,
+      brief: overrides.brief,
+      actions: overrides.actions,
+      entry_id: overrides.entry_id,
     },
   })
   expect(response.ok()).toBeTruthy()
@@ -159,4 +170,60 @@ test('closing the bubble dismisses the server line for good, not just the view',
   // itself, not merely the bubble's visibility.
   await page.getByRole('button', { name: 'Talk to CASE' }).click()
   await expect(page.locator('.companion-line-server')).toHaveCount(0)
+})
+
+// Case-companion phase 3: an arrival greet's "while you were away" lines.
+// The server writes the words (both languages) and the links; the console
+// shows the one for its language and goes where the line points.
+test('an arrival brief shows under the greeting, each line opening its screen', async ({ page }, testInfo) => {
+  await gotoAndWaitForStream(page, '/console')
+  await expect(body(page)).toHaveClass(/expr-neutral/)
+
+  await postCompanionEvent(page, {
+    expression: 'greeting',
+    message: 'Welcome back.',
+    brief: [
+      { kind: 'waiting', severity: 'block', text: { en: '"Fix login" is waiting at G2 (review)', ko: '"Fix login" — G2(리뷰)에서 기다려요' }, href: '/console/ops' },
+      { kind: 'finished', severity: 'info', text: { en: '"Docs" finished', ko: '"Docs" — 끝났어요' }, href: '/console/cron' },
+      { kind: 'exploded', severity: 'info', text: { en: 'never shown', ko: 'never shown' }, href: '/console/cron' },
+    ],
+  })
+
+  const items = page.locator('.companion-brief .companion-brief-line')
+  await expect(items).toHaveCount(2)
+  await expect(items.nth(0)).toContainText('Needs you')
+  await expect(items.nth(0)).toContainText('"Fix login" is waiting at G2 (review)')
+  await expect(items.nth(1)).toContainText('Update')
+  await page.screenshot({ path: testInfo.outputPath('companion-arrival-brief.png') })
+
+  await items.nth(0).click()
+  await expect(page).toHaveURL(/\/console\/ops$/)
+  await expect(bubble(page)).toHaveCount(0)
+})
+
+// A check-in's answer buttons. The answer goes to the real server, which
+// only accepts a check-in TARS actually wrote: this synthetic one is not,
+// so the bubble must stay open and say the answer was not saved rather
+// than closing as if it had been (initiative-live.spec.ts answers a real
+// one).
+test('a check-in shows its three answers, and an answer the server refuses keeps the bubble open', async ({ page }) => {
+  await gotoAndWaitForStream(page, '/console')
+  await expect(body(page)).toHaveClass(/expr-neutral/)
+
+  await postCompanionEvent(page, {
+    expression: 'happy',
+    message: 'How is it going?',
+    actions: ['ok', 'snooze', 'quiet_today'],
+    entry_id: 'not-a-real-check-in',
+  })
+
+  const buttons = page.locator('.companion-checkin .companion-checkin-button')
+  await expect(buttons).toHaveText(["I'm fine", 'Again in 20 min', 'Quiet for today'])
+  await page.locator('.companion-checkin-button[data-action="snooze"]').click()
+  await expect(page.locator('.companion-checkin-error')).toBeVisible()
+  await expect(bubble(page)).toBeVisible()
+
+  // "I'm fine" closes at once, whatever the server says.
+  await page.locator('.companion-checkin-button[data-action="ok"]').click()
+  await expect(bubble(page)).toHaveCount(0)
 })

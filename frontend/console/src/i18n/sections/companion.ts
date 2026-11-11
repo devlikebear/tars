@@ -48,6 +48,20 @@ export const companionEn = {
     untilAlert: 'Sleep until something needs me',
     asleepStatus: 'CASE is asleep. Click it to wake it.',
   },
+  // Case-companion phase 3: the arrival greet's "while you were away"
+  // lines (the words themselves come from the server), and a check-in's
+  // answer buttons.
+  brief: {
+    listAria: 'While you were away',
+    severity: { block: 'Needs you', info: 'Update' },
+  },
+  checkIn: {
+    groupAria: 'Answer CASE',
+    ok: "I'm fine",
+    snooze: 'Again in 20 min',
+    quietToday: 'Quiet for today',
+    error: "Couldn't save that. Try again.",
+  },
 }
 
 export type CompanionTranslations = typeof companionEn
@@ -86,5 +100,16 @@ export const companionKo: CompanionTranslations = {
     hour: '1시간 절전',
     untilAlert: '다음 알림까지 절전',
     asleepStatus: 'CASE가 절전 중이에요. 누르면 깨어나요.',
+  },
+  brief: {
+    listAria: '자리를 비운 사이',
+    severity: { block: '확인 필요', info: '소식' },
+  },
+  checkIn: {
+    groupAria: 'CASE에게 답하기',
+    ok: '괜찮아',
+    snooze: '20분 뒤 다시',
+    quietToday: '오늘은 조용히',
+    error: '저장하지 못했어요. 다시 시도해줘.',
   },
 }

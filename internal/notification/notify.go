@@ -55,6 +55,26 @@ type Event struct {
 	// console ignores the whole event when this is set to a value it does
 	// not recognize (#1192).
 	Expression string `json:"expression,omitempty"`
+	// Brief is an arrival greet's "what changed while you were away" lines
+	// (case-companion phase 3), at most three, for a companionEventCategory
+	// event only. The server writes the words in both console languages.
+	Brief []CompanionBriefLine `json:"brief,omitempty"`
+	// Actions are the buttons a companion event's bubble offers (a check-in's
+	// "ok", "snooze", "quiet_today"), answered against EntryID.
+	Actions []string `json:"actions,omitempty"`
+	// EntryID names the initiative ledger entry a companion event's line
+	// came from, so a button answer can refer to it.
+	EntryID string `json:"entry_id,omitempty"`
+}
+
+// CompanionBriefLine is one arrival-brief line: what kind of change, how
+// urgent (block or info), the line in each console language, and the
+// console path it opens.
+type CompanionBriefLine struct {
+	Kind     string            `json:"kind"`
+	Severity string            `json:"severity"`
+	Text     map[string]string `json:"text"`
+	Href     string            `json:"href"`
 }
 
 func NewEvent(category, severity, title, message string) Event {

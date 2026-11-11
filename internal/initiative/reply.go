@@ -164,6 +164,13 @@ func ReplyState(entries []Entry) (consecutiveIgnored int, lastStoppedAt time.Tim
 	var order []string
 	for _, e := range entries {
 		switch {
+		case e.Kind == entryKindAnswer:
+			// A "quiet for today" button stops the day like a stopped
+			// reply does, even when the check-in's window had already
+			// closed (case-companion phase 3).
+			if e.Answer == CheckInAnswerQuietToday && e.At.After(lastStoppedAt) {
+				lastStoppedAt = e.At
+			}
 		case e.Kind == entryKindOutcome:
 			if _, ok := open[e.Ref]; !ok {
 				continue

@@ -10,6 +10,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/initiative"
+	"github.com/devlikebear/tars/internal/notification"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/pkg/llm"
 	"github.com/rs/zerolog"
@@ -147,6 +148,13 @@ type initiativeSpeaker struct {
 	// results is the initiative.share_result queue (tars#1002): a
 	// delivered report removes the results it covered. nil when off.
 	results *initiativeResultQueue
+
+	// brief adds the arrival brief to a greet's companion event
+	// (case-companion phase 3). nil when initiative.arrival_brief is off.
+	brief *initiative.BriefStore
+	// checkInButtons adds the answer buttons to a check-in's companion
+	// event (initiative.check_in_buttons).
+	checkInButtons bool
 }
 
 var _ initiative.Speaker = (*initiativeSpeaker)(nil)
@@ -225,7 +233,7 @@ func (s *initiativeSpeaker) Speak(ctx context.Context, req initiative.SpeakReque
 		return initiative.SpeakOutcome{Composed: true, Delivered: true, ChannelError: channelErr}, nil
 	}
 
-	s.sendCompanionEvent(ctx, req.Intent, text)
+	s.sendCompanionEvent(ctx, req, text)
 	return initiative.SpeakOutcome{Composed: composed, Delivered: true}, nil
 }
 
@@ -396,17 +404,52 @@ func (s *initiativeSpeaker) sendTelegram(ctx context.Context, text string) strin
 // cap), and the main session id so clicking the line navigates there.
 // Best-effort — notify.go's Emit has no error return, and a failure here
 // never un-delivers a message already written to the transcript.
-func (s *initiativeSpeaker) sendCompanionEvent(ctx context.Context, intent initiative.Intent, text string) {
+//
+// A greet also carries the arrival brief (case-companion phase 3), worked
+// out in Go and written in both console languages; a check-in carries its
+// answer buttons and the entry id they answer. Neither goes into the
+// transcript: the message stays the composed words only.
+func (s *initiativeSpeaker) sendCompanionEvent(ctx context.Context, req initiative.SpeakRequest, text string) {
 	if s.notify == nil {
 		return
 	}
-	s.notify(ctx, notificationEvent{
+	evt := notificationEvent{
 		Category:   companionEventCategory,
 		Severity:   "info",
 		Message:    clipBytes(firstLine(text), companionExpressionMaxLen),
-		Expression: initiativeSpeakExpression(intent),
+		Expression: initiativeSpeakExpression(req.Intent),
 		SessionID:  s.mainSessionID,
-	})
+	}
+	switch req.Intent {
+	case initiative.IntentGreet:
+		evt.Brief = companionBriefLines(s.brief, req.Now)
+	case initiative.IntentCheckIn:
+		if s.checkInButtons {
+			evt.Actions = []string{initiative.CheckInAnswerOK, initiative.CheckInAnswerSnooze, initiative.CheckInAnswerQuietToday}
+			evt.EntryID = req.EntryID
+		}
+	}
+	s.notify(ctx, evt)
+}
+
+// companionBriefLines is the arrival brief as a companion event carries it:
+// each line once, with its English and Korean words side by side (the
+// console picks its own language).
+func companionBriefLines(store *initiative.BriefStore, now time.Time) []notification.CompanionBriefLine {
+	en, ko := store.Lines(now)
+	if len(en) == 0 || len(en) != len(ko) {
+		return nil
+	}
+	out := make([]notification.CompanionBriefLine, 0, len(en))
+	for i, item := range en {
+		out = append(out, notification.CompanionBriefLine{
+			Kind:     item.Kind,
+			Severity: item.Severity,
+			Text:     map[string]string{"en": item.Text, "ko": ko[i].Text},
+			Href:     item.Href,
+		})
+	}
+	return out
 }
 
 // firstLine returns the text up to its first newline, or the whole text

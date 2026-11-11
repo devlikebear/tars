@@ -468,7 +468,19 @@ type InitiativeConfig struct {
 	// (an active session goal, an unfinished focus pipeline or its pull
 	// request) at the first console arrival of the day, in place of that
 	// day's greet (tars#1002). Default false.
-	FollowUp                bool
+	FollowUp bool
+	// ArrivalBrief adds up to three "what changed while you were away"
+	// lines to an arrival greet's bubble on the console (case-companion
+	// phase 3): a pipeline now waiting at a gate, a cron job that failed,
+	// a pipeline that finished. Built in Go from snapshots, never by a
+	// model. Default true; arrivalBriefSet records an explicit value.
+	ArrivalBrief    bool
+	arrivalBriefSet bool
+	// CheckInButtons adds "I'm fine", "Again in 20 minutes" and "Quiet for
+	// today" buttons to a check-in's bubble on the console (case-companion
+	// phase 3). Default true; checkInButtonsSet records an explicit value.
+	CheckInButtons          bool
+	checkInButtonsSet       bool
 	QuietRequestedThreshold float64
 	UserStrainedThreshold   float64
 	SpecialDayThreshold     float64

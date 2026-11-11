@@ -22,21 +22,24 @@ import (
 // Entry.Body are left out, so an export never carries more than the
 // ledger's tuning facts even if an error message quoted something.
 type DatasetRecord struct {
-	ID             string       `json:"id"`
-	At             time.Time    `json:"at"`
-	Mode           string       `json:"mode"`
-	Decision       Decision     `json:"decision"`
-	Signals        GoSignals    `json:"signals"`
-	Text           TextSignals  `json:"text"`
-	Called         bool         `json:"called,omitempty"`
-	Composed       bool         `json:"composed,omitempty"`
-	Delivery       string       `json:"delivery,omitempty"`
-	DeliveryReason string       `json:"delivery_reason,omitempty"`
-	Channel        string       `json:"channel,omitempty"`
-	ChannelError   string       `json:"channel_error,omitempty"`
-	Outcome        string       `json:"outcome,omitempty"`
-	OutcomeAt      *time.Time   `json:"outcome_at,omitempty"`
-	Label          DatasetLabel `json:"label"`
+	ID             string      `json:"id"`
+	At             time.Time   `json:"at"`
+	Mode           string      `json:"mode"`
+	Decision       Decision    `json:"decision"`
+	Signals        GoSignals   `json:"signals"`
+	Text           TextSignals `json:"text"`
+	Called         bool        `json:"called,omitempty"`
+	Composed       bool        `json:"composed,omitempty"`
+	Delivery       string      `json:"delivery,omitempty"`
+	DeliveryReason string      `json:"delivery_reason,omitempty"`
+	Channel        string      `json:"channel,omitempty"`
+	ChannelError   string      `json:"channel_error,omitempty"`
+	Outcome        string      `json:"outcome,omitempty"`
+	OutcomeAt      *time.Time  `json:"outcome_at,omitempty"`
+	// Answer is the button pressed on a delivered check-in (ok, snooze,
+	// quiet_today), when there was one.
+	Answer string       `json:"answer,omitempty"`
+	Label  DatasetLabel `json:"label"`
 }
 
 // DatasetLabel is the user's correction of one record. Every field is a
@@ -105,6 +108,12 @@ func BuildDataset(entries []Entry, since time.Time, labels map[string]DatasetLab
 	var out []DatasetRecord
 	index := map[string]int{}
 	for _, e := range entries {
+		if e.Kind == entryKindAnswer {
+			if i, ok := index[e.Ref]; ok {
+				out[i].Answer = e.Answer
+			}
+			continue
+		}
 		if e.Kind == entryKindOutcome {
 			if i, ok := index[e.Ref]; ok && out[i].Outcome == "" {
 				at := e.At

@@ -415,6 +415,13 @@ func buildAPIMux(
 		Now:              nowFn,
 		ActionDispatcher: embodiment.NewMCPTransport(mcpClient, logger),
 	})
+	// CASE's Bridge reads the stores below for each question; pulse's
+	// snapshot is added once its runtime exists, further down. Made before
+	// initiative, whose arrival brief reads the same snapshot.
+	caseBridge := newCaseBridge(cfg.WorkspaceDir, caseBridgeSources{
+		cronJobs: cronStore.List,
+		usage:    caseBridgeUsage(deps.usageTracker),
+	}, logger)
 	presenceStore := initiative.OpenPresenceStore(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "presence.json"))
 	// The cron runner binds its fallback, once cron's reminder sender exists.
 	reminderQueue := newInitiativeReminderQueue(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "reminders.json"), nil, logger)
@@ -426,6 +433,7 @@ func buildAPIMux(
 		Reminders:        reminderQueue,
 		Results:          resultQueue,
 		MemoryBackend:    memoryBackend,
+		BriefSource:      caseBridge.briefSnapshot,
 		Config:           cfg,
 		WorkspaceDir:     cfg.WorkspaceDir,
 		SessionStore:     sessionStore,
@@ -517,12 +525,6 @@ func buildAPIMux(
 	focusDriver.harnessLLM = newFocusHarnessLLM(deps.llmRouter)
 	focusDriver.harnessCost = focusHarnessCost(deps.usageTracker)
 	chatTooling.Focus = focusDriver
-	// CASE's Bridge reads the stores below for each question; pulse's
-	// snapshot is added once its runtime exists, further down.
-	caseBridge := newCaseBridge(cfg.WorkspaceDir, caseBridgeSources{
-		cronJobs: cronStore.List,
-		usage:    caseBridgeUsage(deps.usageTracker),
-	}, logger)
 	chatTooling.Case = caseBridge
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
@@ -798,7 +800,7 @@ func buildAPIMux(
 		pulse:             pulseSetup.Handler,
 		caseBridge:        newCaseBridgeHandler(caseBridge),
 		initiative:        initiativeSetup.Handler,
-		consolePresence:   newConsolePresenceAPIHandler(presenceStore, nowFn, logger),
+		consolePresence:   newConsolePresenceAPIHandler(presenceStore, initiativeSetup.Brief, nowFn, logger),
 		reflection:        reflectionSetup.Handler,
 		chat:              chatHandler,
 		sessions:          withGoalAudit(withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees), auditTo(opsManager)),
@@ -851,7 +853,7 @@ func buildAPIMux(
 		codexUsage:      codexUsageHandler,
 	})
 	// Empty outside an `-tags e2e` build (see e2e_hooks.go/e2e_events.go).
-	applyE2ERouteHooks(mux, e2eRouteDeps{Broker: broker, InitiativeRuntime: initiativeSetup.Runtime, Presence: presenceStore, ConsoleBuild: consoleBuildTracker})
+	applyE2ERouteHooks(mux, e2eRouteDeps{Broker: broker, InitiativeRuntime: initiativeSetup.Runtime, Presence: presenceStore, Brief: initiativeSetup.Brief, ConsoleBuild: consoleBuildTracker})
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,

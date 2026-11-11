@@ -397,8 +397,11 @@ type initiativeSetupInputs struct {
 	// MemoryBackend is what an approved confirm_memory answer is saved
 	// through — the same backend the Memory screen's review uses.
 	MemoryBackend memory.Backend
-	Logger        zerolog.Logger
-	Now           func() time.Time
+	// BriefSource reads TARS's state for the arrival brief (case-companion
+	// phase 3) — CASE's Bridge's snapshot. nil means no brief.
+	BriefSource func(now time.Time) initiative.StatusSnapshot
+	Logger      zerolog.Logger
+	Now         func() time.Time
 }
 
 type initiativeSetup struct {
@@ -417,6 +420,10 @@ type initiativeSetup struct {
 	// ShareResultActive reports that finished background results should go
 	// to Results (initiative enabled, live, share_result on — tars#1002).
 	ShareResultActive bool
+	// Brief keeps the arrival brief's snapshots (case-companion phase 3):
+	// non-nil only when initiative is live with arrival_brief on. Every
+	// console presence signal goes to its Seen.
+	Brief *initiative.BriefStore
 }
 
 // buildInitiativeRuntime wires the initiative loop (tars#997). When it is
@@ -490,6 +497,11 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	// (reply tracking) share one definition of "which session".
 	telegramReplyResolver := telegramReplySessionResolver(in.Config, in.TelegramPairings)
 
+	var brief *initiative.BriefStore
+	if live && c.ArrivalBrief && in.BriefSource != nil {
+		brief = initiative.OpenBriefStore(filepath.Join(in.WorkspaceDir, "_shared", "initiative", "snapshot.json"), in.BriefSource)
+	}
+
 	var speaker *initiativeSpeaker
 	speakPlan, speakClient, speakModel := resolveInitiativeSpeakBackend(in.Config, in.Router)
 	deps.SpeakSendsText = speakPlan.SendsText
@@ -513,6 +525,8 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 			logger:               logger,
 			telegram:             in.TelegramSender,
 			telegramReplySession: telegramReplyResolver,
+			brief:                brief,
+			checkInButtons:       live && c.CheckInButtons,
 		}
 		if in.TelegramPairings != nil {
 			pairings := in.TelegramPairings
@@ -590,6 +604,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		Speaker:           speaker,
 		RemindActive:      remindActive,
 		ShareResultActive: shareResultActive,
+		Brief:             brief,
 	}
 }
 

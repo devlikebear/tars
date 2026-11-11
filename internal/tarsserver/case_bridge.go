@@ -14,6 +14,7 @@ import (
 	"github.com/devlikebear/tars/internal/casebridge"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
@@ -362,43 +363,8 @@ const caseBridgeCronWindow = 24 * time.Hour
 func (c *caseBridge) snapshotLocked(caseSessionID string) casebridge.Snapshot {
 	now := c.now()
 	s := casebridge.Snapshot{At: now}
-
-	if store := focusStoreFor(c.sessions); store != nil {
-		if pipelines, err := store.List(); err == nil {
-			for _, p := range pipelines {
-				sess, err := c.sessions.Get(p.SessionID)
-				if err != nil {
-					continue
-				}
-				s.Pipelines = append(s.Pipelines, casebridge.Pipeline{
-					SessionID:  p.SessionID,
-					Title:      sess.Title,
-					Stage:      focusStageName(p),
-					Gate:       p.OpenGate,
-					NeedsInput: p.OpenGate != focuspipeline.GateNone || p.NeedsInput() > 0,
-					GoalMode:   p.GoalActive(),
-					Finished:   focuspipeline.Finished(p),
-					UpdatedAt:  p.UpdatedAt,
-				})
-			}
-		}
-	}
-
-	if c.activity != nil {
-		snap := c.activity.snapshot()
-		for _, t := range snap.Running {
-			if t.SessionID == caseSessionID {
-				continue
-			}
-			s.Running = append(s.Running, casebridge.Turn{SessionID: t.SessionID, Title: t.Session, StartedAt: t.StartedAt})
-		}
-		for _, p := range snap.Pending {
-			s.Approvals = append(s.Approvals, casebridge.Approval{SessionID: p.SessionID, Title: p.Session, Tool: p.ToolName, At: p.AskedAt})
-		}
-		for _, q := range c.activity.queuedApprovals() {
-			s.Approvals = append(s.Approvals, casebridge.Approval{SessionID: q.SessionID, Title: q.Session, Tool: q.ToolName, Queued: true, Source: q.Source, At: q.RequestedAt})
-		}
-	}
+	s.Pipelines = c.pipelinesLocked()
+	s.Running, s.Approvals = c.activityLocked(caseSessionID)
 
 	if c.sources.cronJobs != nil {
 		if jobs, err := c.sources.cronJobs(); err == nil {
@@ -421,6 +387,108 @@ func (c *caseBridge) snapshotLocked(caseSessionID string) casebridge.Snapshot {
 		s.Pulse = latestPulseSignals(c.sources.pulse())
 	}
 	return s
+}
+
+// pipelinesLocked reads every focus pipeline with its session's title.
+// Called with c.mu held.
+func (c *caseBridge) pipelinesLocked() []casebridge.Pipeline {
+	store := focusStoreFor(c.sessions)
+	if store == nil {
+		return nil
+	}
+	pipelines, err := store.List()
+	if err != nil {
+		return nil
+	}
+	var out []casebridge.Pipeline
+	for _, p := range pipelines {
+		sess, err := c.sessions.Get(p.SessionID)
+		if err != nil {
+			continue
+		}
+		out = append(out, casebridge.Pipeline{
+			SessionID:  p.SessionID,
+			Title:      sess.Title,
+			Stage:      focusStageName(p),
+			Gate:       p.OpenGate,
+			NeedsInput: p.OpenGate != focuspipeline.GateNone || p.NeedsInput() > 0,
+			GoalMode:   p.GoalActive(),
+			Finished:   focuspipeline.Finished(p),
+			UpdatedAt:  p.UpdatedAt,
+		})
+	}
+	return out
+}
+
+// activityLocked reads the running chat turns (CASE's own left out) and
+// the tool calls waiting on the user. Called with c.mu held.
+func (c *caseBridge) activityLocked(caseSessionID string) ([]casebridge.Turn, []casebridge.Approval) {
+	if c.activity == nil {
+		return nil, nil
+	}
+	var running []casebridge.Turn
+	var approvals []casebridge.Approval
+	snap := c.activity.snapshot()
+	for _, t := range snap.Running {
+		if t.SessionID == caseSessionID {
+			continue
+		}
+		running = append(running, casebridge.Turn{SessionID: t.SessionID, Title: t.Session, StartedAt: t.StartedAt})
+	}
+	for _, p := range snap.Pending {
+		approvals = append(approvals, casebridge.Approval{SessionID: p.SessionID, Title: p.Session, Tool: p.ToolName, At: p.AskedAt})
+	}
+	for _, q := range c.activity.queuedApprovals() {
+		approvals = append(approvals, casebridge.Approval{SessionID: q.SessionID, Title: q.Session, Tool: q.ToolName, Queued: true, Source: q.Source, At: q.RequestedAt})
+	}
+	return running, approvals
+}
+
+// briefSnapshot is the same state the Bridge answers from, reduced to what
+// an arrival brief compares (case-companion phase 3): pipelines, waiting
+// approvals and whether each cron job's last run failed. It reads neither
+// usage nor pulse, which a brief never mentions.
+func (c *caseBridge) briefSnapshot(now time.Time) initiative.StatusSnapshot {
+	if c == nil {
+		return initiative.StatusSnapshot{At: now}
+	}
+	c.mu.Lock()
+	pipelines := c.pipelinesLocked()
+	_, approvals := c.activityLocked("")
+	cronJobs := c.sources.cronJobs
+	c.mu.Unlock()
+	var jobs []cron.Job
+	if cronJobs != nil {
+		jobs, _ = cronJobs()
+	}
+	return initiativeStatusSnapshot(now, pipelines, approvals, jobs)
+}
+
+// initiativeStatusSnapshot converts the Bridge's facts into a brief
+// snapshot. A pipeline waits when it needs the user and is not finished; a
+// cron job failed when its last run left an error.
+func initiativeStatusSnapshot(now time.Time, pipelines []casebridge.Pipeline, approvals []casebridge.Approval, jobs []cron.Job) initiative.StatusSnapshot {
+	out := initiative.StatusSnapshot{At: now, Pipelines: map[string]initiative.PipelinePoint{}, Cron: map[string]initiative.CronPoint{}}
+	for _, p := range pipelines {
+		out.Pipelines[p.SessionID] = initiative.PipelinePoint{
+			Title:    p.Title,
+			Stage:    p.Stage,
+			Gate:     p.Gate,
+			Waiting:  p.NeedsInput && !p.Finished,
+			Finished: p.Finished,
+		}
+	}
+	for _, a := range approvals {
+		if a.Queued {
+			out.QueuedApprovals++
+			continue
+		}
+		out.ApprovalSessions = append(out.ApprovalSessions, a.SessionID)
+	}
+	for _, j := range jobs {
+		out.Cron[j.ID] = initiative.CronPoint{Name: j.Name, Failed: strings.TrimSpace(j.LastRunError) != "" && j.LastRunAt != nil}
+	}
+	return out
 }
 
 // focusStageName is the current stage's label, or its id.

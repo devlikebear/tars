@@ -45,6 +45,11 @@ type History struct {
 	ConsecutiveIgnored int
 	LastStoppedAt      time.Time
 	PendingReplies     []PendingReply
+	// CheckInSnoozedAt and CheckInSnoozedUntil are the latest "again in 20
+	// minutes" answer to a check-in (case-companion phase 3): when it was
+	// pressed and when it ends. See checkedInRecently.
+	CheckInSnoozedAt    time.Time
+	CheckInSnoozedUntil time.Time
 }
 
 func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
@@ -69,7 +74,7 @@ func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
 	g.IdleAtDesk = consoleUp && !lastUser.IsZero() && since(lastUser) >= idleMin && since(lastUser) <= idleMax
 	g.CooldownActive = !hist.LastSpokeAt.IsZero() && since(hist.LastSpokeAt) < EffectiveCooldown(cfg.Cooldown, hist.ConsecutiveIgnored)
 	g.DailyCapReached = hist.Today >= cfg.DailyCap
-	g.CheckedInRecently = !hist.LastCheckInAt.IsZero() && since(hist.LastCheckInAt) < checkInSpacing
+	g.CheckedInRecently = checkedInRecently(hist, now)
 	g.BodyRecently = !hist.LastBodyAt.IsZero() && since(hist.LastBodyAt) < bodySpacing
 	g.StoppedToday = !hist.LastStoppedAt.IsZero() && sameLocalDay(hist.LastStoppedAt, now, cfg.Location)
 	g.GreetedToday = !hist.LastGreetAt.IsZero() && sameLocalDay(hist.LastGreetAt, now, cfg.Location)

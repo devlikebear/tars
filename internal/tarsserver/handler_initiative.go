@@ -134,7 +134,82 @@ func newInitiativeAPIHandlerWithMemory(runtime *initiative.Runtime, presence *in
 		runtime.RecordAnswer(req.EntryID)
 		writeJSON(w, http.StatusOK, map[string]string{"entry_id": req.EntryID, "status": string(reviewed.Status)})
 	})
+	mux.Handle("/v1/initiative/checkin/answer", newInitiativeCheckInAnswerHandler(runtime, deps))
 	return mux
+}
+
+// newInitiativeCheckInAnswerHandler serves the buttons on a check-in's
+// bubble (case-companion phase 3), the same way the confirm_memory route
+// above serves its buttons: the answer is the button, and no model reads
+// anything to decide it.
+//
+//	POST {entry_id, action: ok|snooze|quiet_today} → {entry_id, action, until?}
+//
+// entry_id must name a check-in TARS wrote to the main session (404
+// otherwise). ok and snooze count as a reply to it; snooze holds check-ins
+// for initiative.CheckInSnooze; quiet_today stops initiative for the rest
+// of the local day. The runtime writes each answer to the ledger, so a
+// restart keeps it. 503 when initiative is not running.
+func newInitiativeCheckInAnswerHandler(runtime *initiative.Runtime, deps initiativeMemoryAnswerDeps) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		var req struct {
+			EntryID string `json:"entry_id"`
+			Action  string `json:"action"`
+		}
+		if !decodeJSONBody(w, r, &req) {
+			return
+		}
+		req.EntryID = strings.TrimSpace(req.EntryID)
+		req.Action = strings.ToLower(strings.TrimSpace(req.Action))
+		if req.EntryID == "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "entry_id is required")
+			return
+		}
+		switch req.Action {
+		case initiative.CheckInAnswerOK, initiative.CheckInAnswerSnooze, initiative.CheckInAnswerQuietToday:
+		default:
+			writeError(w, http.StatusBadRequest, "invalid_request", "action must be ok, snooze or quiet_today")
+			return
+		}
+		if runtime == nil {
+			writeError(w, http.StatusServiceUnavailable, "unavailable", "initiative is not running")
+			return
+		}
+		if !initiativeCheckInWritten(deps, req.EntryID) {
+			writeError(w, http.StatusNotFound, "not_found", "no check-in with that entry_id")
+			return
+		}
+		result, err := runtime.RecordCheckInAnswer(req.EntryID, req.Action)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "answer_failed", "check-in answer failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			EntryID string `json:"entry_id"`
+			initiative.CheckInAnswerResult
+		}{req.EntryID, result})
+	})
+}
+
+// initiativeCheckInWritten reports whether the main session holds the
+// check-in entryID names.
+func initiativeCheckInWritten(deps initiativeMemoryAnswerDeps, entryID string) bool {
+	if deps.Store == nil || deps.MainSessionID == "" {
+		return false
+	}
+	msgs, err := session.ReadMessages(deps.Store.TranscriptPath(deps.MainSessionID))
+	if err != nil {
+		return false
+	}
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if in := msgs[i].Initiative; in != nil && in.EntryID == entryID && in.Intent == string(initiative.IntentCheckIn) {
+			return true
+		}
+	}
+	return false
 }
 
 // confirmMemoryCandidateID finds the confirm_memory message entryID names in

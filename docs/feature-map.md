@@ -43,6 +43,13 @@ Last reviewed: 2026-10-10. Start an isolated instance with `make build` then `bi
 
 ## Initiative
 
+### Arrival brief and check-in answers (case-companion phase 3)
+- Kind: console bubble + API
+- Reach: on by default in live mode (`initiative.arrival_brief`, `initiative.check_in_buttons`); the brief rides on an arrival greet's companion event, the buttons on a check-in's. Answers: `POST /v1/initiative/checkin/answer {entry_id, action: ok|snooze|quiet_today}` (user token). Snapshots: `workspace/_shared/initiative/snapshot.json`.
+- Drive: with initiative live, keep the console tab hidden for over ten minutes after four quiet hours; meanwhile let a focus pipeline reach a gate. Come back. For the buttons, wait for a check-in on a screen other than the main session and press **Again in 20 min**.
+- Healthy result: the greeting's bubble lists at most three lines ("Needs you · "<title>" is waiting at G2 (review)"), block lines first; each opens its screen. Nothing changed → the greeting alone. The main session's transcript holds only the greeting's words. After **Again in 20 min**, `GET /v1/initiative/status` has `check_in_snoozed_until`; no check-in until then, a greet is unaffected; the ledger has an `answer` line. **Quiet for today** makes later ticks `stopped_today`, across a restart.
+- Evidence: `go test ./internal/initiative -run 'Brief|CheckIn|AnswerLines' -v`, `go test ./internal/tarsserver -run 'BriefSnapshot|Brief|CheckInAnswer|InitiativeSpeakerAttaches' -v`; console: `cd frontend/console && node --experimental-strip-types --test tests/companionPet.test.ts`, `npx playwright test e2e/companion-events.spec.ts e2e/initiative-live.spec.ts`.
+
 ### Offline tuning tools
 - Kind: CLI
 - Reach: `tars initiative export|scenarios|calibrate|adapt` (`--config`, or `--ledger <path>` without one). Guide: `docs/initiative-tuning.md`.

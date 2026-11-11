@@ -203,3 +203,39 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
   const statusBody = await status.json()
   expect(statusBody.outcomes.recent.ignored).toBeGreaterThanOrEqual(1)
 })
+
+// Case-companion phase 3: a real check-in from a real tick carries its
+// answer buttons, and "Again in 20 min" is recorded by the server against
+// that check-in. Three days out, so this tick is past everything the test
+// above left behind (cooldown, the day's greet); the presence signals start
+// an arrival 15 minutes before the tick and keep it going, so the console is
+// present but not "just arrived" — a long-absence check-in, not a greet.
+test('a live check-in offers its answers, and snoozing it is recorded', async ({ page }) => {
+  const sessionId = await mainSessionId(page)
+  await gotoAndWaitForStream(page, '/console')
+  await expect(body(page)).toBeVisible()
+
+  const at = Date.now() + 72 * 60 * 60_000
+  const iso = (offsetMin: number) => new Date(at + offsetMin * 60_000).toISOString()
+  const entry = await tick(page, iso(0), [iso(-15), iso(-11), iso(-6), iso(-1)])
+  expect(entry.intent).toBe('check_in')
+  expect(entry.delivery).toBe('delivered')
+
+  await expect(serverLine(page)).toHaveText(SPOKEN_TEXT)
+  const snooze = page.locator('.companion-checkin-button[data-action="snooze"]')
+  await expect(page.locator('.companion-checkin .companion-checkin-button')).toHaveCount(3)
+  const answered = page.waitForResponse((res) => res.url().includes('/v1/initiative/checkin/answer'))
+  await snooze.click()
+  const answer = await answered
+  expect(answer.status()).toBe(200)
+  const answerBody = await answer.json()
+  expect(answerBody.entry_id).toBe(entry.id)
+  expect(answerBody.action).toBe('snooze')
+  await expect(page.locator('.companion-bubble')).toHaveCount(0)
+
+  const status = await (await page.request.get('/v1/initiative/status')).json()
+  expect(status.check_in_snoozed_until).toBeTruthy()
+  // The check-in's words are in the main session; the answer added nothing there.
+  const messages = await history(page, sessionId)
+  expect(messages[messages.length - 1].initiative?.entry_id).toBe(entry.id)
+})
