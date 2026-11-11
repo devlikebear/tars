@@ -50,6 +50,13 @@ Last reviewed: 2026-10-10. Start an isolated instance with `make build` then `bi
 - Healthy result: the greeting's bubble lists at most three lines ("Needs you · "<title>" is waiting at G2 (review)"), block lines first; each opens its screen. Nothing changed → the greeting alone. The main session's transcript holds only the greeting's words. After **Again in 20 min**, `GET /v1/initiative/status` has `check_in_snoozed_until`; no check-in until then, a greet is unaffected; the ledger has an `answer` line. **Quiet for today** makes later ticks `stopped_today`, across a restart.
 - Evidence: `go test ./internal/initiative -run 'Brief|CheckIn|AnswerLines' -v`, `go test ./internal/tarsserver -run 'BriefSnapshot|Brief|CheckInAnswer|InitiativeSpeakerAttaches' -v`; console: `cd frontend/console && node --experimental-strip-types --test tests/companionPet.test.ts`, `npx playwright test e2e/companion-events.spec.ts e2e/initiative-live.spec.ts`.
 
+### Morning brief and evening recap (tars#1001)
+- Kind: console bubble + initiative message
+- Reach: opt-in, `initiative.morning_brief` (live) and `initiative.evening_recap` (+ `initiative.evening_recap_window`, default the hour before quiet hours). Status: `GET /v1/initiative/status` → `morning_brief`, `evening_recap`; `tars doctor`.
+- Drive: with initiative live and `morning_brief: true`, have a cron job due later today and a daily log for yesterday, then arrive for the day's first greeting. For the recap, set `evening_recap: true` and a window around now, with a focus pipeline open or a cron job that failed today.
+- Healthy result: the first greeting's bubble lists "Cron today: …", "Yesterday: N chat turns in M sessions …", "In progress: …" after any arrival lines; a follow-up leaves the in-progress line out. The recap is one main-session message ("Here's today's wrap-up." / "오늘 하루 정리예요." + up to three lines), once a day, never composed by a model; its rows open their screens.
+- Evidence: `go test ./internal/initiative -run 'EveningRecap|MorningBrief|RecapDue|DefaultRecapWindow|WithoutSaid' -v`, `go test ./internal/tarsserver -run 'OpenWork|DaySources|TodayCron|InitiativeSpeakerMorningBrief|InitiativeSpeakerEveningRecap|WiresDayBrief' -v`, `go test ./internal/cron -run NextRunIn -v`.
+
 ### Offline tuning tools
 - Kind: CLI
 - Reach: `tars initiative export|scenarios|calibrate|adapt` (`--config`, or `--ledger <path>` without one). Guide: `docs/initiative-tuning.md`.

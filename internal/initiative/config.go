@@ -103,6 +103,18 @@ type Config struct {
 	// at the first arrival of the day, in place of that greet (tars#1002).
 	// Off by default.
 	FollowUp bool
+	// MorningBrief adds the morning brief (today's cron runs, yesterday's
+	// daily log in counts, the work still open) to the day's first arrival
+	// utterance in CASE's bubble (tars#1001 brief). Off by default. The
+	// runtime only reports it; the speaker builds the lines.
+	MorningBrief bool
+	// EveningRecap says what finished, failed and is still open today, once
+	// a day, while RecapWindow is open (tars#1001 brief). Off by default.
+	EveningRecap bool
+	// RecapWindow is the "HH:MM-HH:MM" window the evening recap may go out
+	// in. Empty means the hour before QuietHours starts
+	// (DefaultRecapWindow).
+	RecapWindow string
 }
 
 // WithDefaults fills zero values. Mode defaults to shadow when unset, but an
@@ -137,6 +149,9 @@ func (c Config) WithDefaults() Config {
 	if strings.TrimSpace(c.QuietHours) == "" {
 		c.QuietHours = "23:00-07:00"
 	}
+	if strings.TrimSpace(c.RecapWindow) == "" {
+		c.RecapWindow = DefaultRecapWindow(c.QuietHours)
+	}
 	if c.Thresholds.QuietRequested <= 0 {
 		c.Thresholds.QuietRequested = 0.55
 	}
@@ -154,6 +169,16 @@ func (c Config) WithDefaults() Config {
 // speech (greet/check_in), as opposed to shadow mode's record-only
 // behavior. Any mode other than exactly ModeLive is treated as shadow.
 func (c Config) Live() bool { return c.Mode == ModeLive }
+
+// RecapWindowOpen reports whether t falls in the evening recap window.
+// Call it on a Config that went through WithDefaults.
+func (c Config) RecapWindowOpen(t time.Time) bool {
+	loc := c.Location
+	if loc == nil {
+		loc = time.Local
+	}
+	return inQuietWindow(c.RecapWindow, t.In(loc))
+}
 
 // inQuietWindow reports whether t falls in an "HH:MM-HH:MM" window that may
 // wrap past midnight. An empty or malformed window is never quiet.

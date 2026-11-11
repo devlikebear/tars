@@ -631,3 +631,50 @@ func TestCheckDoctorInitiativeCoworker(t *testing.T) {
 		t.Fatalf("shadow share_result = %q", got)
 	}
 }
+
+func TestCheckDoctorInitiativeDay(t *testing.T) {
+	root := t.TempDir()
+	shared := filepath.Join(root, "_shared", "initiative")
+	now := time.Now()
+	ledger := initiative.OpenLedger(filepath.Join(shared, "ledger.jsonl"), 0)
+	if err := ledger.Append(initiative.Entry{At: now, Mode: initiative.ModeLive, Decision: initiative.Decision{Intent: initiative.IntentEveningRecap, Speak: true}, Delivery: initiative.DeliveryDelivered}); err != nil {
+		t.Fatal(err)
+	}
+	find := func(r doctorReport, name string) string {
+		for _, c := range r.checks {
+			if c.name == name {
+				return c.detail
+			}
+		}
+		return ""
+	}
+	cfg := config.Config{}
+	cfg.WorkspaceDir = root
+	cfg.Initiative = config.InitiativeConfig{MorningBrief: true, EveningRecap: true, QuietHours: "23:00-07:00"}
+
+	var live doctorReport
+	checkDoctorInitiativeSubjects(&live, cfg, initiative.ModeLive, now)
+	if got := find(live, "initiative morning_brief"); !strings.HasPrefix(got, "on: added to the first greeting") {
+		t.Fatalf("morning_brief = %q", got)
+	}
+	if got := find(live, "initiative evening_recap"); got != "on: window 22:00-23:00, said today: 1" {
+		t.Fatalf("evening_recap = %q", got)
+	}
+
+	var shadow doctorReport
+	cfg.Initiative.EveningRecapWindow = "20:00-21:00"
+	checkDoctorInitiativeSubjects(&shadow, cfg, initiative.ModeShadow, now)
+	if got := find(shadow, "initiative morning_brief"); !strings.Contains(got, "shadow") {
+		t.Fatalf("shadow morning_brief = %q", got)
+	}
+	if got := find(shadow, "initiative evening_recap"); !strings.HasPrefix(got, "on: window 20:00-21:00") {
+		t.Fatalf("custom window = %q", got)
+	}
+
+	var off doctorReport
+	cfg.Initiative = config.InitiativeConfig{}
+	checkDoctorInitiativeSubjects(&off, cfg, initiative.ModeLive, now)
+	if len(off.checks) != 0 {
+		t.Fatalf("both off reports %+v", off.checks)
+	}
+}

@@ -479,8 +479,21 @@ type InitiativeConfig struct {
 	// CheckInButtons adds "I'm fine", "Again in 20 minutes" and "Quiet for
 	// today" buttons to a check-in's bubble on the console (case-companion
 	// phase 3). Default true; checkInButtonsSet records an explicit value.
-	CheckInButtons          bool
-	checkInButtonsSet       bool
+	CheckInButtons    bool
+	checkInButtonsSet bool
+	// MorningBrief adds the morning brief to the day's first arrival
+	// greeting (or the follow-up in its place) in CASE's bubble on the
+	// console: the rest of today's cron runs, yesterday's daily log in
+	// counts, and the work still open (tars#1001). Built in Go, never by a
+	// model. Default false.
+	MorningBrief bool
+	// EveningRecap writes, once a day inside EveningRecapWindow, what
+	// finished, what failed and what is still open today — fixed words
+	// built in Go, never by a model (tars#1001). Default false.
+	EveningRecap bool
+	// EveningRecapWindow is the "HH:MM-HH:MM" window the evening recap may
+	// go out in. Empty: the hour before quiet_hours starts.
+	EveningRecapWindow      string
 	QuietRequestedThreshold float64
 	UserStrainedThreshold   float64
 	SpecialDayThreshold     float64

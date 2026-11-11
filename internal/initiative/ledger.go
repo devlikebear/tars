@@ -201,6 +201,9 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 			if e.Intent == IntentConfirmMemory && e.At.After(h.LastMemoryAskAt) {
 				h.LastMemoryAskAt = e.At
 			}
+			if e.Intent == IntentEveningRecap && e.At.After(h.LastRecapAt) {
+				h.LastRecapAt = e.At
+			}
 		}
 		if e.Intent == IntentBodyOnly && e.At.After(h.LastBodyAt) {
 			h.LastBodyAt = e.At

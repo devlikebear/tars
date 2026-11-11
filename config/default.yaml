@@ -112,6 +112,9 @@ initiative:
   follow_up: false
   arrival_brief: true
   check_in_buttons: true
+  morning_brief: false
+  evening_recap: false
+  evening_recap_window: ""
   body_provider: ""
   thresholds:
     quiet_requested: 0.55

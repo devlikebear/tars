@@ -242,6 +242,9 @@ func Schema() []FieldMeta {
 		f("initiative_follow_up", "Initiative", "bool", "Suggest Unfinished Work", "On the first arrival of the day, suggest picking up a session goal or focus pipeline left unfinished on an earlier day, in place of the greeting"),
 		f("initiative_arrival_brief", "Initiative", "bool", "Arrival Brief", "Live mode: add up to three lines on what changed while you were away (a pipeline waiting at a gate, a failed cron job, a finished pipeline) to the arrival greeting in CASE's bubble"),
 		f("initiative_check_in_buttons", "Initiative", "bool", "Check-in Buttons", "Live mode: answer a check-in in CASE's bubble with I'm fine, Again in 20 minutes or Quiet for today"),
+		f("initiative_morning_brief", "Initiative", "bool", "Morning Brief", "Live mode: add the rest of today's cron runs, yesterday's activity in counts and the work still open to the first greeting of the day in CASE's bubble"),
+		f("initiative_evening_recap", "Initiative", "bool", "Evening Recap", "Once a day, in the evening window, say what finished, what failed and what is still open today"),
+		f("initiative_evening_recap_window", "Initiative", "string", "Evening Recap Window", "HH:MM-HH:MM window for the evening recap; empty means the hour before quiet hours start"),
 		f("initiative_threshold_quiet_requested", "Initiative", "float", "Quiet Requested Threshold", "System One probability that counts as a quiet request"),
 		f("initiative_threshold_user_strained", "Initiative", "float", "User Strained Threshold", "System One probability that counts as strain"),
 		f("initiative_threshold_special_day", "Initiative", "float", "Special Day Threshold", "System One probability that counts as a special day"),
@@ -645,6 +648,12 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.Initiative.ArrivalBrief
 	case "initiative_check_in_buttons":
 		return cfg.Initiative.CheckInButtons
+	case "initiative_morning_brief":
+		return cfg.Initiative.MorningBrief
+	case "initiative_evening_recap":
+		return cfg.Initiative.EveningRecap
+	case "initiative_evening_recap_window":
+		return cfg.Initiative.EveningRecapWindow
 	case "initiative_threshold_quiet_requested":
 		return cfg.Initiative.QuietRequestedThreshold
 	case "initiative_threshold_user_strained":

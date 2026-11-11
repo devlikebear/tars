@@ -51,7 +51,7 @@ func checkDoctorInitiative(report *doctorReport, cfg config.Config) {
 // from the ledger. Never a reminder's text, a candidate's summary or an id.
 func checkDoctorInitiativeSubjects(report *doctorReport, cfg config.Config, mode string, now time.Time) {
 	c := cfg.Initiative
-	if !c.Remind && !c.ConfirmMemory && !c.ShareResult && !c.FollowUp {
+	if !c.Remind && !c.ConfirmMemory && !c.ShareResult && !c.FollowUp && !c.MorningBrief && !c.EveningRecap {
 		return
 	}
 	loc := time.Local
@@ -74,6 +74,7 @@ func checkDoctorInitiativeSubjects(report *doctorReport, cfg config.Config, mode
 			initiative.CountSpokenToday(entries, initiative.IntentRemind, now, loc), doctorQueuedReminders(filepath.Join(shared, "reminders.json"))))
 	}
 	checkDoctorInitiativeCoworker(report, c, mode, entries, filepath.Join(shared, "results.json"), now, loc)
+	checkDoctorInitiativeDay(report, c, mode, entries, now, loc)
 	if !c.ConfirmMemory {
 		return
 	}
@@ -108,6 +109,25 @@ func checkDoctorInitiativeCoworker(report *doctorReport, c config.InitiativeConf
 		report.add("ok", "initiative follow_up", fmt.Sprintf("on: suggested today: %d",
 			initiative.CountSpokenToday(entries, initiative.IntentFollowUp, now, loc)))
 	}
+}
+
+// checkDoctorInitiativeDay reports the tars#1001 morning brief and evening
+// recap, one line each when on: whether the brief can go out at all, and
+// the recap's window and whether it was said today. Never a line of either.
+func checkDoctorInitiativeDay(report *doctorReport, c config.InitiativeConfig, mode string, entries []initiative.Entry, now time.Time, loc *time.Location) {
+	switch {
+	case !c.MorningBrief:
+	case mode != initiative.ModeLive:
+		report.add("ok", "initiative morning_brief", "on, but mode is shadow: nothing is said")
+	default:
+		report.add("ok", "initiative morning_brief", "on: added to the first greeting of the day in CASE's bubble")
+	}
+	if !c.EveningRecap {
+		return
+	}
+	window := initiative.Config{QuietHours: c.QuietHours, RecapWindow: c.EveningRecapWindow, Location: loc}.WithDefaults().RecapWindow
+	report.add("ok", "initiative evening_recap", fmt.Sprintf("on: window %s, said today: %d",
+		window, initiative.CountSpokenToday(entries, initiative.IntentEveningRecap, now, loc)))
 }
 
 // doctorQueuedReminders counts entries waiting in an initiative queue file

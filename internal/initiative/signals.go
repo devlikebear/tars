@@ -18,6 +18,9 @@ type History struct {
 	// LastMemoryAskAt is when a confirm_memory speak last counted as
 	// spoken — the input to GoSignals.MemoryAskedToday (tars#1001).
 	LastMemoryAskAt time.Time
+	// LastRecapAt is when an evening recap last counted as spoken (the
+	// same spoken() rule) — at most one recap a local day (tars#1001).
+	LastRecapAt time.Time
 	// TextCallsToday and LastTextCallAt track the daily text-signal
 	// backend call cap (tars#1219), independent of Today (spoken
 	// initiatives).
@@ -83,6 +86,8 @@ func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
 	g.MemoryAskedToday = !hist.LastMemoryAskAt.IsZero() && sameLocalDay(hist.LastMemoryAskAt, now, cfg.Location)
 	g.ResultReady = cfg.ShareResult && obs.Result != nil
 	g.FollowUpPending = cfg.FollowUp && obs.FollowUp != nil
+	g.RecapDue = cfg.EveningRecap && !obs.Recap.Empty() && cfg.RecapWindowOpen(now) &&
+		(hist.LastRecapAt.IsZero() || !sameLocalDay(hist.LastRecapAt, now, cfg.Location))
 	return g
 }
 

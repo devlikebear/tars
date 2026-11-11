@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/jev"
@@ -75,6 +76,9 @@ type sessionObserverDeps struct {
 	// FollowUp lists work left unfinished on an earlier day (tars#1002).
 	// Read only around a console arrival, the one tick Decide uses it.
 	FollowUp func(now time.Time) *initiative.Subject
+	// Recap reads today's work for the evening recap (tars#1001 brief), nil
+	// outside its window, so the stores are read only while it can go out.
+	Recap func(now time.Time) *initiative.RecapFacts
 }
 
 // sessionInitiativeObserver builds an initiative.Observation from every
@@ -144,6 +148,9 @@ func (o *sessionInitiativeObserver) Observe(ctx context.Context, now time.Time) 
 	}
 	if o.deps.FollowUp != nil && !obs.ConsoleArrivedAt.IsZero() && now.Sub(obs.ConsoleArrivedAt) <= initiative.ArrivalFreshness {
 		obs.FollowUp = o.deps.FollowUp(now)
+	}
+	if o.deps.Recap != nil {
+		obs.Recap = o.deps.Recap(now)
 	}
 	if o.deps.Store != nil {
 		if err := o.readSessions(now, &obs); err != nil {
@@ -400,8 +407,11 @@ type initiativeSetupInputs struct {
 	// BriefSource reads TARS's state for the arrival brief (case-companion
 	// phase 3) — CASE's Bridge's snapshot. nil means no brief.
 	BriefSource func(now time.Time) initiative.StatusSnapshot
-	Logger      zerolog.Logger
-	Now         func() time.Time
+	// CronJobs lists the cron jobs the morning brief and the evening recap
+	// read (tars#1001 brief). nil reads as none.
+	CronJobs func() ([]cron.Job, error)
+	Logger   zerolog.Logger
+	Now      func() time.Time
 }
 
 type initiativeSetup struct {
@@ -472,6 +482,11 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		// can deliver them.
 		ShareResult: shareResultActive,
 		FollowUp:    c.FollowUp,
+		// The morning brief rides on a delivered greet's companion event,
+		// so only live mode has one; the recap is decided in shadow too.
+		MorningBrief: c.MorningBrief && live,
+		EveningRecap: c.EveningRecap,
+		RecapWindow:  c.EveningRecapWindow,
 		Thresholds: initiative.Thresholds{
 			QuietRequested: c.QuietRequestedThreshold,
 			UserStrained:   c.UserStrainedThreshold,
@@ -506,10 +521,11 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	speakPlan, speakClient, speakModel := resolveInitiativeSpeakBackend(in.Config, in.Router)
 	deps.SpeakSendsText = speakPlan.SendsText
 	deps.SpeakBackend = initiativeBackendInfoFromPlan(speakPlan)
-	// remind, confirm_memory, share_result and follow_up can speak without
-	// a composer (fixed wording, initiative.FixedSpeech), so they get a
-	// speaker either way.
-	if speakClient != nil || (live && (c.Remind || c.ConfirmMemory || c.ShareResult || c.FollowUp)) {
+	days := initiativeDaySources{Store: in.SessionStore, CronJobs: in.CronJobs, WorkspaceDir: in.WorkspaceDir, Location: loc}
+	// remind, confirm_memory, share_result, follow_up and the evening recap
+	// can speak without a composer (fixed wording), so they get a speaker
+	// either way.
+	if speakClient != nil || (live && (c.Remind || c.ConfirmMemory || c.ShareResult || c.FollowUp || c.EveningRecap)) {
 		var composer *initiative.SpeechComposer
 		if speakClient != nil {
 			composer = &initiative.SpeechComposer{Client: speakClient, Model: speakModel}
@@ -537,6 +553,9 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		}
 		if shareResultActive {
 			speaker.results = in.Results
+		}
+		if cfg.MorningBrief {
+			speaker.morning = days.morning
 		}
 		deps.Speaker = speaker
 	}
@@ -594,6 +613,15 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	}
 	if c.FollowUp {
 		observerDeps.FollowUp = initiativeFollowUpSource(in.SessionStore, loc)
+	}
+	if c.EveningRecap {
+		window := cfg.WithDefaults()
+		observerDeps.Recap = func(now time.Time) *initiative.RecapFacts {
+			if !window.RecapWindowOpen(now) {
+				return nil
+			}
+			return days.recap(now)
+		}
 	}
 	deps.Observer = newSessionInitiativeObserver(observerDeps)
 

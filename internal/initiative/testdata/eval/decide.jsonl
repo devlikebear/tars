@@ -52,3 +52,8 @@
 {"name":"a result report comes before a strained check-in","signals":{"result_ready":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"share_result","speak":true,"reason":"result_ready"}}
 {"name":"the arrival greet comes before a result report","signals":{"just_arrived":true,"result_ready":true,"reachable":true},"want":{"intent":"greet","speak":true,"reason":"arrived"}}
 {"name":"quiet hours hold back a result report","signals":{"result_ready":true,"reachable":true,"quiet_hours":true},"want":{"intent":"none","speak":false,"reason":"quiet_hours"}}
+{"name":"the evening recap goes out in its window","signals":{"recap_due":true,"reachable":true},"want":{"intent":"evening_recap","speak":true,"reason":"end_of_day"}}
+{"name":"the evening recap needs someone reachable","signals":{"recap_due":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"a quiet request holds back the evening recap","signals":{"recap_due":true,"reachable":true},"text":{"quiet_requested":true},"want":{"intent":"none","speak":false,"reason":"quiet_requested"}}
+{"name":"a queued result is reported before the evening recap","signals":{"recap_due":true,"result_ready":true,"reachable":true},"want":{"intent":"share_result","speak":true,"reason":"result_ready"}}
+{"name":"the evening recap comes before a strained check-in","signals":{"recap_due":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"evening_recap","speak":true,"reason":"end_of_day"}}
