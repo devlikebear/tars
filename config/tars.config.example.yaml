@@ -434,6 +434,30 @@ initiative:
   # arrival greet and check-in. The candidate text goes to the speak model
   # only under the same-provider rule above.
   confirm_memory: false
+  # Opt-in (tars#1002), live mode only: report background work that
+  # finished or failed while you were not watching, as a natural message
+  # in the main session (CASE's bubble on the console, or Telegram under
+  # the opt-in above). Only results with no conversational trace yet: an
+  # agent run no chat turn waited for (its [RUN SUMMARY] note for the main
+  # session is replaced by the report, and written back if the report is
+  # not said within two hours), a cron job with delivery_mode daily_log, or
+  # a cron failure. A cron [CRON] note in a session, a run's note in another
+  # session, delivery_mode none and jobs bound to a session are left alone.
+  # Notifications (the bell, desktop alerts) and pulse are unchanged. Said
+  # after quiet hours, cooldown, the arrival greet and while you are not
+  # typing; several results go in one message. Result text goes to the
+  # speak model only under the same-provider rule above, otherwise the
+  # results are listed in a fixed frame. Queued results live in
+  # workspace/_shared/initiative/results.json.
+  share_result: false
+  # Opt-in (tars#1002): on the first console arrival of the day, when work
+  # was left unfinished in the last three days before today — an active
+  # session goal, an unfinished focus pipeline or its pull request — suggest
+  # picking it up instead of the plain greeting. It counts as that day's
+  # greeting, so a later arrival is neither greeted nor asked again. Read
+  # from session and pipeline files only (no gh call, no model judgment);
+  # titles and goals go to the speak model only under the same-provider rule.
+  follow_up: false
   # Embodiment provider name (see embodiment.providers) for idle expressions.
   body_provider: ""
   # jev-only: probability needed for each text signal (measured on

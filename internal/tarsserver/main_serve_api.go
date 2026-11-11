@@ -63,7 +63,12 @@ type serveAPIRuntime struct {
 	// an earlier run back to cron's own delivery.
 	initiativeReminders    *initiativeReminderQueue
 	initiativeRemindActive bool
-	workLedger             *workstore.Store
+	// initiativeResults queues background results for
+	// initiative.share_result (tars#1002); when it is not active, start-up
+	// gives any left from an earlier run back (their notes are written).
+	initiativeResults           *initiativeResultQueue
+	initiativeShareResultActive bool
+	workLedger                  *workstore.Store
 	// workLedgerMaintenance waits for the ledger's background pass to stop;
 	// nil until startBackgrounds runs.
 	workLedgerMaintenance func()
@@ -413,9 +418,13 @@ func buildAPIMux(
 	presenceStore := initiative.OpenPresenceStore(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "presence.json"))
 	// The cron runner binds its fallback, once cron's reminder sender exists.
 	reminderQueue := newInitiativeReminderQueue(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "reminders.json"), nil, logger)
+	resultQueue := newInitiativeResultQueue(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "results.json"), func(_ context.Context, r queuedResult) error {
+		return appendCronSessionMessage(sessionStore, r.NoteSessionID, r.Note, time.Now().UTC())
+	}, logger)
 	memoryBackend := buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg))
 	initiativeSetup := buildInitiativeRuntime(initiativeSetupInputs{
 		Reminders:        reminderQueue,
+		Results:          resultQueue,
 		MemoryBackend:    memoryBackend,
 		Config:           cfg,
 		WorkspaceDir:     cfg.WorkspaceDir,
@@ -431,6 +440,9 @@ func buildAPIMux(
 		Logger:           logger,
 		Now:              nowFn,
 	})
+	if initiativeSetup.ShareResultActive {
+		agentRuntime.SetResultRouter(initiativeAgentResultRouter(resultQueue, mainSessionID, nowFn))
+	}
 
 	var pulseSetup pulseSetup
 
@@ -637,6 +649,9 @@ func buildAPIMux(
 		reminderQueue,
 		initiativeSetup.RemindActive,
 	)
+	if initiativeSetup.ShareResultActive {
+		baseCronRunner = withCronResultReport(baseCronRunner, resultQueue, nowFn)
+	}
 	cronRunner = func(ctx context.Context, job cron.Job) (string, error) {
 		if baseCronRunner != nil {
 			return baseCronRunner(ctx, job)
@@ -854,29 +869,31 @@ func buildAPIMux(
 	watchdogManager := newWorkspaceWatchdogManager(watchdogRunner, defaultWatchdogInterval)
 
 	return &serveAPIRuntime{
-		cfg:                     cfg,
-		configPath:              resolvedConfigPath,
-		mainSessionID:           mainSessionID,
-		server:                  server,
-		extensionsManager:       extensionsManager,
-		agentRuntime:            agentRuntime,
-		agentRuntimeAgentsWatch: agentRuntimeAgentsWatch,
-		cronManager:             cronManager,
-		watchdogManager:         watchdogManager,
-		embodimentSubsystem:     embodimentSubsystem,
-		pulseRuntime:            pulseSetup.Runtime,
-		reflectionRuntime:       reflectionSetup.Runtime,
-		initiativeRuntime:       initiativeSetup.Runtime,
-		initiativeReminders:     reminderQueue,
-		initiativeRemindActive:  initiativeSetup.RemindActive,
-		workLedger:              workLedger,
-		workScheduler:           workScheduler,
-		telegramPoller:          telegramPoller,
-		remoteAccessRunner:      remoteaccess.ExecRunner{},
-		remoteAccessTargetURL:   remoteaccess.DefaultTargetURL,
-		focusDriver:             focusDriver,
-		caseBridge:              caseBridge,
-		sessionRetention:        retention,
+		cfg:                         cfg,
+		configPath:                  resolvedConfigPath,
+		mainSessionID:               mainSessionID,
+		server:                      server,
+		extensionsManager:           extensionsManager,
+		agentRuntime:                agentRuntime,
+		agentRuntimeAgentsWatch:     agentRuntimeAgentsWatch,
+		cronManager:                 cronManager,
+		watchdogManager:             watchdogManager,
+		embodimentSubsystem:         embodimentSubsystem,
+		pulseRuntime:                pulseSetup.Runtime,
+		reflectionRuntime:           reflectionSetup.Runtime,
+		initiativeRuntime:           initiativeSetup.Runtime,
+		initiativeReminders:         reminderQueue,
+		initiativeResults:           resultQueue,
+		initiativeShareResultActive: initiativeSetup.ShareResultActive,
+		initiativeRemindActive:      initiativeSetup.RemindActive,
+		workLedger:                  workLedger,
+		workScheduler:               workScheduler,
+		telegramPoller:              telegramPoller,
+		remoteAccessRunner:          remoteaccess.ExecRunner{},
+		remoteAccessTargetURL:       remoteaccess.DefaultTargetURL,
+		focusDriver:                 focusDriver,
+		caseBridge:                  caseBridge,
+		sessionRetention:            retention,
 	}, nil
 }
 
@@ -1186,6 +1203,9 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	if err := runBackgroundStartupStep(logger, "initiative_runtime", func() error {
 		if runtime.initiativeReminders != nil && !runtime.initiativeRemindActive {
 			runtime.initiativeReminders.FlushAll(ctx)
+		}
+		if runtime.initiativeResults != nil && !runtime.initiativeShareResultActive {
+			runtime.initiativeResults.FlushAll(ctx)
 		}
 		if runtime.initiativeRuntime != nil {
 			runtime.initiativeRuntime.Start(ctx)

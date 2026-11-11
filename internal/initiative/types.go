@@ -19,17 +19,30 @@ const (
 	// IntentConfirmMemory asks whether to keep one pending reflection
 	// inbox candidate (initiative.confirm_memory, tars#1001).
 	IntentConfirmMemory Intent = "confirm_memory"
+	// IntentShareResult reports background work that finished or failed
+	// while nobody was looking — an agent run no turn waited for, a cron job
+	// that left no session note (initiative.share_result, tars#1002).
+	IntentShareResult Intent = "share_result"
+	// IntentFollowUp is the first arrival of the day when work was left
+	// unfinished on an earlier day — an active session goal, an unfinished
+	// focus pipeline or its pull request (initiative.follow_up, tars#1002).
+	// It takes the place of that arrival's greet.
+	IntentFollowUp Intent = "follow_up"
 )
 
 // tracksReplies reports whether a delivered speak of this intent opens a
 // reply-tracking window (tars#1221). A reminder is something the user asked
 // for; not answering it says nothing about whether TARS should speak less,
-// so it never feeds the ignored streak or the cooldown multiplier.
-func tracksReplies(intent Intent) bool { return intent != IntentRemind }
+// so it never feeds the ignored streak or the cooldown multiplier. A
+// share_result report (tars#1002) is the same kind of thing: news the user
+// can read and move on from, so silence after it is not a signal either.
+func tracksReplies(intent Intent) bool {
+	return intent != IntentRemind && intent != IntentShareResult
+}
 
-// Subject is what a remind or confirm_memory speak is about: an id the
-// server resolves (a queued reminder, a memory inbox candidate) and the
-// text to say. The ledger never records either field (tars#1003) — only
+// Subject is what a remind, confirm_memory, share_result or follow_up speak
+// is about: an id the server resolves (a queued reminder, a memory inbox
+// candidate, the queued results a report covers) and the text to say. The ledger never records either field (tars#1003) — only
 // whether one existed, as a Go signal.
 type Subject struct {
 	ID   string
@@ -99,6 +112,16 @@ type Observation struct {
 	// MemoryCandidate is the pending reflection inbox candidate to ask
 	// about (initiative.confirm_memory, tars#1001), nil when none.
 	MemoryCandidate *Subject
+	// Result is the background work waiting to be reported
+	// (initiative.share_result, tars#1002), nil when none: every queued
+	// result the next report covers, ID listing their queue ids and Text
+	// one line per result. The adapter only queues results that left no
+	// conversational trace — see tarsserver's initiativeResultQueue.
+	Result *Subject
+	// FollowUp is the work left unfinished on an earlier local day
+	// (initiative.follow_up, tars#1002), nil when none. Only filled around
+	// a console arrival, the one moment Decide reads it.
+	FollowUp *Subject
 }
 
 type GoSignals struct {
@@ -137,6 +160,12 @@ type GoSignals struct {
 	// spoken earlier the same local day (History.LastMemoryAskAt, the same
 	// spoken() rule as GreetedToday): at most one question a day.
 	MemoryAskedToday bool `json:"memory_asked_today,omitempty"`
+	// ResultReady reports a background result is queued to be reported
+	// (tars#1002). Only ever true with initiative.share_result on.
+	ResultReady bool `json:"result_ready,omitempty"`
+	// FollowUpPending reports work left unfinished on an earlier day
+	// (tars#1002). Only ever true with initiative.follow_up on.
+	FollowUpPending bool `json:"follow_up_pending,omitempty"`
 }
 
 type TextSignals struct {

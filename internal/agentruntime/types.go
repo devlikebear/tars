@@ -422,7 +422,29 @@ type runState struct {
 	cancel   context.CancelFunc
 	done     chan struct{}
 	closed   bool
+	// waiters counts Wait calls currently blocked on this run (guarded by
+	// Runtime.mu). A run that ends with a waiter hands its result to that
+	// caller — a chat turn's subagent or sessions_send tool — so it is
+	// already in someone's conversation (FinishedRun.Awaited).
+	waiters int
 }
+
+// FinishedRun is what a ResultRouter sees when a run reaches a terminal
+// state (tars#1002): the run, whether a Wait call was blocked on it when it
+// ended, and the [RUN SUMMARY] note the runtime would append to another
+// session (NoteSessionID empty when it writes none).
+type FinishedRun struct {
+	Run           Run
+	Awaited       bool
+	NoteSessionID string
+	Note          string
+}
+
+// ResultRouter takes a finished run's report. It returns true when it will
+// tell the user itself, in which case the runtime writes no [RUN SUMMARY]
+// note. It is called with the runtime's mutex held, so it must not call
+// back into the Runtime.
+type ResultRouter func(FinishedRun) bool
 
 type Runtime struct {
 	opts RuntimeOptions
@@ -459,6 +481,7 @@ type Runtime struct {
 	consensusRuns       *weightedSemaphore
 	consensusPool       *weightedSemaphore
 	effectReceiptStore  *workstore.Store
+	resultRouter        ResultRouter
 }
 
 const DefaultWorkspaceID = "default"

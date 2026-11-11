@@ -238,6 +238,8 @@ func Schema() []FieldMeta {
 		f("initiative_telegram", "Initiative", "bool", "Deliver Over Telegram", "When the console is not connected, deliver a live-mode speak to Telegram's default paired chat instead — a real message goes to the user's phone"),
 		f("initiative_remind", "Initiative", "bool", "Deliver Reminders", "Live mode: say cron reminders as a natural message instead of cron's [REMINDER] note; cron delivers any it cannot say within 10 minutes"),
 		f("initiative_confirm_memory", "Initiative", "bool", "Ask About Memory", "Ask once a day whether to remember a pending reflection candidate, answered with buttons in the console"),
+		f("initiative_share_result", "Initiative", "bool", "Report Background Results", "Live mode: tell you when an agent run nobody waited for, or a cron job that left no session note, finishes or fails"),
+		f("initiative_follow_up", "Initiative", "bool", "Suggest Unfinished Work", "On the first arrival of the day, suggest picking up a session goal or focus pipeline left unfinished on an earlier day, in place of the greeting"),
 		f("initiative_threshold_quiet_requested", "Initiative", "float", "Quiet Requested Threshold", "System One probability that counts as a quiet request"),
 		f("initiative_threshold_user_strained", "Initiative", "float", "User Strained Threshold", "System One probability that counts as strain"),
 		f("initiative_threshold_special_day", "Initiative", "float", "Special Day Threshold", "System One probability that counts as a special day"),
@@ -633,6 +635,10 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.Initiative.Remind
 	case "initiative_confirm_memory":
 		return cfg.Initiative.ConfirmMemory
+	case "initiative_share_result":
+		return cfg.Initiative.ShareResult
+	case "initiative_follow_up":
+		return cfg.Initiative.FollowUp
 	case "initiative_threshold_quiet_requested":
 		return cfg.Initiative.QuietRequestedThreshold
 	case "initiative_threshold_user_strained":

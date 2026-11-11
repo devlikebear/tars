@@ -34,7 +34,7 @@ const companionEventCategory = "companion"
 // idle body_only expression already uses (runtime.go's idleEmotion).
 func initiativeSpeakExpression(intent initiative.Intent) string {
 	switch intent {
-	case initiative.IntentGreet:
+	case initiative.IntentGreet, initiative.IntentFollowUp:
 		return "greeting"
 	case initiative.IntentRemind:
 		return "alert"
@@ -144,6 +144,9 @@ type initiativeSpeaker struct {
 	// reminders is the initiative.remind queue (tars#1001): a delivered
 	// remind speak removes its reminder there. nil when remind is off.
 	reminders *initiativeReminderQueue
+	// results is the initiative.share_result queue (tars#1002): a
+	// delivered report removes the results it covered. nil when off.
+	results *initiativeResultQueue
 }
 
 var _ initiative.Speaker = (*initiativeSpeaker)(nil)
@@ -207,6 +210,9 @@ func (s *initiativeSpeaker) Speak(ctx context.Context, req initiative.SpeakReque
 	}
 	if req.Intent == initiative.IntentRemind && req.Subject != nil && s.reminders != nil {
 		s.reminders.Done(req.Subject.ID)
+	}
+	if req.Intent == initiative.IntentShareResult && req.Subject != nil && s.results != nil {
+		s.results.Done(req.Subject.ID)
 	}
 
 	// The main session's write has succeeded — this attempt is delivered

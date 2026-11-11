@@ -11,6 +11,8 @@ type History struct {
 	// rule as LastSpokeAt/LastCheckInAt — live mode only when actually
 	// delivered, shadow mode always) — the input to GoSignals.GreetedToday
 	// (tars#1269).
+	// A follow_up (tars#1002) is that day's arrival utterance, so it sets
+	// this too.
 	LastGreetAt time.Time
 	LastBodyAt  time.Time
 	// LastMemoryAskAt is when a confirm_memory speak last counted as
@@ -74,6 +76,8 @@ func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
 	g.ReminderDue = cfg.Remind && obs.Reminder != nil
 	g.MemoryPending = cfg.ConfirmMemory && obs.MemoryCandidate != nil
 	g.MemoryAskedToday = !hist.LastMemoryAskAt.IsZero() && sameLocalDay(hist.LastMemoryAskAt, now, cfg.Location)
+	g.ResultReady = cfg.ShareResult && obs.Result != nil
+	g.FollowUpPending = cfg.FollowUp && obs.FollowUp != nil
 	return g
 }
 

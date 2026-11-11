@@ -582,3 +582,52 @@ func TestCheckDoctorInitiativeSubjects(t *testing.T) {
 		t.Fatal("missing queue file must count 0")
 	}
 }
+
+func TestCheckDoctorInitiativeCoworker(t *testing.T) {
+	root := t.TempDir()
+	shared := filepath.Join(root, "_shared", "initiative")
+	now := time.Now()
+	ledger := initiative.OpenLedger(filepath.Join(shared, "ledger.jsonl"), 0)
+	for _, e := range []initiative.Entry{
+		{At: now, Mode: initiative.ModeLive, Decision: initiative.Decision{Intent: initiative.IntentShareResult, Speak: true}, Delivery: initiative.DeliveryDelivered},
+		{At: now, Mode: initiative.ModeLive, Decision: initiative.Decision{Intent: initiative.IntentFollowUp, Speak: true}, Delivery: initiative.DeliveryDelivered},
+	} {
+		if err := ledger.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(shared, "results.json"), []byte(`[{"id":"a","summary":"secret"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	find := func(r doctorReport, name string) string {
+		for _, c := range r.checks {
+			if c.name == name {
+				return c.detail
+			}
+		}
+		return ""
+	}
+	cfg := config.Config{}
+	cfg.WorkspaceDir = root
+	cfg.Initiative = config.InitiativeConfig{ShareResult: true, FollowUp: true}
+
+	var live doctorReport
+	checkDoctorInitiativeSubjects(&live, cfg, initiative.ModeLive, now)
+	if got := find(live, "initiative share_result"); got != "on: 1 reported today, 1 queued" {
+		t.Fatalf("share_result = %q", got)
+	}
+	if got := find(live, "initiative follow_up"); got != "on: suggested today: 1" {
+		t.Fatalf("follow_up = %q", got)
+	}
+	for _, c := range live.checks {
+		if strings.Contains(c.detail, "secret") {
+			t.Fatalf("doctor leaked result text: %+v", c)
+		}
+	}
+
+	var shadow doctorReport
+	checkDoctorInitiativeSubjects(&shadow, cfg, initiative.ModeShadow, now)
+	if got := find(shadow, "initiative share_result"); !strings.Contains(got, "shadow") {
+		t.Fatalf("shadow share_result = %q", got)
+	}
+}

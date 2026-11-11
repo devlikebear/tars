@@ -32,6 +32,28 @@ package initiative
 // body_only would otherwise use (sitting idle at the console), at most once
 // a day. Every text-dependent case comes before it, so it never changes
 // what a text signal could do on any tick where it does not match.
+//
+// follow_up (tars#1002) is the arrival case's first branch: on the first
+// arrival of the day with work left unfinished on an earlier day, it is
+// said in place of the greet, not after it. Both would land on the same
+// tick (a second speak would only wait out the cooldown), the suggestion is
+// the more useful of the two, and it counts as that day's greet
+// (History.LastGreetAt) so #1269's once-a-day rule holds as is — a later
+// arrival the same day is neither greeted nor asked again. Its match
+// condition is the greet case's plus FollowUpPending, so it takes only
+// ticks that would otherwise greet; quiet_requested and every hard gate
+// still come first, and special_day only ever changed the greet's reason.
+//
+// share_result (tars#1002) is unrequested news, so it sits after every
+// hard gate, the arrival case and Busy (it waits while the user types), but
+// before the care cases: a concrete result is more use than asking how the
+// user is, and once it is said the cooldown spaces any check-in after it.
+// It needs someone reachable, like a strained check-in. Its condition reads
+// Go signals only, so on a tick it matches every text combination but
+// quiet_requested returns it — the read still happens, the same as for
+// greet — and on a tick it does not match, no text combination can reach
+// it either (only quiet_requested and special_day come earlier), so
+// textSignalsMatter is unchanged there (TestNewCoworkerCasesKeepTextSignalsReasoning).
 func Decide(g GoSignals, t TextSignals) Decision {
 	switch {
 	case g.ReminderDue && !g.Busy:
@@ -46,6 +68,8 @@ func Decide(g GoSignals, t TextSignals) Decision {
 		return none("cooldown")
 	case g.DailyCapReached:
 		return none("daily_cap")
+	case g.JustArrived && !g.GreetedToday && g.FollowUpPending:
+		return speak(IntentFollowUp, "unfinished_work")
 	case g.JustArrived && !g.GreetedToday:
 		if t.SpecialDay {
 			return speak(IntentGreet, "special_day")
@@ -53,6 +77,8 @@ func Decide(g GoSignals, t TextSignals) Decision {
 		return speak(IntentGreet, "arrived")
 	case g.Busy:
 		return none("busy")
+	case g.ResultReady && g.Reachable:
+		return speak(IntentShareResult, "result_ready")
 	case g.LongSession && !g.CheckedInRecently:
 		return speak(IntentCheckIn, "long_session")
 	case t.UserStrained && !g.CheckedInRecently && g.Reachable:

@@ -108,6 +108,8 @@ initiative:
   telegram: false
   remind: false
   confirm_memory: false
+  share_result: false
+  follow_up: false
   body_provider: ""
   thresholds:
     quiet_requested: 0.55

@@ -255,10 +255,11 @@ func (r *Runtime) applyCompletedFinalState(state *runState, resp string, finishe
 // through this so any future concurrency invariant change happens in
 // one place.
 func (r *Runtime) commitRunFinalization(state *runState, summaryBody string, event RunEvent) {
+	awaited := state.waiters > 0
 	r.closeRunDoneLocked(state)
 	r.trimRunHistoryLocked()
 	r.stateVersion++
-	r.appendRunSummaryToMain(state.run, summaryBody)
+	r.appendRunSummaryToMain(state.run, summaryBody, awaited)
 	r.publishRunEvent(state.run.ID, event)
 }
 
@@ -395,28 +396,52 @@ func (r *Runtime) appendSessionMessage(workspaceID, sessionID, role, content str
 	return sessionStore.Touch(sessionID, ts.UTC())
 }
 
-func (r *Runtime) appendRunSummaryToMain(run Run, response string) {
-	sessionStore := r.sessionStoreForWorkspace(run.WorkspaceID)
-	if r == nil || sessionStore == nil || strings.TrimSpace(run.SessionID) == "" {
+func (r *Runtime) appendRunSummaryToMain(run Run, response string, awaited bool) {
+	if r == nil {
 		return
 	}
+	sessionStore := r.sessionStoreForWorkspace(run.WorkspaceID)
+	if sessionStore == nil || strings.TrimSpace(run.SessionID) == "" {
+		return
+	}
+	targetSessionID := runSummaryTarget(sessionStore, run)
+	summary := buildRunSummaryMessage(run, response)
+	if r.resultRouter != nil {
+		note := ""
+		if targetSessionID != "" {
+			note = summary
+		}
+		if r.resultRouter(FinishedRun{Run: run, Awaited: awaited, NoteSessionID: targetSessionID, Note: note}) {
+			return
+		}
+	}
+	if targetSessionID == "" {
+		return
+	}
+	_ = r.appendSessionMessage(run.WorkspaceID, targetSessionID, "system", summary, r.nowFn().UTC())
+}
+
+// runSummaryTarget is the session a finished run's [RUN SUMMARY] note goes
+// to: the parent session, or the main session for a hidden worker run with
+// no parent. Empty when the run writes no note (its own session already
+// holds the answer).
+func runSummaryTarget(sessionStore *session.Store, run Run) string {
 	targetSessionID := strings.TrimSpace(run.ParentSessionID)
 	if targetSessionID == "" {
 		targetSession, err := sessionStore.Get(run.SessionID)
 		if err != nil || !targetSession.Hidden || !strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker") {
-			return
+			return ""
 		}
 		mainSession, err := sessionStore.EnsureMain()
 		if err != nil || strings.TrimSpace(mainSession.ID) == "" || strings.TrimSpace(mainSession.ID) == strings.TrimSpace(run.SessionID) {
-			return
+			return ""
 		}
 		targetSessionID = mainSession.ID
 	}
-	if strings.TrimSpace(targetSessionID) == strings.TrimSpace(run.SessionID) {
-		return
+	if targetSessionID == strings.TrimSpace(run.SessionID) {
+		return ""
 	}
-	summary := buildRunSummaryMessage(run, response)
-	_ = r.appendSessionMessage(run.WorkspaceID, targetSessionID, "system", summary, r.nowFn().UTC())
+	return targetSessionID
 }
 
 func buildRunSummaryMessage(run Run, response string) string {
