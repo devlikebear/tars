@@ -772,6 +772,23 @@ export function harnessNotice(card: Pick<FocusCard, 'kind' | 'title' | 'payload'
   return null
 }
 
+// The notices a verify promotion leaves on the pipeline it ran for
+// (focuspipeline's NoticePromotionProposed / NoticePromotionSkipped),
+// localized like harnessNotice; null for any other card.
+export function promotionNotice(card: Pick<FocusCard, 'kind' | 'title' | 'payload'>, text: FocusTranslations['notice'] = focusEn.notice): { title: string; body: string; sessionId?: string } | null {
+  if (card.kind !== 'notice') return null
+  const p = (card.payload ?? {}) as { checks?: unknown; session_id?: unknown; outcome?: unknown }
+  if (card.title === 'verify promotion proposed') {
+    const sessionId = typeof p.session_id === 'string' && p.session_id !== '' ? p.session_id : undefined
+    return { title: text.promotionProposed, body: text.promotionProposedBody(typeof p.checks === 'number' ? p.checks : 0), sessionId }
+  }
+  if (card.title === 'verify promotion not proposed') {
+    const outcome = typeof p.outcome === 'string' ? p.outcome : 'failed'
+    return { title: text.promotionSkipped, body: text.promotionSkippedReason[outcome] ?? text.promotionSkippedReason.failed }
+  }
+  return null
+}
+
 // The notices the second opinion review leaves (focuspipeline's
 // NoticeSecondOpinionFailed / NoticeSecondOpinionCapped), localized: the
 // card's title and its one line, or null for any other card.

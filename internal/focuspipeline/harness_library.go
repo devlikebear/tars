@@ -36,7 +36,15 @@ const HarnessLibraryDirName = "harness-library"
 const (
 	HarnessLessonProposed = "proposed"
 	HarnessLessonAdopted  = "adopted"
+	// HarnessLessonEnforced is a check (verify promotion, promotion.go)
+	// whose pull request merged: the repository's verify decides that
+	// defect now.
+	HarnessLessonEnforced = "enforced"
 )
+
+// HarnessEditCheck is the kind of a library record a verify promotion
+// added: a check in the repository's default verify list.
+const HarnessEditCheck = "check"
 
 const (
 	harnessLessonsFile    = "lessons.json"
@@ -74,6 +82,10 @@ type HarnessLessonRecord struct {
 	AdoptedAt       *time.Time `json:"adopted_at,omitempty"`
 	// PRURL is the merged proposal pull request (adopted only).
 	PRURL string `json:"pr_url,omitempty"`
+	// Command and Recurrence are a check's (Kind HarnessEditCheck): the
+	// verify command it adds and the recurrence key it enforces.
+	Command    string `json:"command,omitempty"`
+	Recurrence string `json:"recurrence,omitempty"`
 }
 
 var harnessKeyUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -158,9 +170,82 @@ func (l HarnessLibrary) Known() (map[string]bool, []string, error) {
 	lines := make([]string, 0, len(lessons))
 	for _, r := range lessons {
 		keys[HarnessLessonKey(r.Lesson)] = true
+		if r.Kind == HarnessEditCheck {
+			lines = append(lines, fmt.Sprintf("[%s] %s (checked by the verify command `%s`)", r.Status, r.Lesson, r.Command))
+			continue
+		}
 		lines = append(lines, fmt.Sprintf("[%s] %s (%s)", r.Status, r.Lesson, r.Path))
 	}
 	return keys, lines, nil
+}
+
+// CheckRecurrences are the recurrence keys of the library's checks: every
+// one when enforcedOnly is false (proposed or enforced — a promotion never
+// proposes a key twice), only those whose pull request merged otherwise.
+func (l HarnessLibrary) CheckRecurrences(enforcedOnly bool) (map[string]bool, error) {
+	lessons, err := l.Lessons()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, r := range lessons {
+		if r.Kind != HarnessEditCheck || r.Recurrence == "" {
+			continue
+		}
+		if enforcedOnly && r.Status != HarnessLessonEnforced {
+			continue
+		}
+		out[r.Recurrence] = true
+	}
+	return out, nil
+}
+
+// RecordChecks adds the checks a promotion pipeline carries as proposed
+// library records and returns their ids. evidence is what each check cites
+// (its candidate's hits, as recorded).
+func (l HarnessLibrary) RecordChecks(source RecurrencePipeline, proposalSession string, checks []VerifiedCheck, now time.Time) ([]string, error) {
+	unlock := l.lock()
+	defer unlock()
+	lessons, err := l.read()
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(checks))
+	for _, c := range checks {
+		id := fmt.Sprintf("L%d", len(lessons)+1)
+		path := RepoVerifyFile
+		if len(c.Files) > 0 {
+			path = c.Files[0].Path
+		}
+		var cited []EvidenceItem
+		for i, h := range c.Hits {
+			cited = append(cited, EvidenceItem{
+				ID: fmt.Sprintf("R%d", i+1), Kind: hitEvidenceKind(h.Kind), Title: h.Title, File: h.File,
+				Command: h.Command, Check: h.Check,
+			})
+		}
+		lessons = append(lessons, HarnessLessonRecord{
+			ID: id, Lesson: c.Lesson(), Path: path, Kind: HarnessEditCheck, Content: c.Summary,
+			Evidence: cited, SourceSession: source.SessionID, SourceGoal: source.Goal, SourcePR: source.PRURL,
+			ProposalSession: proposalSession, Status: HarnessLessonProposed, ProposedAt: now.UTC(),
+			Command: c.Command, Recurrence: c.Key,
+		})
+		ids = append(ids, id)
+	}
+	if err := l.write(lessons); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func hitEvidenceKind(kind string) string {
+	switch kind {
+	case RecurrenceVerify:
+		return EvidenceVerifyFailure
+	case RecurrenceCI:
+		return EvidenceCIFailure
+	}
+	return EvidenceFinding
 }
 
 // RecordProposed adds the edits a proposal pipeline carries as proposed
@@ -212,6 +297,9 @@ func (l HarnessLibrary) Adopt(proposalSession, prURL string, now time.Time) (int
 			continue
 		}
 		r.Status, r.AdoptedAt, r.PRURL = HarnessLessonAdopted, &at, strings.TrimSpace(prURL)
+		if r.Kind == HarnessEditCheck {
+			r.Status = HarnessLessonEnforced
+		}
 		adopted = append(adopted, *r)
 	}
 	if len(adopted) == 0 {
@@ -245,6 +333,9 @@ func (l HarnessLibrary) appendExperience(adopted []HarnessLessonRecord) error {
 		change := "`" + r.Path + "`"
 		if r.Section != "" {
 			change += fmt.Sprintf(" section %q", r.Section)
+		}
+		if r.Kind == HarnessEditCheck {
+			change = fmt.Sprintf("verify command `%s` in `%s`", r.Command, RepoVerifyFile)
 		}
 		fmt.Fprintf(&b, "- Change: %s (%s)\n", change, r.Kind)
 		b.WriteString("- Evidence:\n")

@@ -44,6 +44,7 @@
   // The second opinion review is opt-in per task, on a tier picked here.
   let secondOpinion = $state(false)
   let harnessProposal = $state(false)
+  let verifyPromotion = $state(false)
   let secondOpinionTier = $state('')
   let secondOpinionChoices = $state<SecondOpinionTierChoice[]>([])
   let secondOpinionLoaded = $state(false)
@@ -368,6 +369,7 @@
         ...(e2e ? { e2e: true } : {}),
         ...(secondOpinion && secondOpinionChoice ? { second_opinion: { tier: secondOpinionChoice.name } } : {}),
         ...(harnessProposal ? { harness_proposal: true } : {}),
+        ...(verifyPromotion ? { verify_promotion: true } : {}),
         ...(execTierOn && execChoice ? { exec_tier: execChoice.name } : {}),
       })
       if (attachments) stashKickoffAttachments(created.session_id, attachments)
@@ -555,6 +557,14 @@
       {$t.focus.newTask.harnessProposal}
     </label>
     {#if harnessProposal}<p class="status" data-testid="focus-new-harness-hint">{$t.focus.newTask.harnessProposalHint}</p>{/if}
+  </div>
+
+  <div class="field">
+    <label class="check">
+      <input type="checkbox" bind:checked={verifyPromotion} data-testid="focus-new-promotion" />
+      {$t.focus.newTask.verifyPromotion}
+    </label>
+    {#if verifyPromotion}<p class="status" data-testid="focus-new-promotion-hint">{$t.focus.newTask.verifyPromotionHint}</p>{/if}
   </div>
 
   {#if error}<p class="status error">{error}</p>{/if}

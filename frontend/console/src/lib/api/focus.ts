@@ -66,6 +66,8 @@ export type FocusCreateRequest = {
   second_opinion?: { tier: string }
   // Opt in to a harness proposal once the pipeline finishes merged; off when absent.
   harness_proposal?: boolean
+  // Opt in to verify promotion once the pipeline finishes merged; off when absent.
+  verify_promotion?: boolean
   // Opt in to running build and fix turns on heavy|standard|light; off when absent.
   exec_tier?: string
   // A release's list and the cut-off it started from (the group's since).

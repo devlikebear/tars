@@ -118,6 +118,10 @@ const (
 	EvidenceSourcePRComment     = "pr_comment"
 )
 
+// untrustedCommentTitle stands in for the title of a pull request comment
+// from someone outside the repository.
+const untrustedCommentTitle = "Pull request comment accepted for a fix"
+
 // evidenceTextRunes caps an excerpt or scenario carried into evidence.
 const evidenceTextRunes = 800
 
@@ -142,6 +146,9 @@ type EvidenceItem struct {
 	Excerpt  string `json:"excerpt,omitempty"`
 	// Check is a failed CI check's name.
 	Check string `json:"check,omitempty"`
+	// CardID is the pipeline card the item was read from (verify
+	// promotion finds the turn that fixed it by the card's time).
+	CardID string `json:"card_id,omitempty"`
 }
 
 // StageRounds is how many rounds one stage took.
@@ -213,13 +220,15 @@ func CollectHarnessEvidence(p Pipeline) HarnessEvidence {
 					continue
 				}
 				seenChecks[name] = true
-				add(EvidenceItem{Kind: EvidenceCIFailure, Stage: c.Stage, Check: name, Title: c.Title})
+				add(EvidenceItem{Kind: EvidenceCIFailure, Stage: c.Stage, Check: name, Title: c.Title, CardID: c.ID})
 				continue
 			}
 			if c.State != CardDecided || c.Decision != DecisionFix {
 				continue
 			}
-			add(findingEvidence(c, f))
+			it := findingEvidence(c, f)
+			it.CardID = c.ID
+			add(it)
 		case CardFailure:
 			var fact FailureFact
 			if !decodePayload(c.Payload, &fact) || strings.TrimSpace(fact.Command) == "" {
@@ -233,7 +242,7 @@ func CollectHarnessEvidence(p Pipeline) HarnessEvidence {
 			add(EvidenceItem{
 				Kind: EvidenceVerifyFailure, Stage: c.Stage, Command: strings.TrimSpace(fact.Command),
 				ExitCode: fact.ExitCode, TimedOut: fact.TimedOut,
-				Excerpt: tailRunes(strings.TrimSpace(fact.Excerpt), evidenceTextRunes),
+				Excerpt: tailRunes(strings.TrimSpace(fact.Excerpt), evidenceTextRunes), CardID: c.ID,
 			})
 		}
 	}
@@ -274,7 +283,7 @@ func findingEvidence(c Card, f PRFinding) EvidenceItem {
 			// Someone outside the repository wrote it: what it says is not
 			// carried into a prompt, only that the developer accepted it.
 			it.Scenario = ""
-			it.Title = "Pull request comment accepted for a fix"
+			it.Title = untrustedCommentTitle
 		}
 	default:
 		it.Source = EvidenceSourceAgent

@@ -2808,10 +2808,17 @@ export type FocusPipeline = {
   // pipeline that is itself a proposal, where it came from.
   harness?: FocusHarnessOptIn
   harness_from?: { session_id: string; repo: string }
+  // Verify promotion (tars#1292): the opt-in and how it ended.
+  verify_promotion?: FocusPromotionOptIn
+  // The repository's default verify (.tars/verify.json), carried into every plan.
+  repo_verify?: string[]
   // The execution tier (tars#1293): build and fix turns run on it, and the
   // label the execution tier report groups by.
   exec_tier?: FocusExecTier
 }
+
+// outcome: proposed | no_candidates | no_checks | failed | unavailable; absent until it ran.
+export type FocusPromotionOptIn = { repo: string; outcome?: string; proposal?: string; at?: string }
 
 // lessons: adopted harness lessons in the repository's library at creation.
 export type FocusExecTier = { tier: string; repo?: string; lessons?: number; at: string }

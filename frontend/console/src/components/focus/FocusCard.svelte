@@ -18,7 +18,7 @@
     FocusPRDraft,
     FocusReport,
   } from '../../lib/types'
-  import { excerptLines, execTierNotice, findingReviewBadges, harnessNotice, reportCardText, secondOpinionNotice, stageKindOf, stageLabel } from '../../lib/focus'
+  import { excerptLines, execTierNotice, findingReviewBadges, harnessNotice, promotionNotice, reportCardText, secondOpinionNotice, stageKindOf, stageLabel } from '../../lib/focus'
   import { mergeSummary, prDraftOf } from '../../lib/focusPR'
   import FocusChangeCard from './FocusChangeCard.svelte'
   import FocusMergeSummary from './FocusMergeSummary.svelte'
@@ -57,6 +57,8 @@
   let soNotice = $derived(secondOpinionNotice(card, $t.focus.notice))
   // A harness proposal's notices (tars#1291), titled the same way.
   let hNotice = $derived(harnessNotice(card, $t.focus.notice))
+  // A verify promotion's notices (tars#1292), titled the same way.
+  let pNotice = $derived(promotionNotice(card, $t.focus.notice))
   let etNotice = $derived(execTierNotice(card, $t.focus.notice))
   let reportText = $derived(
     card.kind === 'report' && !isDraft(card.payload)
@@ -80,9 +82,11 @@
               ? soNotice.title
               : hNotice
                 ? hNotice.title
-                : etNotice
-                  ? etNotice.title
-                  : card.title,
+                : pNotice
+                  ? pNotice.title
+                  : etNotice
+                    ? etNotice.title
+                    : card.title,
   )
   // The heading's hover text: the whole summary when the heading is the label.
   let hoverTitle = $derived(reportText && reportText.heading === null ? reportText.body : title)
@@ -353,6 +357,10 @@
       {#if hNotice}
         <p class="prose" data-testid="focus-harness-notice">{hNotice.body}</p>
         {#if hNotice.sessionId}<a class="btn btn-ghost btn-sm" href={`/console/focus/${encodeURIComponent(hNotice.sessionId)}`} data-testid="focus-harness-open">{$t.focus.notice.harnessOpen}</a>{/if}
+      {/if}
+      {#if pNotice}
+        <p class="prose" data-testid="focus-promotion-notice">{pNotice.body}</p>
+        {#if pNotice.sessionId}<a class="btn btn-ghost btn-sm" href={`/console/focus/${encodeURIComponent(pNotice.sessionId)}`} data-testid="focus-promotion-open">{$t.focus.notice.promotionOpen}</a>{/if}
       {/if}
       {#if errors.length}
         <h4 class="label">{$t.focus.notice.errors}</h4>

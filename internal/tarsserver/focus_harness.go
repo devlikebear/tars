@@ -263,6 +263,12 @@ func (d *focusDriver) proposeHarness(ctx context.Context, p focuspipeline.Pipeli
 		return focuspipeline.HarnessFailed, "", details
 	}
 	kept, dropped := focuspipeline.ValidateHarnessLessons(edits, ev, known)
+	// A defect a promoted check already enforces needs no prose (#1292).
+	if enforced, err := lib.CheckRecurrences(true); err == nil {
+		var more []focuspipeline.HarnessDrop
+		kept, more = focuspipeline.DropEnforcedLessons(kept, ev, enforced)
+		dropped = append(dropped, more...)
+	}
 	details["proposed"], details["dropped"] = len(edits), len(dropped)
 	if len(kept) == 0 {
 		return focuspipeline.HarnessNoEdits, "", details
