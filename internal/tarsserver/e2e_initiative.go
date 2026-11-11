@@ -68,10 +68,13 @@ func registerE2EInitiativeTickRoute(mux *http.ServeMux, deps e2eRouteDeps) {
 					writeError(w, http.StatusBadRequest, "", "presence_at must be RFC3339")
 					return
 				}
-				if _, err := deps.Presence.Record(parsed); err != nil {
+				state, err := deps.Presence.Record(parsed)
+				if err != nil {
 					writeError(w, http.StatusInternalServerError, "", "record presence failed")
 					return
 				}
+				// The same snapshot step the real presence handler takes.
+				_ = deps.Brief.Seen(state, parsed)
 			}
 		}
 		entry := deps.InitiativeRuntime.RunOnceAt(r.Context(), now)

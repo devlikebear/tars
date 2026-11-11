@@ -110,6 +110,8 @@ initiative:
   confirm_memory: false
   share_result: false
   follow_up: false
+  arrival_brief: true
+  check_in_buttons: true
   body_provider: ""
   thresholds:
     quiet_requested: 0.55

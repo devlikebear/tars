@@ -244,6 +244,63 @@ export type CompanionServerCue = {
   expression: CompanionExpression
   line?: string
   sessionId?: string
+  // Case-companion phase 3: an arrival greet's brief lines, and a
+  // check-in's answer buttons with the entry they answer. Only ever set
+  // alongside `line` — they belong to the bubble line they came with.
+  brief?: CompanionBriefLine[]
+  actions?: CompanionCheckInAction[]
+  entryId?: string
+}
+
+// One "what changed while you were away" line (case-companion phase 3).
+// The server wrote the words in both console languages; the console only
+// picks one (companionBriefText) and never builds a line itself.
+export type CompanionBriefLine = {
+  kind: 'waiting' | 'failed' | 'finished' | 'recovered' | 'advanced'
+  severity: 'block' | 'info'
+  text: { en: string; ko: string }
+  href: string
+}
+
+export type CompanionCheckInAction = 'ok' | 'snooze' | 'quiet_today'
+
+export const COMPANION_BRIEF_MAX = 3
+const COMPANION_BRIEF_KINDS = ['waiting', 'failed', 'finished', 'recovered', 'advanced'] as const
+const COMPANION_CHECK_IN_ACTIONS: readonly CompanionCheckInAction[] = ['ok', 'snooze', 'quiet_today']
+
+// companionBriefFromWire keeps the brief lines that are well formed: a known
+// kind, block or info, both languages' words, and a console path (never an
+// outside link). A malformed line is dropped on its own, not the event —
+// the greeting itself is still worth showing. At most COMPANION_BRIEF_MAX.
+export function companionBriefFromWire(raw: unknown): CompanionBriefLine[] {
+  if (!Array.isArray(raw)) return []
+  const out: CompanionBriefLine[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const { kind, severity, text, href } = item as Record<string, unknown>
+    if (typeof kind !== 'string' || !(COMPANION_BRIEF_KINDS as readonly string[]).includes(kind)) continue
+    if (severity !== 'block' && severity !== 'info') continue
+    if (typeof href !== 'string' || !/^\/console\/[A-Za-z0-9/_.-]*$/.test(href)) continue
+    const words = (text && typeof text === 'object' ? text : {}) as Record<string, unknown>
+    const en = typeof words.en === 'string' ? clipText(words.en, COMPANION_SERVER_LINE_MAX_LEN) : ''
+    const ko = typeof words.ko === 'string' ? clipText(words.ko, COMPANION_SERVER_LINE_MAX_LEN) : ''
+    if (!en || !ko) continue
+    out.push({ kind: kind as CompanionBriefLine['kind'], severity, text: { en, ko }, href })
+    if (out.length === COMPANION_BRIEF_MAX) break
+  }
+  return out
+}
+
+// companionBriefText is a brief line's words in the console's language.
+export function companionBriefText(line: CompanionBriefLine, locale?: string | null): string {
+  return normalizeCompanionLocale(locale) === 'ko' ? line.text.ko : line.text.en
+}
+
+// companionCheckInActionsFromWire keeps the known answer buttons, in the
+// fixed order the bubble shows them; none without an entry id to answer.
+export function companionCheckInActionsFromWire(raw: unknown, entryId: unknown): CompanionCheckInAction[] {
+  if (!Array.isArray(raw) || typeof entryId !== 'string' || !entryId.trim()) return []
+  return COMPANION_CHECK_IN_ACTIONS.filter((action) => raw.includes(action))
 }
 
 export type CompanionCueState = {
@@ -731,7 +788,15 @@ export function companionServerCueFromEvent(
   if (sessionId && viewedSessionIdSet(viewedSessionIds).has(sessionId)) return { expression: resolved }
 
   const line = clipText(rawLine, COMPANION_SERVER_LINE_MAX_LEN)
-  return sessionId ? { expression: resolved, line, sessionId } : { expression: resolved, line }
+  const cue: CompanionServerCue = sessionId ? { expression: resolved, line, sessionId } : { expression: resolved, line }
+  const brief = companionBriefFromWire(event.brief)
+  if (brief.length > 0) cue.brief = brief
+  const actions = companionCheckInActionsFromWire(event.actions, event.entry_id)
+  if (actions.length > 0) {
+    cue.actions = actions
+    cue.entryId = (event.entry_id || '').trim()
+  }
+  return cue
 }
 
 // CompanionAskContext is what a question typed into CASE's bubble becomes

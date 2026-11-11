@@ -65,6 +65,20 @@ export async function answerInitiativeMemory(entryId: string, action: 'approve' 
   })
 }
 
+// A check-in's answer buttons in CASE's bubble (case-companion phase 3).
+// The button is the answer — the server records it without reading any
+// words. `until` is when a snooze ends.
+export type InitiativeCheckInAction = 'ok' | 'snooze' | 'quiet_today'
+export type InitiativeCheckInAnswer = { entry_id: string; action: InitiativeCheckInAction; until?: string }
+
+export async function answerInitiativeCheckIn(entryId: string, action: InitiativeCheckInAction): Promise<InitiativeCheckInAnswer> {
+  return requestJSON<InitiativeCheckInAnswer>('/v1/initiative/checkin/answer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entry_id: entryId, action }),
+  })
+}
+
 export async function runMemorySearch(payload: {
   query: string
   limit?: number

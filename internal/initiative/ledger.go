@@ -83,6 +83,11 @@ type Entry struct {
 	// Outcome is replied, ignored, or stopped — set only when Kind ==
 	// "outcome". See OutcomeReplied/OutcomeIgnored/OutcomeStopped.
 	Outcome string `json:"outcome,omitempty"`
+	// Answer is the button the user pressed on a delivered check-in (ok,
+	// snooze, quiet_today) — set only when Kind == "answer", with Ref
+	// naming the check-in's entry. Until is when a snooze ends.
+	Answer string     `json:"answer,omitempty"`
+	Until  *time.Time `json:"until,omitempty"`
 }
 
 // Ledger is an append-only JSONL file that rotates to <path>.1 when full.
@@ -176,6 +181,10 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 	var h History
 	today := now.In(loc).Format("2006-01-02")
 	for _, e := range entries {
+		if e.Kind == entryKindAnswer {
+			applyAnswer(&h, e)
+			continue
+		}
 		if e.spoken() {
 			if e.At.In(loc).Format("2006-01-02") == today {
 				h.Today++
@@ -231,7 +240,9 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 			}
 		}
 	}
+	snoozedAt, snoozedUntil := h.CheckInSnoozedAt, h.CheckInSnoozedUntil
 	h.ConsecutiveIgnored, h.LastStoppedAt, h.PendingReplies = ReplyState(entries)
+	h.CheckInSnoozedAt, h.CheckInSnoozedUntil = snoozedAt, snoozedUntil
 	return h
 }
 

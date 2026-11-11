@@ -24,6 +24,9 @@ import {
   companionGazeApplies,
   companionGazeOffset,
   companionAskContext,
+  companionBriefFromWire,
+  companionBriefText,
+  companionCheckInActionsFromWire,
   companionIdleEligible,
   companionIsLongQuiet,
   companionJustArrived,
@@ -50,7 +53,7 @@ import {
   type CompanionLine,
   type CompanionServerCue,
 } from '../src/lib/companion.ts'
-import { companionEn } from '../src/i18n/sections/companion.ts'
+import { companionEn, companionKo } from '../src/i18n/sections/companion.ts'
 import { caseFigureStyle, caseFrameFor } from '../src/lib/caseFigure.ts'
 import { caseSprite } from '../src/lib/caseSprite.generated.ts'
 import type { ActivityMap } from '../src/lib/sessionBoard.ts'
@@ -1147,4 +1150,84 @@ for (const [name, source] of [['CompanionPet', componentSource], ['CaseFigure', 
   for (const sel of transitioningSelectors) {
     assert.ok(reducedTransitioned.has(sel), `reduced motion does not stop the transition on ${sel}`)
   }
+})
+
+// --- Case-companion phase 3: the arrival brief and a check-in's buttons.
+
+const briefWire = {
+  kind: 'waiting',
+  severity: 'block',
+  text: { en: '"Fix login" is waiting at G2 (review)', ko: '"Fix login" — G2(리뷰)에서 기다려요' },
+  href: '/console/focus/p1',
+}
+
+test('companionBriefFromWire keeps well-formed lines and drops the rest one by one', () => {
+  assert.deepEqual(companionBriefFromWire(undefined), [])
+  assert.deepEqual(companionBriefFromWire('nope'), [])
+  assert.deepEqual(companionBriefFromWire([briefWire]), [briefWire])
+  const bad = [
+    null,
+    'line',
+    { ...briefWire, kind: 'exploded' },
+    { ...briefWire, severity: 'urgent' },
+    { ...briefWire, href: 'https://example.com/console/x' },
+    { ...briefWire, href: '/console/x?y=javascript:1' },
+    { ...briefWire, text: { en: 'only english' } },
+    { ...briefWire, text: 'flat' },
+  ]
+  assert.deepEqual(companionBriefFromWire([...bad, briefWire]), [briefWire])
+  // At most three, and every line is clipped like a server line.
+  const long = { ...briefWire, text: { en: 'x'.repeat(400), ko: 'y'.repeat(400) } }
+  const kept = companionBriefFromWire([long, briefWire, briefWire, briefWire])
+  assert.equal(kept.length, 3)
+  assert.ok(kept[0].text.en.length <= 140 && kept[0].text.ko.length <= 140)
+})
+
+test('companionBriefText picks the console language', () => {
+  const [line] = companionBriefFromWire([briefWire])
+  assert.equal(companionBriefText(line, 'ko'), briefWire.text.ko)
+  assert.equal(companionBriefText(line, 'en'), briefWire.text.en)
+  assert.equal(companionBriefText(line, null), briefWire.text.en)
+})
+
+test('companionCheckInActionsFromWire keeps known buttons in a fixed order, and none without an entry', () => {
+  assert.deepEqual(companionCheckInActionsFromWire(['quiet_today', 'nope', 'ok', 'snooze'], 'e1'), ['ok', 'snooze', 'quiet_today'])
+  assert.deepEqual(companionCheckInActionsFromWire(['ok'], ''), [])
+  assert.deepEqual(companionCheckInActionsFromWire(['ok'], undefined), [])
+  assert.deepEqual(companionCheckInActionsFromWire('ok', 'e1'), [])
+})
+
+test('companionServerCueFromEvent carries the brief and buttons only with the line they came with', () => {
+  const base = { type: 'notification', category: 'companion', severity: 'info', title: '', timestamp: new Date(now).toISOString() }
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'Welcome back', expression: 'greeting', session_id: 'main', brief: [briefWire] }, now, null),
+    { expression: 'greeting', line: 'Welcome back', sessionId: 'main', brief: [briefWire] },
+  )
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'How is it going?', expression: 'happy', session_id: 'main', actions: ['ok', 'snooze', 'quiet_today'], entry_id: ' e1 ' }, now, null),
+    { expression: 'happy', line: 'How is it going?', sessionId: 'main', actions: ['ok', 'snooze', 'quiet_today'], entryId: 'e1' },
+  )
+  // The main session already on screen: the thread shows the words, so the
+  // brief and buttons go with the line (the expression still plays).
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'Welcome back', expression: 'greeting', session_id: 'main', brief: [briefWire], actions: ['ok'], entry_id: 'e1' }, now, 'main'),
+    { expression: 'greeting' },
+  )
+  // Nothing well formed: the plain cue, no empty fields.
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'Hi', expression: 'greeting', brief: [{ kind: 'x' }], actions: ['ok'] }, now, null),
+    { expression: 'greeting', line: 'Hi' },
+  )
+})
+
+test('CASE bubble renders the brief and check-in buttons from server words, in both languages', () => {
+  assert.match(componentSource, /companionBriefText\(item, \$localeStore\)/)
+  assert.match(componentSource, /answerInitiativeCheckIn\(entryId, action\)/)
+  // The labels exist in both languages, key for key.
+  for (const strings of [companionEn, companionKo]) {
+    assert.ok(strings.checkIn.ok && strings.checkIn.snooze && strings.checkIn.quietToday && strings.checkIn.error)
+    assert.ok(strings.brief.severity.block && strings.brief.severity.info && strings.brief.listAria)
+  }
+  assert.equal(companionKo.checkIn.snooze, '20분 뒤 다시')
+  assert.equal(companionKo.checkIn.quietToday, '오늘은 조용히')
 })

@@ -273,6 +273,8 @@ var configFieldTiers = map[string]fieldTier{
 	"initiative_confirm_memory":            advanced(initiativeOn),
 	"initiative_share_result":              advanced(initiativeLive),
 	"initiative_follow_up":                 advanced(initiativeOn),
+	"initiative_arrival_brief":             advanced(initiativeLive),
+	"initiative_check_in_buttons":          advanced(initiativeLive),
 	"initiative_tick":                      fileOnly(noteTuning),
 	"initiative_reply_window":              fileOnly(noteTuning),
 	"initiative_body_provider":             fileOnly("needs the dormant embodiment subsystem"),

@@ -458,6 +458,22 @@ initiative:
   # from session and pipeline files only (no gh call, no model judgment);
   # titles and goals go to the speak model only under the same-provider rule.
   follow_up: false
+  # Live mode, on by default (case-companion phase 3): when an arrival greet
+  # goes out on the console, CASE's bubble adds up to three lines on what
+  # changed since you were last at the console — a focus pipeline now
+  # waiting at a gate, a cron job that failed, more tool approvals waiting,
+  # a pipeline that finished or moved on, a cron job working again. Each
+  # line links to its screen. Worked out in Go from two snapshots of the
+  # same state CASE's Bridge reads, never by a model; the snapshots live in
+  # workspace/_shared/initiative/snapshot.json. false: the greeting only.
+  arrival_brief: true
+  # Live mode, on by default (case-companion phase 3): a check-in in CASE's
+  # bubble gets three buttons — "I'm fine" (closes it), "Again in 20
+  # minutes" (no check-in until then; afterwards one may come back sooner
+  # than the usual three hours, the cooldown still applies) and "Quiet for
+  # today" (the same stop as asking TARS to be quiet). The button is the
+  # answer; nothing reads your words to decide it. false: no buttons.
+  check_in_buttons: true
   # Embodiment provider name (see embodiment.providers) for idle expressions.
   body_provider: ""
   # jev-only: probability needed for each text signal (measured on

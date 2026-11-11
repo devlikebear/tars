@@ -562,6 +562,20 @@ A body_only event (no `message`) only changes the face: it never opens the bubbl
 
 Server-side, this category never reaches the general notification path: `notificationDispatcher.Emit` special-cases `category: "companion"` to publish straight to the live broker, skipping the notification store (`/v1/events/history`, unread count) and the desktop notifier — it is CASE's own face, not a general alert. The console mirrors this on receipt: `companionFailureFromEvent`/`companionWarningFromEvent` return nothing for a companion event regardless of the `severity` it happens to carry, and `App.svelte`/`Home.svelte` route it to the cue machine instead of their "recent notifications" list or unread counter.
 
+### Arrival brief and check-in answers (case-companion phase 3)
+
+Two additions to a server line (#1192 above), both carried on the same `category: "companion"` event and both only ever shown *with* the line they came with — when the line is suppressed (its session already on screen), so are they.
+
+| Field | Meaning |
+|---|---|
+| `brief` | an arrival greet's "while you were away" lines, at most 3: `{kind, severity, text: {en, ko}, href}`. `kind` is waiting/failed/finished/recovered/advanced, `severity` block/info |
+| `actions` | a check-in's answer buttons: `ok`, `snooze`, `quiet_today` |
+| `entry_id` | the initiative entry the buttons answer |
+
+- **Brief lines.** Under the greeting line, one full-width row per item (`.companion-brief-line`, the waiting-line button recipe): a mono uppercase chip with the urgency in words ("Needs you" in signal green for block, "Update" muted for info) and the server's sentence in the console's language (`companionBriefText`). A block row also gets the signal-green border tint; colour never carries the urgency alone. Clicking a row goes to its `href` and closes the bubble, like the server line. The server writes every word and every link (`internal/initiative/brief.go`); the console validates them (`companionBriefFromWire`: known kind and severity, both languages present, a `/console/` path only — an outside URL drops that row, never the greeting) and builds nothing itself.
+- **Check-in answers.** A row of three small buttons under the check-in line (`.companion-checkin`, wraps on a narrow bubble): **I'm fine** / **Again in 20 min** / **Quiet for today** (괜찮아 / 20분 뒤 다시 / 오늘은 조용히). Each posts to `POST /v1/initiative/checkin/answer` — the button is the answer, nothing reads the user's words. "I'm fine" closes the bubble at once; the other two close it once the server has the answer, and otherwise keep it open with one line in the error red ("Couldn't save that") so a lost "quiet for today" is never silently dropped. The buttons are disabled while an answer is in flight.
+- Both are pure layout on top of the server line: no new expression, action or animation, so nothing new to stop under reduced motion.
+
 ### Asking CASE a question (#1236)
 
 Typing into CASE's own input and sending no longer opens a new session: the words become a normal chat turn on the **main session** (`session_id: "main"`, the server resolves it — `handler_chat.go`'s `resolveChatSession`), the same session initiative (#997) speaks into, so a greeting answered from the bubble lands as a reply in the same thread the reply-tracking (#1221) already watches. No new server endpoint — the existing `POST /v1/chat` and its stream carry the turn, through `lib/stores/companionAskStore.svelte.ts` (`companionAsk`, a module-level singleton like `chatSession`). The console sends the same `console_context` guidance the old handoff carried (`lib/companion.ts`'s `companionAskContext`, renamed from `companionHandoffForAsk`): the companion tone, the console area, and no tools unless asked.

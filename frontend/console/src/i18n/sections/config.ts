@@ -364,6 +364,14 @@ const fieldsKo: Record<string, ConfigFieldOverride> = {
     label: '백그라운드 결과 알림',
     description: 'live 모드에서 아무도 기다리지 않은 agent 실행이나 세션 메모를 남기지 않은 cron 작업이 끝나거나 실패하면 메인 세션에 자연스러운 메시지로 알립니다. 알림과 pulse는 그대로입니다',
   },
+  initiative_arrival_brief: {
+    label: '돌아왔을 때 요약',
+    description: 'live 모드에서 자리를 비운 사이 바뀐 것(게이트에서 기다리는 파이프라인, 실패한 cron, 끝난 파이프라인)을 인사 말풍선에 최대 세 줄로 붙입니다',
+  },
+  initiative_check_in_buttons: {
+    label: '안부 버튼',
+    description: 'live 모드에서 안부 말풍선에 "괜찮아", "20분 뒤 다시", "오늘은 조용히" 버튼을 붙입니다',
+  },
   initiative_follow_up: {
     label: '이어가기 제안',
     description: '그날 처음 콘솔에 왔을 때, 전날까지 멈춘 세션 goal이나 focus 파이프라인이 있으면 인사 대신 이어서 할지 제안합니다',

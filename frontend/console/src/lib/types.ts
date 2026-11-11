@@ -236,6 +236,20 @@ export type NotificationMessage = {
   // category "companion" event (#1192). The console ignores the whole
   // event when this holds a value it does not recognize.
   expression?: string
+  // Case-companion phase 3, category "companion" only: an arrival greet's
+  // "what changed while you were away" lines (the server writes each in
+  // both console languages and builds its link), a check-in's answer
+  // buttons, and the initiative entry those buttons answer.
+  brief?: CompanionBriefWire[]
+  actions?: string[]
+  entry_id?: string
+}
+
+export type CompanionBriefWire = {
+  kind: string
+  severity: string
+  text: Record<string, string>
+  href: string
 }
 
 export type ConsensusVariantRecord = {

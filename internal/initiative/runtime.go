@@ -134,6 +134,9 @@ type Snapshot struct {
 	// title or id.
 	ShareResult SubjectIntentStatus `json:"share_result"`
 	FollowUp    SubjectIntentStatus `json:"follow_up"`
+	// CheckInSnoozedUntil is when a running "again in 20 minutes" answer
+	// ends (case-companion phase 3); absent when none is running.
+	CheckInSnoozedUntil *time.Time `json:"check_in_snoozed_until,omitempty"`
 }
 
 // SubjectIntentStatus is the status line for one subject-carrying intent
@@ -187,6 +190,8 @@ type Runtime struct {
 	// so Snapshot can report them without touching hist under mu.
 	consecutiveIgnored int
 	lastStoppedAt      time.Time
+	// snoozedUntil mirrors hist.CheckInSnoozedUntil for Snapshot.
+	snoozedUntil time.Time
 	// lastEntry is the most recently recorded entry, kept for parity with
 	// speakCallsToday/textCallsToday though Snapshot reads lastDelivery
 	// below for its reporting (tars#1220).
@@ -750,6 +755,7 @@ func (r *Runtime) loadHistoryLocked(now time.Time) {
 	r.snapMu.Lock()
 	r.consecutiveIgnored = r.hist.ConsecutiveIgnored
 	r.lastStoppedAt = r.hist.LastStoppedAt
+	r.snoozedUntil = r.hist.CheckInSnoozedUntil
 	r.snapMu.Unlock()
 	// Restore the last delivery summary too, so a restart's first
 	// Snapshot/doctor report isn't blank until the next Speak-intent tick.
@@ -815,16 +821,22 @@ func (r *Runtime) Snapshot() Snapshot {
 	speakBackend.DailyCallCap = r.cfg.DailySpeakCalls
 	now := r.deps.Now()
 	outcomes := SummarizeOutcomes(r.recent, now, r.cfg.Location, r.cfg.Cooldown, r.consecutiveIgnored, r.lastStoppedAt)
+	var snoozedUntil *time.Time
+	if now.Before(r.snoozedUntil) {
+		until := r.snoozedUntil
+		snoozedUntil = &until
+	}
 	return Snapshot{
-		Enabled:      r.cfg.Enabled,
-		Mode:         r.cfg.Mode,
-		Backend:      backend,
-		SpeakBackend: speakBackend,
-		LastDelivery: r.lastDeliverySummary,
-		SpokenToday:  r.spokenToday,
-		LastError:    r.lastError,
-		Recent:       append([]Entry{}, r.recent...),
-		Outcomes:     outcomes,
+		CheckInSnoozedUntil: snoozedUntil,
+		Enabled:             r.cfg.Enabled,
+		Mode:                r.cfg.Mode,
+		Backend:             backend,
+		SpeakBackend:        speakBackend,
+		LastDelivery:        r.lastDeliverySummary,
+		SpokenToday:         r.spokenToday,
+		LastError:           r.lastError,
+		Recent:              append([]Entry{}, r.recent...),
+		Outcomes:            outcomes,
 		Remind: SubjectIntentStatus{
 			Enabled:     r.cfg.Remind,
 			Pending:     r.lastEntry.Signals.ReminderDue,

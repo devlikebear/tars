@@ -51,12 +51,21 @@ func Brief(prev, now StatusSnapshot, locale string) []BriefItem // block 먼저,
 
 ## 작업
 
-- [ ] `brief.go` + `brief_test.go`
-- [ ] presence away 시 스냅샷 저장 (`presence.go` 훅 지점) + 테스트
-- [ ] greet 발화 시 brief 첨부, check-in 시 actions 첨부 (`helpers_initiative_speak.go`) + 테스트
-- [ ] `POST /v1/initiative/snooze` + 테스트
-- [ ] 콘솔 파싱·말풍선 UI + `tests/companionPet.test.ts` 케이스 + `e2e/companion-events.spec.ts`에 brief 시나리오 (e2e 이벤트 훅 `e2e_events.go` 사용)
-- [ ] feature-map "Arrival brief"
+- [x] `brief.go` + `brief_test.go`
+- [x] presence away 시 스냅샷 저장 (`presence.go` 훅 지점) + 테스트 — 구현: 존재 신호마다 `BriefStore.Seen`
+- [x] greet 발화 시 brief 첨부, check-in 시 actions 첨부 (`helpers_initiative_speak.go`) + 테스트
+- [x] `POST /v1/initiative/snooze` + 테스트 — 구현: `POST /v1/initiative/checkin/answer`
+- [x] 콘솔 파싱·말풍선 UI + `tests/companionPet.test.ts` 케이스 + `e2e/companion-events.spec.ts`에 brief 시나리오 (e2e 이벤트 훅 `e2e_events.go` 사용), `e2e/initiative-live.spec.ts`에 실제 check-in의 snooze
+- [x] feature-map "Arrival brief"
+
+### 구현하면서 바뀐 점 (현재 코드 기준)
+
+- **스냅샷 소스**: `tars_status` 도구는 없다(Phase 2는 도구가 아닌 `internal/casebridge` 스냅샷 + `<tars-status>` 턴 맥락). 그 집계(`caseBridge.pipelinesLocked`/`activityLocked`)를 재사용하는 `caseBridge.briefSnapshot`이 `initiative.StatusSnapshot`을 만든다. cron은 Bridge의 "최근 24시간 실패"가 아니라 모든 작업의 마지막 실행 실패 여부를 읽는다 — 24시간 창에서 빠진 것을 "복구"로 읽지 않기 위해서. usage·pulse는 읽지 않는다.
+- **저장 시점·위치**: away로 바뀌는 순간은 이벤트가 없다(신호가 10분 끊겨야 안다). 대신 존재 신호마다 "마지막으로 본 상태"(Seen)를 분당 최대 1회 갱신하고, 새 도착의 첫 신호에서 그것을 Away로 얼린다 — 기준이 떠난 순간이 된다. `<workspace>/_shared/initiative/snapshot.json`(ledger 옆, tmp+rename).
+- **BriefItem**: `Ref CardRef` 대신 서버가 만든 `Href`. 이벤트에는 `text: {en, ko}`로 두 언어를 싣고 콘솔이 고른다(서버는 콘솔 언어를 모른다). "승인 N건이 기다려요" 줄을 더했다(승인 수가 늘었을 때).
+- **버튼 엔드포인트**: `POST /v1/initiative/checkin/answer {entry_id, action: ok|snooze|quiet_today}` — confirm_memory의 `/v1/initiative/memory/answer` 모양. 답은 ledger `answer` 줄로 남아 재시작 후 복원된다. "괜찮아"도 서버에 보낸다(답장으로 세어 ignored 연속에 들어가지 않도록).
+- **"20분 뒤 다시"의 뜻**: 전달된 check-in 뒤에는 원래 3시간 간격(`CheckedInRecently`)과 쿨다운이 걸려 있어 "20분 동안 없음"만으로는 아무것도 바뀌지 않는다. 그래서 snooze는 그 check-in의 3시간 간격을 snooze 끝(20분)으로 바꾼다 — 20분 동안은 없고, 그 뒤 조건이 맞으면 일찍 다시 물을 수 있다. 쿨다운(기본 45분)과 다른 침묵 조건은 그대로다. `Decide`는 바꾸지 않았다(신호 파생만).
+- **설정**: `initiative.arrival_brief`, `initiative.check_in_buttons`(live 모드, 기본 true).
 
 ---
 
