@@ -28,6 +28,11 @@ const (
 	// focus pipeline or its pull request (initiative.follow_up, tars#1002).
 	// It takes the place of that arrival's greet.
 	IntentFollowUp Intent = "follow_up"
+	// IntentEveningRecap is the end-of-day recap (initiative.evening_recap,
+	// tars#1001 brief): what finished, what failed and what is still open
+	// today, in fixed words built in Go, once a day inside a window before
+	// quiet hours.
+	IntentEveningRecap Intent = "evening_recap"
 )
 
 // tracksReplies reports whether a delivered speak of this intent opens a
@@ -36,8 +41,9 @@ const (
 // so it never feeds the ignored streak or the cooldown multiplier. A
 // share_result report (tars#1002) is the same kind of thing: news the user
 // can read and move on from, so silence after it is not a signal either.
+// So is an evening recap (tars#1001 brief).
 func tracksReplies(intent Intent) bool {
-	return intent != IntentRemind && intent != IntentShareResult
+	return intent != IntentRemind && intent != IntentShareResult && intent != IntentEveningRecap
 }
 
 // Subject is what a remind, confirm_memory, share_result or follow_up speak
@@ -122,6 +128,10 @@ type Observation struct {
 	// (initiative.follow_up, tars#1002), nil when none. Only filled around
 	// a console arrival, the one moment Decide reads it.
 	FollowUp *Subject
+	// Recap is today's finished, failed and open work for the evening recap
+	// (initiative.evening_recap, tars#1001), nil when none. Only filled
+	// while the recap window is open, the one time Decide reads it.
+	Recap *RecapFacts
 }
 
 type GoSignals struct {
@@ -166,6 +176,10 @@ type GoSignals struct {
 	// FollowUpPending reports work left unfinished on an earlier day
 	// (tars#1002). Only ever true with initiative.follow_up on.
 	FollowUpPending bool `json:"follow_up_pending,omitempty"`
+	// RecapDue reports the evening recap should go out now (tars#1001
+	// brief): initiative.evening_recap is on, the recap window is open,
+	// there is something to recap, and none counted as said yet today.
+	RecapDue bool `json:"recap_due,omitempty"`
 }
 
 type TextSignals struct {

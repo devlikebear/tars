@@ -9,11 +9,11 @@ Where the console shows each field of `/console/config` (#1240). The schema
 | Tier | Meaning | Fields |
 |---|---|---|
 | basic | Most people touch it at least once; shown up front | 31 |
-| advanced | Inside a collapsed Advanced group | 91 |
+| advanced | Inside a collapsed Advanced group | 94 |
 | file | Not in the console; YAML and `config/tars.config.example.yaml` only | 66 |
 | remove | Nothing reads it or it was replaced; to be removed, hidden until then | 0 |
 
-Total: 188 fields in 19 sections.
+Total: 191 fields in 19 sections.
 
 `show_when` lists conditions on other fields; the field shows when any one holds
 and the field it names is itself shown.
@@ -277,6 +277,9 @@ and the field it names is itself shown.
 | `initiative_follow_up` | `initiative.follow_up` | advanced | `initiative.enabled` = true |  |
 | `initiative_arrival_brief` | `initiative.arrival_brief` | advanced | `initiative.mode` = live |  |
 | `initiative_check_in_buttons` | `initiative.check_in_buttons` | advanced | `initiative.mode` = live |  |
+| `initiative_morning_brief` | `initiative.morning_brief` | advanced | `initiative.mode` = live |  |
+| `initiative_evening_recap` | `initiative.evening_recap` | advanced | `initiative.enabled` = true |  |
+| `initiative_evening_recap_window` | `initiative.evening_recap_window` | advanced | `initiative.evening_recap` = true |  |
 | `initiative_threshold_quiet_requested` | `initiative.thresholds.quiet_requested` | file |  | only for initiative.backend: jev, whose probabilities the default llm backend does not produce |
 | `initiative_threshold_user_strained` | `initiative.thresholds.user_strained` | file |  | only for initiative.backend: jev, whose probabilities the default llm backend does not produce |
 | `initiative_threshold_special_day` | `initiative.thresholds.special_day` | file |  | only for initiative.backend: jev, whose probabilities the default llm backend does not produce |

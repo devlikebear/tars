@@ -1176,11 +1176,21 @@ test('companionBriefFromWire keeps well-formed lines and drops the rest one by o
     { ...briefWire, text: 'flat' },
   ]
   assert.deepEqual(companionBriefFromWire([...bad, briefWire]), [briefWire])
-  // At most three, and every line is clipped like a server line.
+  // At most six (three arrival lines and three morning-brief lines), and
+  // every line is clipped like a server line.
   const long = { ...briefWire, text: { en: 'x'.repeat(400), ko: 'y'.repeat(400) } }
-  const kept = companionBriefFromWire([long, briefWire, briefWire, briefWire])
-  assert.equal(kept.length, 3)
+  const kept = companionBriefFromWire([long, ...Array(7).fill(briefWire)])
+  assert.equal(kept.length, 6)
   assert.ok(kept[0].text.en.length <= 140 && kept[0].text.ko.length <= 140)
+})
+
+test('companionBriefFromWire keeps the morning brief and evening recap kinds (tars#1001)', () => {
+  const kinds = ['schedule', 'yesterday', 'open', 'done'] as const
+  const lines = kinds.map((kind) => ({ ...briefWire, kind, severity: 'info', href: '/console/cron' }))
+  assert.deepEqual(
+    companionBriefFromWire(lines).map((line) => line.kind),
+    [...kinds],
+  )
 })
 
 test('companionBriefText picks the console language', () => {

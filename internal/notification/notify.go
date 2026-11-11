@@ -55,9 +55,11 @@ type Event struct {
 	// console ignores the whole event when this is set to a value it does
 	// not recognize (#1192).
 	Expression string `json:"expression,omitempty"`
-	// Brief is an arrival greet's "what changed while you were away" lines
-	// (case-companion phase 3), at most three, for a companionEventCategory
-	// event only. The server writes the words in both console languages.
+	// Brief is a companion event's brief lines, for a companionEventCategory
+	// event only: an arrival greet's "what changed while you were away"
+	// (case-companion phase 3, at most three) followed by the morning brief
+	// (at most three more), or an evening recap's lines (tars#1001). The
+	// server writes the words in both console languages.
 	Brief []CompanionBriefLine `json:"brief,omitempty"`
 	// Actions are the buttons a companion event's bubble offers (a check-in's
 	// "ok", "snooze", "quiet_today"), answered against EntryID.

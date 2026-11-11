@@ -252,11 +252,12 @@ export type CompanionServerCue = {
   entryId?: string
 }
 
-// One "what changed while you were away" line (case-companion phase 3).
+// One brief line: "what changed while you were away" (case-companion phase
+// 3), the morning brief after it, or an evening recap's lines (tars#1001).
 // The server wrote the words in both console languages; the console only
 // picks one (companionBriefText) and never builds a line itself.
 export type CompanionBriefLine = {
-  kind: 'waiting' | 'failed' | 'finished' | 'recovered' | 'advanced'
+  kind: (typeof COMPANION_BRIEF_KINDS)[number]
   severity: 'block' | 'info'
   text: { en: string; ko: string }
   href: string
@@ -264,8 +265,19 @@ export type CompanionBriefLine = {
 
 export type CompanionCheckInAction = 'ok' | 'snooze' | 'quiet_today'
 
-export const COMPANION_BRIEF_MAX = 3
-const COMPANION_BRIEF_KINDS = ['waiting', 'failed', 'finished', 'recovered', 'advanced'] as const
+// Three arrival lines and three morning-brief lines at most (tars#1001).
+export const COMPANION_BRIEF_MAX = 6
+const COMPANION_BRIEF_KINDS = [
+  'waiting',
+  'failed',
+  'finished',
+  'recovered',
+  'advanced',
+  'schedule',
+  'yesterday',
+  'open',
+  'done',
+] as const
 const COMPANION_CHECK_IN_ACTIONS: readonly CompanionCheckInAction[] = ['ok', 'snooze', 'quiet_today']
 
 // companionBriefFromWire keeps the brief lines that are well formed: a known

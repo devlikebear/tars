@@ -48,11 +48,12 @@ export const companionEn = {
     untilAlert: 'Sleep until something needs me',
     asleepStatus: 'CASE is asleep. Click it to wake it.',
   },
-  // Case-companion phase 3: the arrival greet's "while you were away"
-  // lines (the words themselves come from the server), and a check-in's
-  // answer buttons.
+  // Case-companion phase 3: the brief lines under a greeting or a recap —
+  // "while you were away", the morning brief, the evening recap (tars#1001;
+  // the words themselves come from the server) — and a check-in's answer
+  // buttons.
   brief: {
-    listAria: 'While you were away',
+    listAria: 'Brief',
     severity: { block: 'Needs you', info: 'Update' },
   },
   checkIn: {
@@ -102,7 +103,7 @@ export const companionKo: CompanionTranslations = {
     asleepStatus: 'CASE가 절전 중이에요. 누르면 깨어나요.',
   },
   brief: {
-    listAria: '자리를 비운 사이',
+    listAria: '브리핑',
     severity: { block: '확인 필요', info: '소식' },
   },
   checkIn: {

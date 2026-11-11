@@ -24,37 +24,47 @@ func TestNewCoworkerCasesKeepTextSignalsReasoning(t *testing.T) {
 		{"FollowUpPending", func(g *GoSignals) { g.FollowUpPending = true }, IntentFollowUp,
 			map[string]bool{"arrived": true, "special_day": true}},
 		{"ResultReady", func(g *GoSignals) { g.ResultReady = true }, IntentShareResult,
-			map[string]bool{"long_session": true, "strained": true, "long_absence": true, "unreachable": true, "memory_pending": true, "idle_at_desk": true, "nothing": true}},
+			map[string]bool{"end_of_day": true, "long_session": true, "strained": true, "long_absence": true, "unreachable": true, "memory_pending": true, "idle_at_desk": true, "nothing": true}},
 	}
 	for _, c := range cases {
 		t.Run(c.field, func(t *testing.T) {
-			eachGoSignals(GoSignals{}, map[string]bool{c.field: true}, func(g GoSignals) {
-				with := g
-				c.set(&with)
-				eachTextSignals(func(ts TextSignals) {
-					before, after := Decide(g, ts), Decide(with, ts)
-					if before == after {
-						return
-					}
-					if after.Intent != c.intent || !c.replaces[before.Reason] {
-						t.Fatalf("%s turned %+v into %+v for %+v/%+v", c.field, before, after, g, ts)
-					}
-				})
-				if Decide(with, TextSignals{}).Intent == c.intent {
-					if !textSignalsMatter(with) {
-						t.Fatalf("a %s tick must read text first: %+v", c.intent, with)
-					}
-					if d := Decide(with, TextSignals{QuietRequested: true}); d.Speak {
-						t.Fatalf("quiet_requested did not hold back %s: %+v", c.intent, d)
-					}
-					return
-				}
-				if textSignalsMatter(with) != textSignalsMatter(g) {
-					t.Fatalf("%s changed textSignalsMatter on a tick it does not take: %+v", c.field, with)
-				}
-			})
+			checkCaseKeepsTextSignals(t, c.field, c.set, c.intent, c.replaces)
 		})
 	}
+}
+
+// checkCaseKeepsTextSignals is the exhaustive check shared by the cases
+// that read Go signals only: turning field on may only replace the outcomes
+// named in replaces, with intent; a tick it takes reads text first and
+// quiet_requested still holds it back; a tick it does not take reads as if
+// the signal were off.
+func checkCaseKeepsTextSignals(t *testing.T, field string, set func(*GoSignals), intent Intent, replaces map[string]bool) {
+	t.Helper()
+	eachGoSignals(GoSignals{}, map[string]bool{field: true}, func(g GoSignals) {
+		with := g
+		set(&with)
+		eachTextSignals(func(ts TextSignals) {
+			before, after := Decide(g, ts), Decide(with, ts)
+			if before == after {
+				return
+			}
+			if after.Intent != intent || !replaces[before.Reason] {
+				t.Fatalf("%s turned %+v into %+v for %+v/%+v", field, before, after, g, ts)
+			}
+		})
+		if Decide(with, TextSignals{}).Intent == intent {
+			if !textSignalsMatter(with) {
+				t.Fatalf("a %s tick must read text first: %+v", intent, with)
+			}
+			if d := Decide(with, TextSignals{QuietRequested: true}); d.Speak {
+				t.Fatalf("quiet_requested did not hold back %s: %+v", intent, d)
+			}
+			return
+		}
+		if textSignalsMatter(with) != textSignalsMatter(g) {
+			t.Fatalf("%s changed textSignalsMatter on a tick it does not take: %+v", field, with)
+		}
+	})
 }
 
 func TestDecideCoworkerIntents(t *testing.T) {

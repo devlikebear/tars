@@ -155,6 +155,9 @@ type initiativeSpeaker struct {
 	// checkInButtons adds the answer buttons to a check-in's companion
 	// event (initiative.check_in_buttons).
 	checkInButtons bool
+	// morning reads the morning brief's facts (initiative.morning_brief,
+	// tars#1001), added to the day's first arrival utterance. nil when off.
+	morning func(now time.Time) initiative.MorningFacts
 }
 
 var _ initiative.Speaker = (*initiativeSpeaker)(nil)
@@ -248,6 +251,15 @@ var errSpeakUnavailable = errors.New("initiative: no speech composer")
 // exists for remind/confirm_memory even without a speak backend; greet and
 // check_in then report speak_unavailable as before.
 func (s *initiativeSpeaker) words(ctx context.Context, req initiative.SpeakRequest) (string, bool, error) {
+	if req.Intent == initiative.IntentEveningRecap {
+		// Always fixed words, in the language the user writes in (tars#1001
+		// brief): the recap never goes to a model.
+		ko := initiative.PrefersKorean(req.RecentUser, req.Profile)
+		if text := initiative.EveningRecapSpeech(recapItems(req.Recap, ko), ko); text != "" {
+			return text, false, nil
+		}
+		return "", false, errSpeakUnavailable
+	}
 	subject := ""
 	if req.Subject != nil {
 		subject = req.Subject.Text
@@ -406,7 +418,8 @@ func (s *initiativeSpeaker) sendTelegram(ctx context.Context, text string) strin
 // never un-delivers a message already written to the transcript.
 //
 // A greet also carries the arrival brief (case-companion phase 3), worked
-// out in Go and written in both console languages; a check-in carries its
+// out in Go and written in both console languages, and a greet or follow_up
+// the morning brief (tars#1001); an evening recap carries its own lines; a check-in carries its
 // answer buttons and the entry id they answer. Neither goes into the
 // transcript: the message stays the composed words only.
 func (s *initiativeSpeaker) sendCompanionEvent(ctx context.Context, req initiative.SpeakRequest, text string) {
@@ -423,6 +436,14 @@ func (s *initiativeSpeaker) sendCompanionEvent(ctx context.Context, req initiati
 	switch req.Intent {
 	case initiative.IntentGreet:
 		evt.Brief = companionBriefLines(s.brief, req.Now)
+		evt.Brief = append(evt.Brief, s.morningBriefLines(req, evt.Brief)...)
+	case initiative.IntentFollowUp:
+		// A follow_up is the day's arrival utterance in place of the greet
+		// (tars#1002): it gets the morning brief, but not the arrival brief,
+		// whose pipeline lines would repeat the work its message names.
+		evt.Brief = s.morningBriefLines(req, nil)
+	case initiative.IntentEveningRecap:
+		evt.Brief = companionDayLines(initiative.EveningRecap(derefRecap(req.Recap), "en"), initiative.EveningRecap(derefRecap(req.Recap), "ko"))
 	case initiative.IntentCheckIn:
 		if s.checkInButtons {
 			evt.Actions = []string{initiative.CheckInAnswerOK, initiative.CheckInAnswerSnooze, initiative.CheckInAnswerQuietToday}
@@ -436,7 +457,36 @@ func (s *initiativeSpeaker) sendCompanionEvent(ctx context.Context, req initiati
 // each line once, with its English and Korean words side by side (the
 // console picks its own language).
 func companionBriefLines(store *initiative.BriefStore, now time.Time) []notification.CompanionBriefLine {
-	en, ko := store.Lines(now)
+	return companionDayLines(store.Lines(now))
+}
+
+// morningBriefLines is the morning brief (initiative.morning_brief,
+// tars#1001) for the day's first arrival utterance — a greet or the
+// follow_up in its place, which #1269 already holds to once a local day, so
+// the brief needs no once-a-day rule of its own. It never repeats what the
+// same bubble already says: a follow_up's message names the unfinished work
+// itself, so its brief leaves the open-work line out, and an item an
+// arrival brief line already links to is not named again.
+func (s *initiativeSpeaker) morningBriefLines(req initiative.SpeakRequest, said []notification.CompanionBriefLine) []notification.CompanionBriefLine {
+	if s.morning == nil {
+		return nil
+	}
+	facts := s.morning(req.Now)
+	if req.Intent == initiative.IntentFollowUp {
+		facts.Open = nil
+	} else {
+		saidItems := make([]initiative.BriefItem, 0, len(said))
+		for _, line := range said {
+			saidItems = append(saidItems, initiative.BriefItem{Href: line.Href})
+		}
+		facts.Open = initiative.WithoutSaid(facts.Open, saidItems)
+	}
+	return companionDayLines(initiative.MorningBrief(facts, s.location, "en"), initiative.MorningBrief(facts, s.location, "ko"))
+}
+
+// companionDayLines pairs a day brief's English and Korean lines the way a
+// companion event carries them.
+func companionDayLines(en, ko []initiative.BriefItem) []notification.CompanionBriefLine {
 	if len(en) == 0 || len(en) != len(ko) {
 		return nil
 	}
@@ -450,6 +500,22 @@ func companionBriefLines(store *initiative.BriefStore, now time.Time) []notifica
 		})
 	}
 	return out
+}
+
+// recapItems is a recap's lines in one language.
+func recapItems(facts *initiative.RecapFacts, ko bool) []initiative.BriefItem {
+	locale := "en"
+	if ko {
+		locale = "ko"
+	}
+	return initiative.EveningRecap(derefRecap(facts), locale)
+}
+
+func derefRecap(facts *initiative.RecapFacts) initiative.RecapFacts {
+	if facts == nil {
+		return initiative.RecapFacts{}
+	}
+	return *facts
 }
 
 // firstLine returns the text up to its first newline, or the whole text

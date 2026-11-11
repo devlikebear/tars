@@ -17,3 +17,5 @@
 {"name":"a follow-up arrival reads text first: quiet can still hold it back","signals":{"just_arrived":true,"reachable":true,"follow_up_pending":true},"want":true}
 {"name":"a result report reads text first: quiet can still hold it back","signals":{"result_ready":true,"reachable":true},"want":true}
 {"name":"a result held by typing reads as if none were queued","signals":{"result_ready":true,"busy":true,"reachable":true},"want":false}
+{"name":"an evening recap tick reads text first: quiet can still hold it back","signals":{"recap_due":true,"reachable":true},"want":true}
+{"name":"an unreachable evening recap tick needs no read","signals":{"recap_due":true},"want":false}

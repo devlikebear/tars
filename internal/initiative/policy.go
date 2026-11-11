@@ -54,6 +54,16 @@ package initiative
 // greet — and on a tick it does not match, no text combination can reach
 // it either (only quiet_requested and special_day come earlier), so
 // textSignalsMatter is unchanged there (TestNewCoworkerCasesKeepTextSignalsReasoning).
+//
+// evening_recap (tars#1001 brief) is unrequested too, so it sits after every
+// hard gate, the arrival case and Busy, right after share_result (a concrete
+// result first; the recap names today's work anyway) and before the care
+// cases, and needs someone reachable. Like share_result it reads Go signals
+// only: a tick it matches is one where quiet_requested still turns it into
+// none, so the read happens, and on a tick it does not match no text
+// combination can reach it (TestEveningRecapKeepsTextSignalsReasoning).
+// The morning brief is not a case: it rides on the arrival case's greet or
+// follow_up, which is already once a day.
 func Decide(g GoSignals, t TextSignals) Decision {
 	switch {
 	case g.ReminderDue && !g.Busy:
@@ -79,6 +89,8 @@ func Decide(g GoSignals, t TextSignals) Decision {
 		return none("busy")
 	case g.ResultReady && g.Reachable:
 		return speak(IntentShareResult, "result_ready")
+	case g.RecapDue && g.Reachable:
+		return speak(IntentEveningRecap, "end_of_day")
 	case g.LongSession && !g.CheckedInRecently:
 		return speak(IntentCheckIn, "long_session")
 	case t.UserStrained && !g.CheckedInRecently && g.Reachable:

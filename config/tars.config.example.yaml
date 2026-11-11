@@ -474,6 +474,28 @@ initiative:
   # today" (the same stop as asking TARS to be quiet). The button is the
   # answer; nothing reads your words to decide it. false: no buttons.
   check_in_buttons: true
+  # Live mode, opt-in (tars#1001): the first greeting of the day (or the
+  # follow-up in its place) gets a morning brief in CASE's bubble, next to
+  # the arrival lines — the cron runs left today, yesterday's activity in
+  # counts from the daily log (chat turns, sessions, cron runs; never its
+  # words), and the work still open (unfinished focus pipelines, active
+  # session goals). Nothing is said twice: a follow-up already names the
+  # unfinished work, and a pipeline an arrival line names is not repeated.
+  # Built in Go in fixed English/Korean words, never by a model, and only
+  # in the console bubble (not the transcript, not Telegram).
+  morning_brief: false
+  # Opt-in (tars#1001): once a day inside evening_recap_window, say what
+  # finished today (focus pipelines, session goals met), what failed today
+  # (cron jobs) and what is still open. Fixed English/Korean words built in
+  # Go (the language follows your recent messages), never by a model; it
+  # goes to the main session like any initiative message, after quiet
+  # requests, quiet hours, cooldown, the daily cap and while you are not
+  # typing. A day with nothing to recap says nothing. Silence after it is
+  # not counted as ignoring TARS.
+  evening_recap: false
+  # HH:MM-HH:MM in initiative.timezone. Empty: the hour before quiet_hours
+  # starts (22:00-23:00 with the default quiet hours).
+  evening_recap_window: ""
   # Embodiment provider name (see embodiment.providers) for idle expressions.
   body_provider: ""
   # jev-only: probability needed for each text signal (measured on

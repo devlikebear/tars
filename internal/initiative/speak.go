@@ -112,6 +112,10 @@ type SpeakRequest struct {
 	// prompt only when SendsText; otherwise the speaker writes FixedSpeech
 	// without calling the composer at all.
 	Subject *Subject
+	// Recap is today's work for an evening recap (tars#1001 brief), nil for
+	// every other intent. The speaker writes it in fixed words and never
+	// composes.
+	Recap *RecapFacts
 }
 
 // SpeakOutcome is what Speak managed to do.

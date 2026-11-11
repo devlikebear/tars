@@ -434,6 +434,7 @@ func buildAPIMux(
 		Results:          resultQueue,
 		MemoryBackend:    memoryBackend,
 		BriefSource:      caseBridge.briefSnapshot,
+		CronJobs:         cronStore.List,
 		Config:           cfg,
 		WorkspaceDir:     cfg.WorkspaceDir,
 		SessionStore:     sessionStore,

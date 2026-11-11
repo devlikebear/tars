@@ -376,6 +376,18 @@ const fieldsKo: Record<string, ConfigFieldOverride> = {
     label: '이어가기 제안',
     description: '그날 처음 콘솔에 왔을 때, 전날까지 멈춘 세션 goal이나 focus 파이프라인이 있으면 인사 대신 이어서 할지 제안합니다',
   },
+  initiative_morning_brief: {
+    label: '아침 브리핑',
+    description: 'live 모드에서 그날 첫 인사 말풍선에 오늘 남은 cron 실행, 어제 활동 개수, 진행 중인 작업을 붙입니다',
+  },
+  initiative_evening_recap: {
+    label: '저녁 회고',
+    description: '하루 한 번 저녁 시간대에 오늘 끝낸 일, 실패한 일, 남은 일을 알립니다',
+  },
+  initiative_evening_recap_window: {
+    label: '저녁 회고 시간대',
+    description: '저녁 회고를 보낼 HH:MM-HH:MM 시간대. 비우면 조용한 시간 시작 직전 한 시간입니다',
+  },
   jev_base_url: { label: 'jev 서버 주소', description: '사용자 원문은 루프백 호스트일 때만 보내는 /v1/systemone 서버의 기본 주소입니다' },
   jev_api_key: { label: 'jev용 API 키', description: '호스팅된 jev 서버에 쓰는 베어러 토큰' },
   jev_model: { label: 'jev 모델', description: '요청마다 함께 보낼 모델 이름' },

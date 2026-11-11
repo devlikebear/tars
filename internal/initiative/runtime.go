@@ -134,6 +134,11 @@ type Snapshot struct {
 	// title or id.
 	ShareResult SubjectIntentStatus `json:"share_result"`
 	FollowUp    SubjectIntentStatus `json:"follow_up"`
+	// MorningBrief reports whether the morning brief rides on the day's
+	// first arrival utterance; EveningRecap reports the recap like the
+	// options above, with its window (tars#1001 brief). Never a line.
+	MorningBrief bool                `json:"morning_brief"`
+	EveningRecap SubjectIntentStatus `json:"evening_recap"`
 	// CheckInSnoozedUntil is when a running "again in 20 minutes" answer
 	// ends (case-companion phase 3); absent when none is running.
 	CheckInSnoozedUntil *time.Time `json:"check_in_snoozed_until,omitempty"`
@@ -147,6 +152,9 @@ type SubjectIntentStatus struct {
 	// (ReminderDue) or a candidate waiting (MemoryPending).
 	Pending     bool `json:"pending"`
 	SpokenToday int  `json:"spoken_today"`
+	// Window is the evening recap's "HH:MM-HH:MM" window; empty for the
+	// other intents.
+	Window string `json:"window,omitempty"`
 }
 
 // CountSpokenToday counts entries of intent that counted as spoken
@@ -488,7 +496,9 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 	// A subject that may not go to the speak model is written in fixed
 	// words with no compose call (tars#1001), so the compose backoff and
 	// daily compose cap do not hold it back.
-	composes := subject == nil || r.deps.SpeakSendsText
+	// An evening recap is always fixed words (tars#1001 brief) and never
+	// composes either.
+	composes := entry.Intent != IntentEveningRecap && (subject == nil || r.deps.SpeakSendsText)
 	if composes && r.hist.SpeakFailCount > 0 && entry.At.Before(r.hist.LastSpeakCallAt.Add(backoffDuration(r.hist.SpeakFailCount))) {
 		entry.Delivery = DeliverySkipped
 		entry.DeliveryReason = deliveryReasonBackoff
@@ -508,6 +518,9 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 		Profile:    obs.Profile,
 		Channel:    channel,
 		Subject:    subject,
+	}
+	if entry.Intent == IntentEveningRecap {
+		req.Recap = obs.Recap
 	}
 	outcome, err := r.deps.Speaker.Speak(ctx, req)
 	entry.Composed = outcome.Composed
@@ -639,6 +652,9 @@ func (r *Runtime) applyLocked(e Entry) {
 		}
 		if e.Intent == IntentConfirmMemory {
 			r.hist.LastMemoryAskAt = e.At
+		}
+		if e.Intent == IntentEveningRecap {
+			r.hist.LastRecapAt = e.At
 		}
 	}
 	if e.Intent == IntentBodyOnly {
@@ -805,6 +821,15 @@ func describeSystemOneError(err error) string {
 	return err.Error()
 }
 
+// recapWindowStatus is the recap window status reports: only while the
+// recap is on.
+func recapWindowStatus(cfg Config) string {
+	if !cfg.EveningRecap {
+		return ""
+	}
+	return cfg.RecapWindow
+}
+
 func (r *Runtime) localDay(t time.Time) string { return t.In(r.cfg.Location).Format("2006-01-02") }
 
 func (r *Runtime) Snapshot() Snapshot {
@@ -856,6 +881,13 @@ func (r *Runtime) Snapshot() Snapshot {
 			Enabled:     r.cfg.FollowUp,
 			Pending:     r.lastEntry.Signals.FollowUpPending,
 			SpokenToday: CountSpokenToday(r.recent, IntentFollowUp, now, r.cfg.Location),
+		},
+		MorningBrief: r.cfg.MorningBrief,
+		EveningRecap: SubjectIntentStatus{
+			Enabled:     r.cfg.EveningRecap,
+			Pending:     r.lastEntry.Signals.RecapDue,
+			SpokenToday: CountSpokenToday(r.recent, IntentEveningRecap, now, r.cfg.Location),
+			Window:      recapWindowStatus(r.cfg),
 		},
 	}
 }
