@@ -72,7 +72,7 @@ jobs:
 
   build-assets:
     needs: prepare-release
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     steps:
@@ -169,7 +169,7 @@ jobs:
     needs:
       - prepare-release
       - build-assets
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     steps:
