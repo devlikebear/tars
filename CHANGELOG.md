@@ -6,9 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-11-11
+
 ### Added
 
-- **`web_search`: RustXNG provider** — set `tools.web_search.provider: rustxng` to search through a self-hosted [RustXNG](https://github.com/sahenjp/RustXNG) server (`tools.web_search.rustxng.base_url`, default `http://127.0.0.1:29483`). No API key. Snippets only — page text stays off. TARS does not install or start the server, and queries go to the upstream engines that server uses.
+- **`web_search`: RustXNG provider** — set `tools.web_search.provider: rustxng` to search through a self-hosted [RustXNG](https://github.com/sahenjp/RustXNG) server (`tools.web_search.rustxng.base_url`, default `http://127.0.0.1:29483`). No API key. Snippets only — page text stays off. TARS does not install or start the server, and queries go to the upstream engines that server uses. ([#1323](https://github.com/devlikebear/tars/pull/1323))
+- **Run native `exec` commands in an OS sandbox, off by default.** `tools.exec.sandbox.enabled` runs foreground and background shell commands under Seatbelt on macOS or bubblewrap on Linux. It fails closed: when the sandbox is on but unavailable (Windows, missing `bwrap`), the command is refused rather than run unsandboxed. `tars doctor` reports it. ([#1329](https://github.com/devlikebear/tars/pull/1329))
+- **agent-desktop as a computer use driver.** `tools.computer_use.driver: agent-desktop` (with `agent_desktop_path` / `AGENT_DESKTOP_PATH`) selects it instead of the default `cua-driver`; no new tool. ([#1324](https://github.com/devlikebear/tars/pull/1324))
+- **Focus: harness proposals, opt-in per pipeline.** A pipeline created with `harness_proposal: true` turns the facts it ran into (findings fixed, failed verify commands, failed CI checks) into proposed skill and `CLAUDE.md`/`AGENTS.md` changes, opened as a new focus pipeline for a person to approve. Proposals that cite no evidence are dropped. ([#1328](https://github.com/devlikebear/tars/pull/1328))
+- **Focus: execution tier, opt-in per pipeline.** `exec_tier: heavy|standard|light` sends build and fix turns on that tier while plan, review, PR and merge turns stay on the session's tier. `GET /v1/focus/exec-report` compares completion rate and cost per pipeline by tier. ([#1331](https://github.com/devlikebear/tars/pull/1331))
+- **Focus: verify promotion, opt-in per pipeline, and a repository verify list.** With `verify_promotion: true`, a defect that recurs across pipelines gets a check the server replays in a sandbox (it must fail before the fix and pass after) and proposes as a new pipeline. Every pipeline now also reads `.tars/verify.json` and appends its commands to the plan's verify list; a plan edit cannot remove them. ([#1332](https://github.com/devlikebear/tars/pull/1332))
+- **Initiative: offline tuning loop.** `tars initiative export|scenarios|calibrate|adapt` read the ledger only, never call the server and never change config; they print suggestions. A fixed eval set now gates `Decide` in tests. ([#1327](https://github.com/devlikebear/tars/pull/1327))
+- **Initiative: `remind` and `confirm_memory`, off by default.** Reminders bound for the main session can be spoken by CASE instead of posted as a note (falling back to the old path after 10 minutes), and a pending preference memory can be confirmed with approve/reject buttons. ([#1330](https://github.com/devlikebear/tars/pull/1330))
+- **Initiative: `share_result` and `follow_up`, off by default.** Results of unattended runs and failed cron jobs can be reported in conversation, and the day's first arrival can mention unfinished goals or focus pipelines instead of a plain greeting. ([#1333](https://github.com/devlikebear/tars/pull/1333))
+- **CASE: arrival brief and check-in answers.** In live mode, a greeting lists up to three "while you were away" lines that each open their screen, and a check-in offers I'm fine / Again in 20 min / Quiet for today buttons. The lines are built by the server, not the model. On by default in live mode (`initiative.arrival_brief`, `initiative.check_in_buttons`). ([#1334](https://github.com/devlikebear/tars/pull/1334))
+- **Initiative: morning brief and evening recap, off by default.** `initiative.morning_brief` adds cron runs left today, yesterday's activity counts and work in progress to the first arrival bubble; `initiative.evening_recap` posts one end-of-day message listing done, failed and still-open work. Every line is a fixed English/Korean frame built in Go — no model writes or summarizes them. ([#1335](https://github.com/devlikebear/tars/pull/1335))
+
+### Fixed
+
+- **Cron expressions run in the job's timezone, not UTC.** New jobs are stamped `Local`; a `CRON_TZ=` prefix still wins. Jobs saved before this keep running on UTC until their schedule is edited, so upgrades do not shift run times. Natural-language schedules ("내일 오후 3시") are read in the server's local zone instead of UTC. ([#1325](https://github.com/devlikebear/tars/pull/1325))
+- **Goal mode no longer lets the agent change the plan's checks.** In goal mode an agent edit (the `focus_plan_edit` tool or a `<focus-plan-edit>` block) that changes `verify` or `e2e*` is rejected whole; edits from the console or API are unchanged. ([#1326](https://github.com/devlikebear/tars/pull/1326))
+- **Computer use asks before typing into a password field driven by cua-driver 0.34**, which reports secure fields as plain text fields. ([#1324](https://github.com/devlikebear/tars/pull/1324))
+- **The Claude Code CLI no longer opens a console window on Windows** when TARS runs without a console. ([#1322](https://github.com/devlikebear/tars/pull/1322))
+- **Focus no longer warns about plan tasks that say they will not push or open a PR** ("push/PR 없음", "no push"). ([#1321](https://github.com/devlikebear/tars/pull/1321))
 
 ## [0.67.0] - 2026-10-31
 
