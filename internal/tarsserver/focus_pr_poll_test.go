@@ -663,8 +663,10 @@ func TestProbeEarlyPR(t *testing.T) {
 	t.Run("build stage with a pr stage: probed once and noticed", func(t *testing.T) {
 		d, store, id, prober := newBuildDriver(t)
 		d.probeEarlyPR(id)
-		waitFor(t, "probe called", func() bool { return prober.count() >= 1 })
-		time.Sleep(20 * time.Millisecond)
+		// The probe goroutine is the driver's only one here: once it is
+		// done, its result has been applied (the fake prober counts the
+		// call before the result lands).
+		d.wg.Wait()
 		if got := prober.count(); got != 1 {
 			t.Fatalf("probe called %d times, want 1", got)
 		}
@@ -686,9 +688,12 @@ func TestProbeEarlyPR(t *testing.T) {
 	t.Run("calling it again probes again but does not add a second notice", func(t *testing.T) {
 		d, store, id, prober := newBuildDriver(t)
 		d.probeEarlyPR(id)
-		waitFor(t, "first probe", func() bool { return prober.count() >= 1 })
+		d.wg.Wait()
 		d.probeEarlyPR(id)
-		waitFor(t, "second probe", func() bool { return prober.count() >= 2 })
+		d.wg.Wait()
+		if got := prober.count(); got != 2 {
+			t.Fatalf("probe called %d times, want 2", got)
+		}
 		p := pipelineOf(t, store, id)
 		n := 0
 		for _, c := range p.Cards {
