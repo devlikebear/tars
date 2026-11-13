@@ -54,13 +54,17 @@ func runAuthDevicesList(stdout io.Writer, workspaceDirFlag string) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tROLE\tPAIRED\tSTATUS")
+	if _, err := fmt.Fprintln(tw, "ID\tNAME\tROLE\tPAIRED\tSTATUS"); err != nil {
+		return err
+	}
 	for _, device := range devices {
 		status := "active"
 		if device.RevokedAt != nil {
 			status = "revoked " + device.RevokedAt.Format(time.RFC3339)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", device.ID, device.Name, device.Role, device.CreatedAt.Format(time.RFC3339), status)
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", device.ID, device.Name, device.Role, device.CreatedAt.Format(time.RFC3339), status); err != nil {
+			return err
+		}
 	}
 	return tw.Flush()
 }
