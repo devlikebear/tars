@@ -12,49 +12,59 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type folderList struct {
+	Folders []DeviceFolderView `json:"folders"`
+}
+
 func TestDevicesAPIFolders(t *testing.T) {
 	store := consoleauth.NewStore(t.TempDir())
 	h := NewDevicesHandler(store, zerolog.Nop())
 	repo := t.TempDir()
+	file := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "missing")
 
 	rec := serveDevices(t, h, http.MethodGet, "/v1/admin/devices/folders", "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"folders":[]`) {
 		t.Fatalf("empty list: %d %s", rec.Code, rec.Body.String())
 	}
 
-	body, _ := json.Marshal(map[string]any{"folders": []string{repo, repo + string(filepath.Separator)}})
+	body, _ := json.Marshal(map[string]any{"folders": []string{repo, repo + string(filepath.Separator), missing, file}})
 	rec = serveDevices(t, h, http.MethodPut, "/v1/admin/devices/folders", string(body))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("put: %d %s", rec.Code, rec.Body.String())
 	}
-	var got struct {
-		Folders []string `json:"folders"`
-	}
+	var got folderList
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(got.Folders) != 1 || got.Folders[0] != filepath.Clean(repo) {
-		t.Fatalf("stored folders = %v", got.Folders)
+	want := []DeviceFolderView{
+		{Path: filepath.Clean(repo), Name: filepath.Base(repo), Exists: true},
+		{Path: missing, Name: "missing", Exists: false},
+		{Path: file, Name: "file.txt", Exists: false},
+	}
+	if len(got.Folders) != len(want) {
+		t.Fatalf("folders = %+v", got.Folders)
+	}
+	for i := range want {
+		if got.Folders[i] != want[i] {
+			t.Fatalf("folder %d = %+v, want %+v", i, got.Folders[i], want[i])
+		}
 	}
 
 	rec = serveDevices(t, h, http.MethodGet, "/v1/admin/devices/folders", "")
-	if !strings.Contains(rec.Body.String(), filepath.Base(repo)) {
+	var listed folderList
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || len(listed.Folders) != 3 || !listed.Folders[0].Exists {
 		t.Fatalf("list after put: %s", rec.Body.String())
 	}
 }
 
-func TestDevicesAPIFoldersRejectsBadFolders(t *testing.T) {
+func TestDevicesAPIFoldersRejectsBadInput(t *testing.T) {
 	store := consoleauth.NewStore(t.TempDir())
 	h := NewDevicesHandler(store, zerolog.Nop())
-	file := filepath.Join(t.TempDir(), "file.txt")
-	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, folders := range [][]string{
-		{"relative"},
-		{filepath.Join(t.TempDir(), "missing")},
-		{file},
-	} {
+	for _, folders := range [][]string{{"relative"}, {"  "}} {
 		body, _ := json.Marshal(map[string]any{"folders": folders})
 		if rec := serveDevices(t, h, http.MethodPut, "/v1/admin/devices/folders", string(body)); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%v: got %d", folders, rec.Code)
@@ -88,5 +98,8 @@ func TestDevicesAPIFoldersUnreadable(t *testing.T) {
 	}
 	if rec := serveDevices(t, h, http.MethodGet, "/v1/admin/devices/folders", ""); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("broken file: got %d", rec.Code)
+	}
+	if _, err := DeviceFolderViews(store); err == nil {
+		t.Fatalf("a broken file must be an error")
 	}
 }

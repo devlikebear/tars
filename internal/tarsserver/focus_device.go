@@ -3,10 +3,9 @@ package tarsserver
 import (
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/apihandlers"
 	"github.com/devlikebear/tars/internal/consoleauth"
 	"github.com/devlikebear/tars/internal/session"
 )
@@ -54,31 +53,20 @@ func checkDeviceCreate(store *consoleauth.Store, req focusCreateRequest) (int, s
 	return 0, ""
 }
 
-type focusDeviceFolder struct {
-	Path   string `json:"path"`
-	Name   string `json:"name"`
-	Exists bool   `json:"exists"`
-}
-
 // folders lists the folders a phone may start a pipeline in, for the phone
 // to pick from (GET /v1/focus/folders). Admin and user callers see the same
-// list.
+// list, in the same shape as the desk's GET /v1/admin/devices/folders.
 func (a *focusAPI) folders(w http.ResponseWriter, _ *http.Request) {
 	store := focusDeviceStore(a.sessions)
 	if store == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "registered folders are unavailable"})
 		return
 	}
-	paths, err := store.DeviceFolders()
+	views, err := apihandlers.DeviceFolderViews(store)
 	if err != nil {
 		a.logger.Error().Err(err).Msg("focus: read registered folders")
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read registered folders"})
 		return
 	}
-	out := make([]focusDeviceFolder, 0, len(paths))
-	for _, path := range paths {
-		info, err := os.Stat(path)
-		out = append(out, focusDeviceFolder{Path: path, Name: filepath.Base(path), Exists: err == nil && info.IsDir()})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"folders": out})
+	writeJSON(w, http.StatusOK, map[string]any{"folders": views})
 }

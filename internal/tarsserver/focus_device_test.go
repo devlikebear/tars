@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/apihandlers"
 	"github.com/devlikebear/tars/internal/consoleauth"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/rs/zerolog"
@@ -140,7 +141,7 @@ func TestFocusFoldersList(t *testing.T) {
 	registerDeviceFolders(t, f, f.repo, gone)
 	rec = focusRequestAs(t, h, http.MethodGet, "/v1/focus/folders", "", serverauth.RoleFocus)
 	var out struct {
-		Folders []focusDeviceFolder `json:"folders"`
+		Folders []apihandlers.DeviceFolderView `json:"folders"`
 	}
 	decodeInto(t, rec, &out)
 	if len(out.Folders) != 2 {
