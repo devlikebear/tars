@@ -39,6 +39,9 @@ type Options struct {
 	AdminPaths                    []string
 	BrowserSessionCookieName      string
 	BrowserSessionRoleResolver    func(sessionID string) (string, bool)
+	// DeviceTokenResolver maps a bearer token that is none of the static
+	// tokens to a paired device's role. Only RoleFocus is accepted from it.
+	DeviceTokenResolver func(token string) (string, bool)
 }
 
 type pathMatcher struct {
@@ -57,6 +60,7 @@ type compiledOptions struct {
 	adminWorkspaceAllowlist       map[string]struct{}
 	browserSessionCookieName      string
 	browserSessionRoleResolver    func(sessionID string) (string, bool)
+	deviceTokenResolver           func(token string) (string, bool)
 	logger                        zerolog.Logger
 	hasLegacyToken                bool
 	hasUserToken                  bool
@@ -81,6 +85,16 @@ type authSourceKey struct{}
 const (
 	RoleUser  = "user"
 	RoleAdmin = "admin"
+	// RoleFocus is a paired mobile device (docs/decisions/mobile-remote.md
+	// §4). It authenticates with its own bearer token and reaches only the
+	// focus endpoint table, whatever the auth mode's other rules allow.
+	RoleFocus = "focus"
+)
+
+const (
+	authSourceBearer         = "bearer"
+	authSourceDevice         = "device"
+	authSourceBrowserSession = "browser_session"
 )
 
 func WorkspaceIDFromContext(ctx context.Context) string {
@@ -182,6 +196,7 @@ func compileOptions(opts Options, logOut io.Writer) compiledOptions {
 		adminWorkspaceAllowlist:       toWorkspaceAllowlist(opts.AdminWorkspaceAllowlist),
 		browserSessionCookieName:      browserSessionCookieName,
 		browserSessionRoleResolver:    opts.BrowserSessionRoleResolver,
+		deviceTokenResolver:           opts.DeviceTokenResolver,
 		logger:                        zerolog.New(logOut).With().Str("component", "serverauth").Logger(),
 		hasLegacyToken:                hasLegacyToken,
 		hasUserToken:                  hasUserToken,
@@ -213,19 +228,16 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			role := ""
 			authSource := ""
 			if hasBearer {
-				role = compiled.resolveRole(r.Header.Get("Authorization"))
+				role, authSource = compiled.resolveRole(r.Header.Get("Authorization"))
 				if requirement.tokenNeeded && role == "" {
 					w.Header().Set("WWW-Authenticate", "Bearer")
 					writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 					return
 				}
-				if role != "" {
-					authSource = "bearer"
-				}
 			} else {
 				role = compiled.resolveBrowserSessionRole(req)
 				if role != "" {
-					authSource = "browser_session"
+					authSource = authSourceBrowserSession
 				}
 			}
 			if requirement.tokenNeeded && role == "" {
@@ -253,8 +265,14 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
-			browserUserAllowed := authSource == "browser_session" && role == RoleUser && EndpointAllowsRole(r.Method, r.URL.Path, role)
-			if authSource == "browser_session" && role == RoleUser && !browserUserAllowed {
+			// A device reaches only its own table, in every auth mode that
+			// resolved it: it is a narrower credential than the user token.
+			if role == RoleFocus && !EndpointAllowsRole(r.Method, r.URL.Path, role) {
+				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
+				return
+			}
+			browserUserAllowed := authSource == authSourceBrowserSession && role == RoleUser && EndpointAllowsRole(r.Method, r.URL.Path, role)
+			if authSource == authSourceBrowserSession && role == RoleUser && !browserUserAllowed {
 				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
@@ -267,7 +285,7 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
 			}
-			if authSource == "browser_session" && isMutatingMethod(r.Method) && !secFetchSiteAllowsMutation(r) {
+			if authSource == authSourceBrowserSession && isMutatingMethod(r.Method) && !secFetchSiteAllowsMutation(r) {
 				writeJSONError(w, http.StatusForbidden, "csrf_failed", "same-origin browser request required")
 				return
 			}
@@ -333,12 +351,14 @@ func (c compiledOptions) requirementForRequest(r *http.Request) requestRequireme
 	}
 }
 
-func (c compiledOptions) resolveRole(authHeader string) string {
+// resolveRole returns the bearer token's role and where it came from: one of
+// the static tokens ("bearer") or a paired device ("device").
+func (c compiledOptions) resolveRole(authHeader string) (string, string) {
 	presentedToken, hasBearer := parseBearerToken(authHeader)
 	if !hasBearer {
-		return ""
+		return "", ""
 	}
-	return resolveTokenRole(
+	if role := resolveTokenRole(
 		presentedToken,
 		c.hasLegacyToken,
 		c.hasUserToken,
@@ -346,7 +366,17 @@ func (c compiledOptions) resolveRole(authHeader string) string {
 		c.legacyHash,
 		c.userHash,
 		c.adminHash,
-	)
+	); role != "" {
+		return role, authSourceBearer
+	}
+	if c.deviceTokenResolver == nil {
+		return "", ""
+	}
+	role, ok := c.deviceTokenResolver(presentedToken)
+	if !ok || strings.TrimSpace(strings.ToLower(role)) != RoleFocus {
+		return "", ""
+	}
+	return RoleFocus, authSourceDevice
 }
 
 func (c compiledOptions) resolveBrowserSessionRole(r *http.Request) string {

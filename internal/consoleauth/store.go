@@ -258,7 +258,7 @@ func (s *Store) RevokeRoleSessions(role string) error {
 }
 
 func (s *Store) CreatePairingCode(role string, ttl time.Duration) (PairingCode, error) {
-	role, err := normalizeRole(role)
+	role, err := normalizePairingRole(role)
 	if err != nil {
 		return PairingCode{}, err
 	}
@@ -436,6 +436,15 @@ func normalizeRole(role string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported console auth role %q", role)
 	}
+}
+
+// normalizePairingRole is normalizeRole plus RoleFocus: a pairing code can
+// enroll a mobile device, which has no password and no browser session.
+func normalizePairingRole(role string) (string, error) {
+	if strings.TrimSpace(strings.ToLower(role)) == RoleFocus {
+		return RoleFocus, nil
+	}
+	return normalizeRole(role)
 }
 
 func hashPassword(password string, reader io.Reader) (string, error) {
