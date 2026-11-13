@@ -172,3 +172,49 @@ func TestApplyAPIMiddleware_DeviceTokenReachesFocusOnly(t *testing.T) {
 		t.Fatalf("device-pair must skip bearer auth: got %d", code)
 	}
 }
+
+func TestApplyAPIMiddleware_AppCORS(t *testing.T) {
+	workspace := t.TempDir()
+	_, token, err := consoleauth.NewStore(workspace).CreateDevice("iPhone", consoleauth.RoleFocus)
+	if err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		APIConfig:     config.APIConfig{APIAuthMode: "required", APIAdminToken: "admin-token"},
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	// A preflight carries no token and must not be refused by auth.
+	pre := httptest.NewRequest(http.MethodOptions, "/v1/focus/pipelines", nil)
+	pre.RemoteAddr = "100.64.0.9:5555"
+	pre.Header.Set("Origin", "capacitor://localhost")
+	pre.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, pre)
+	if rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Allow-Origin") != "capacitor://localhost" {
+		t.Fatalf("preflight: %d %v", rec.Code, rec.Header())
+	}
+
+	get := httptest.NewRequest(http.MethodGet, "/v1/focus/pipelines", nil)
+	get.RemoteAddr = "100.64.0.9:5555"
+	get.Header.Set("Origin", "capacitor://localhost")
+	get.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, get)
+	if rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Allow-Origin") != "capacitor://localhost" {
+		t.Fatalf("device request: %d %v", rec.Code, rec.Header())
+	}
+
+	// CORS never stands in for auth: no token is still 401.
+	noToken := httptest.NewRequest(http.MethodGet, "/v1/focus/pipelines", nil)
+	noToken.RemoteAddr = "100.64.0.9:5555"
+	noToken.Header.Set("Origin", "capacitor://localhost")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, noToken)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no token: %d", rec.Code)
+	}
+}

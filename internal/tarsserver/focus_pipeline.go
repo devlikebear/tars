@@ -395,6 +395,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/goal", api.goal)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/plan", api.planEdit)
 	mux.HandleFunc("GET /v1/focus/templates", api.templates)
+	mux.HandleFunc("GET /v1/focus/folders", api.folders)
 	mux.HandleFunc("GET /v1/focus/exec-report", api.execReport)
 	return mux
 }
@@ -460,11 +461,23 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	if serverauth.RoleFromRequest(r) != serverauth.RoleAdmin {
+	role := serverauth.RoleFromRequest(r)
+	switch role {
+	case serverauth.RoleAdmin:
+	case serverauth.RoleFocus:
+		// A paired phone (focus_device.go): registered folders only, and
+		// the server sends the first turn — the phone has no chat turn of
+		// its own to send it with.
+		if status, msg := checkDeviceCreate(focusDeviceStore(a.sessions), req); status != 0 {
+			writeJSON(w, status, map[string]string{"error": msg})
+			return
+		}
+		req.Start = true
+	default:
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "starting a focus task in a folder needs the admin token"})
 		return
 	}
-	status, resp := a.open(r.Context(), req, serverauth.RoleFromRequest(r))
+	status, resp := a.open(r.Context(), req, role)
 	writeJSON(w, status, resp)
 }
 

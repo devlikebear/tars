@@ -3,6 +3,7 @@ package apihandlers
 import (
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -42,7 +43,50 @@ func NewDevicesHandler(store *consoleauth.Store, logger zerolog.Logger) http.Han
 	h.mux.HandleFunc("GET /v1/admin/devices", h.list)
 	h.mux.HandleFunc("POST /v1/admin/devices/pairing-code", h.pairingCode)
 	h.mux.HandleFunc("DELETE /v1/admin/devices/{id}", h.revoke)
+	h.mux.HandleFunc("GET /v1/admin/devices/folders", h.folders)
+	h.mux.HandleFunc("PUT /v1/admin/devices/folders", h.setFolders)
 	return h
+}
+
+// folders returns the folders a paired device may start a focus pipeline in.
+func (h *devicesAPIHandler) folders(w http.ResponseWriter, _ *http.Request) {
+	folders, err := h.store.DeviceFolders()
+	if err != nil {
+		h.logger.Error().Err(err).Msg("read device folders")
+		httpapi.WriteError(w, http.StatusInternalServerError, "device_folders_unavailable", "failed to read device folders")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"folders": folders})
+}
+
+// setFolders replaces the list. Every folder must exist now, so a typo is
+// caught at the desk rather than on the phone; one that disappears later is
+// refused when a pipeline is created in it.
+func (h *devicesAPIHandler) setFolders(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Folders []string `json:"folders"`
+	}
+	if !httpapi.DecodeJSONBody(w, r, &req) {
+		return
+	}
+	for _, folder := range req.Folders {
+		normalized, err := consoleauth.NormalizeDeviceFolder(folder)
+		if err != nil {
+			httpapi.WriteError(w, http.StatusBadRequest, "invalid_folder", err.Error())
+			return
+		}
+		info, err := os.Stat(normalized)
+		if err != nil || !info.IsDir() {
+			httpapi.WriteError(w, http.StatusBadRequest, "folder_not_found", "folder not found: "+normalized)
+			return
+		}
+	}
+	stored, err := h.store.SetDeviceFolders(req.Folders)
+	if err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, "invalid_folders", err.Error())
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, map[string]any{"folders": stored})
 }
 
 func (h *devicesAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
