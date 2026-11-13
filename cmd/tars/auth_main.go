@@ -72,10 +72,10 @@ func newAuthCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	pairingCmd.Flags().StringVar(&pairingOpts.workspaceDir, "workspace-dir", pairingOpts.workspaceDir, "workspace directory")
-	pairingCmd.Flags().StringVar(&pairingOpts.role, "role", pairingOpts.role, "role for the pairing code")
+	pairingCmd.Flags().StringVar(&pairingOpts.role, "role", pairingOpts.role, "role for the pairing code: user (browser) or focus (mobile device)")
 	pairingCmd.Flags().DurationVar(&pairingOpts.ttl, "ttl", pairingOpts.ttl, "pairing code TTL")
 
-	cmd.AddCommand(initCmd, passwdCmd, pairingCmd)
+	cmd.AddCommand(initCmd, passwdCmd, pairingCmd, newAuthDevicesCommand(stdout))
 	return cmd
 }
 
@@ -124,7 +124,7 @@ func runAuthPasswd(_ context.Context, stdin io.Reader, stdout, stderr io.Writer,
 }
 
 func runAuthPairingCode(_ context.Context, stdout io.Writer, opts authOptions) error {
-	role, err := normalizeAuthCommandRole(opts.role)
+	role, err := normalizePairingCommandRole(opts.role)
 	if err != nil {
 		return err
 	}

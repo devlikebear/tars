@@ -49,6 +49,8 @@ func (h *authAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleLogin(w, r)
 	case "/v1/auth/pairing-login":
 		h.handlePairingLogin(w, r)
+	case "/v1/auth/device-pair":
+		h.handleDevicePair(w, r)
 	case "/v1/auth/logout":
 		h.handleLogout(w, r)
 	default:
@@ -195,6 +197,66 @@ func (h *authAPIHandler) handlePairingLogin(w http.ResponseWriter, r *http.Reque
 		"auth_role":     consoleauth.RoleUser,
 		"is_admin":      false,
 		"auth_mode":     h.mode,
+	})
+}
+
+// handleDevicePair trades a one-time focus pairing code for a device token
+// (docs/decisions/mobile-remote.md §4). It runs under the same gate as browser
+// login — a secure or Tailscale-identified request — and the same failure
+// limiter. The token is in this response only; the server keeps its hash.
+func (h *authAPIHandler) handleDevicePair(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	gate := evaluateLoginRequest(r)
+	if !gate.Allowed {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": gate.Reason,
+			"code":  "login_not_allowed",
+		})
+		return
+	}
+	var req struct {
+		Code string `json:"code"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pairing request", "code": "invalid_request"})
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "device name is required", "code": "invalid_device_name"})
+		return
+	}
+	remoteKey := loginFailureRemoteKey(r)
+	if allowed, until := h.failures.Allow(consoleauth.FailurePurposePairing, consoleauth.RoleFocus, remoteKey); !allowed {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{
+			"error": "too many pairing attempts",
+			"code":  "pairing_locked",
+			"until": until.Format(time.RFC3339),
+		})
+		return
+	}
+	if _, ok, err := h.store.ConsumePairingCodeForRole(req.Code, consoleauth.RoleFocus); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to consume pairing code", "code": "pairing_failed"})
+		return
+	} else if !ok {
+		h.failures.RecordFailure(consoleauth.FailurePurposePairing, consoleauth.RoleFocus, remoteKey)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid pairing code", "code": "invalid_pairing_code"})
+		return
+	}
+	h.failures.RecordSuccess(consoleauth.FailurePurposePairing, consoleauth.RoleFocus, remoteKey)
+	device, token, err := h.store.CreateDevice(req.Name, consoleauth.RoleFocus)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": "invalid_device_name"})
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"device_id": device.ID,
+		"name":      device.Name,
+		"role":      device.Role,
+		"token":     token,
 	})
 }
 

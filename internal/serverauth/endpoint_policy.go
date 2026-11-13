@@ -14,6 +14,8 @@ const (
 	EndpointAccessPublic EndpointAccess = "public"
 	EndpointAccessUser   EndpointAccess = "user"
 	EndpointAccessAdmin  EndpointAccess = "admin"
+	// EndpointAccessFocus marks a rule in focusEndpointRules.
+	EndpointAccessFocus EndpointAccess = "focus"
 )
 
 // EndpointPolicyRule is the remote browser allowlist skeleton. It is not wired
@@ -122,12 +124,37 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule([]string{http.MethodGet, http.MethodPost, http.MethodPatch}, "/v1/workspace/files/*", "workspace-scoped file access"),
 }
 
+// focusEndpointRules is everything a paired mobile device (RoleFocus) may
+// call (docs/decisions/mobile-remote.md §4). It is a table of its own, not an
+// access level in defaultEndpointPolicyRules, so adding a user route never
+// widens what a phone can do. Handlers keep their own checks on top: creating
+// a pipeline and turning goal mode on still need the admin role there.
+var focusEndpointRules = []EndpointPolicyRule{
+	publicRule([]string{http.MethodGet}, "/v1/healthz", "health probe"),
+	focusRule([]string{http.MethodGet}, "/v1/auth/whoami", "device auth status"),
+	focusRule([]string{http.MethodGet, http.MethodPost}, "/v1/focus/pipelines", "focus pipeline list/create"),
+	focusRule([]string{http.MethodGet}, "/v1/focus/pipelines/:id", "focus pipeline read"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/gates/:gate", "focus gate action"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/cards/:card", "focus card state"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/findings", "focus developer finding"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/advance", "focus manual stage pass"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/stop", "focus pipeline stop"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/qa", "focus Q&A"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/goal", "focus goal mode"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/plan", "focus plan edit"),
+	focusRule([]string{http.MethodGet}, "/v1/focus/templates", "focus template list"),
+}
+
 func publicRule(methods []string, pattern, note string) EndpointPolicyRule {
 	return EndpointPolicyRule{Methods: methods, Pattern: pattern, Access: EndpointAccessPublic, Note: note}
 }
 
 func userRule(methods []string, pattern, note string) EndpointPolicyRule {
 	return EndpointPolicyRule{Methods: methods, Pattern: pattern, Access: EndpointAccessUser, Note: note}
+}
+
+func focusRule(methods []string, pattern, note string) EndpointPolicyRule {
+	return EndpointPolicyRule{Methods: methods, Pattern: pattern, Access: EndpointAccessFocus, Note: note}
 }
 
 func ResolveEndpointAccess(method, path string) EndpointAccess {
@@ -148,11 +175,25 @@ func EndpointAllowsRole(method, path, role string) bool {
 	case RoleUser:
 		access := ResolveEndpointAccess(method, path)
 		return access == EndpointAccessUser || access == EndpointAccessPublic
+	case RoleFocus:
+		return focusEndpointAllows(method, path)
 	case "":
 		return ResolveEndpointAccess(method, path) == EndpointAccessPublic
 	default:
 		return false
 	}
+}
+
+// focusEndpointAllows reports whether a paired device may call method path.
+func focusEndpointAllows(method, path string) bool {
+	method = normalizeEndpointMethod(method)
+	path = normalizeEndpointPath(path)
+	for _, rule := range focusEndpointRules {
+		if endpointMethodsMatch(method, rule.Methods) && endpointPatternMatches(rule.Pattern, path) {
+			return true
+		}
+	}
+	return false
 }
 
 func endpointMethodsMatch(method string, allowed []string) bool {

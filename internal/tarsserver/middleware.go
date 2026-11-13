@@ -28,6 +28,7 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 		LoopbackSkipPaths:             dashboardLoopbackSkipPaths(cfg),
 		AdminPaths:                    apiAdminPaths(),
 		BrowserSessionRoleResolver:    browserSessionRoleResolver(cfg.WorkspaceDir),
+		DeviceTokenResolver:           deviceTokenRoleResolver(cfg.WorkspaceDir),
 	}, authLog)
 	return requestDebugMiddleware(logger, auth(withDefaultWorkspaceBinding(next)))
 }
@@ -43,8 +44,22 @@ func browserSessionRoleResolver(workspaceDir string) func(sessionID string) (str
 	}
 }
 
+// deviceTokenRoleResolver resolves a paired mobile device's bearer token
+// (docs/decisions/mobile-remote.md §4). serverauth accepts only the focus role
+// from it.
+func deviceTokenRoleResolver(workspaceDir string) func(token string) (string, bool) {
+	store := consoleauth.NewStore(workspaceDir)
+	return func(token string) (string, bool) {
+		device, ok, err := store.ValidateDeviceToken(token)
+		if err != nil || !ok {
+			return "", false
+		}
+		return device.Role, true
+	}
+}
+
 func apiAuthSkipPaths(cfg config.Config) []string {
-	return []string{"/v1/healthz", "/v1/setup/status", "/v1/auth/login", "/v1/auth/pairing-login", "/", "/console", "/console/", "/console/*"}
+	return []string{"/v1/healthz", "/v1/setup/status", "/v1/auth/login", "/v1/auth/pairing-login", "/v1/auth/device-pair", "/", "/console", "/console/", "/console/*"}
 }
 
 func apiAdminPaths() []string {

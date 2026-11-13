@@ -16,6 +16,7 @@ import (
 	"github.com/devlikebear/tars/internal/apihandlers"
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/consoleauth"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/devlikebear/tars/internal/extensions"
@@ -107,6 +108,7 @@ type apiRouteHandlers struct {
 	ops               http.Handler
 	status            http.Handler
 	auth              http.Handler
+	devices           http.Handler
 	remoteAccess      http.Handler
 	healthz           http.Handler
 	setup             http.Handler
@@ -709,6 +711,7 @@ func buildAPIMux(
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
+	devicesHandler := apihandlers.NewDevicesHandler(consoleauth.NewStore(cfg.WorkspaceDir), logger)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	remoteAccessHandler := apihandlers.NewRemoteAccessHandler(apihandlers.RemoteAccessOptions{
 		Config:     cfg,
@@ -822,6 +825,7 @@ func buildAPIMux(
 		ops:             opsHandler,
 		status:          statusHandler,
 		auth:            authHandler,
+		devices:         devicesHandler,
 		remoteAccess:    remoteAccessHandler,
 		healthz:         healthzHandler,
 		setup:           setupHandler,
@@ -1013,8 +1017,13 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/auth/whoami", handlers.auth)
 	mux.Handle("/v1/auth/login", handlers.auth)
 	mux.Handle("/v1/auth/pairing-login", handlers.auth)
+	mux.Handle("/v1/auth/device-pair", handlers.auth)
 	mux.Handle("/v1/auth/logout", handlers.auth)
 	mux.Handle("/v1/auth/users/", handlers.auth)
+	if handlers.devices != nil {
+		mux.Handle("/v1/admin/devices", handlers.devices)
+		mux.Handle("/v1/admin/devices/", handlers.devices)
+	}
 	if handlers.remoteAccess != nil {
 		mux.Handle("/v1/admin/remote-access/status", handlers.remoteAccess)
 		mux.Handle("/v1/admin/remote-access/enable", handlers.remoteAccess)

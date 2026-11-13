@@ -617,13 +617,13 @@ func TestCompileOptions_NormalizesPathsTokensAndWorkspaceSettings(t *testing.T) 
 	if !compiled.adminPaths.match("/v1/channels/webhook/inbound/general") {
 		t.Fatalf("expected wildcard admin path to match by prefix")
 	}
-	if compiled.resolveRole("Bearer user-token") != RoleUser {
+	if role, source := compiled.resolveRole("Bearer user-token"); role != RoleUser || source != authSourceBearer {
 		t.Fatalf("expected user token to resolve to role user")
 	}
-	if compiled.resolveRole("Bearer admin-token") != RoleAdmin {
+	if role, _ := compiled.resolveRole("Bearer admin-token"); role != RoleAdmin {
 		t.Fatalf("expected admin token to resolve to role admin")
 	}
-	if compiled.resolveRole("Bearer unknown-token") != "" {
+	if role, source := compiled.resolveRole("Bearer unknown-token"); role != "" || source != "" {
 		t.Fatalf("expected unknown token to resolve to empty role")
 	}
 	if !compiled.requireWorkspaceForAuthorized {
