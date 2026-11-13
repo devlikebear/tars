@@ -244,7 +244,13 @@ func TestFocusSecondOpinionFailures(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			prev := focusSecondOpinionTimeout
-			focusSecondOpinionTimeout = 100 * time.Millisecond
+			// Only the timeout case should reach the limit. A short limit
+			// elsewhere can expire during setup on a loaded machine, and a
+			// provider error after the limit is (rightly) a timeout.
+			focusSecondOpinionTimeout = time.Minute
+			if tc.wantReason == focuspipeline.SecondOpinionTimeout {
+				focusSecondOpinionTimeout = 100 * time.Millisecond
+			}
 			t.Cleanup(func() { focusSecondOpinionTimeout = prev })
 			d, _, store, id, _ := testSecondOpinionDriver(t, soNoFindings, tc.so)
 			d.start(id, sendTurn("Start the review stage."), "")
