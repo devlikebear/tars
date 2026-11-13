@@ -1451,6 +1451,66 @@ func TestApplyProbeOncePRStageReachedStillAccepts(t *testing.T) {
 	}
 }
 
+// TestApplyEarlyPRProbeWhileTurnOwedOrGated covers the race the driver hits:
+// the early probe runs alongside the turn's verification, which may land
+// first and owe the next turn or open a gate. The notice is advisory and an
+// open PR is not a fact the owed turn changes, so it is still recorded —
+// while a pr/pr_review/merge probe in the same state stays stale.
+func TestApplyEarlyPRProbeWhileTurnOwedOrGated(t *testing.T) {
+	tests := []struct {
+		name       string
+		stage      StageID
+		pending    string
+		gate       string
+		stopped    bool
+		wantNotice bool
+	}{
+		{name: "build, next turn owed", stage: StageBuild, pending: "continue with task 2", wantNotice: true},
+		{name: "review, fix turn owed", stage: StageReview, pending: "fix the findings", wantNotice: true},
+		{name: "review, triage gate open", stage: StageReview, gate: GateTriage, wantNotice: true},
+		{name: "build, blocked gate open", stage: StageBuild, gate: GateBlocked, wantNotice: true},
+		{name: "build, pipeline stopped", stage: StageBuild, stopped: true, wantNotice: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := atStage(t, tt.stage)
+			p.PendingTurn = tt.pending
+			p.OpenGate = tt.gate
+			if tt.stopped {
+				for i := range p.Stages {
+					if p.Stages[i].ID == p.Current {
+						p.Stages[i].Status = StatusDone
+					}
+				}
+			}
+			got, act, err := Apply(p, Event{Kind: EventPRProbe, Probe: probeFound()}, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if act.Kind != ActionNone || got.PR != nil || got.Current != tt.stage ||
+				got.PendingTurn != tt.pending || got.OpenGate != tt.gate {
+				t.Fatalf("early probe must only notice: act=%+v pr=%+v current=%s pending=%q gate=%q",
+					act, got.PR, got.Current, got.PendingTurn, got.OpenGate)
+			}
+			if has := got.hasEarlyPRNotice(12); has != tt.wantNotice {
+				t.Fatalf("early PR notice = %v, want %v", has, tt.wantNotice)
+			}
+		})
+	}
+
+	// The pr stage keeps the staleness rule: a probe that started before
+	// the owed open turn must not judge the PR yet.
+	owed := opening(t)
+	owed.PendingTurn = "open the PR"
+	got, act, err := Apply(owed, Event{Kind: EventPRProbe, Probe: probeFound()}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if act.Kind != ActionNone || got.PR != nil || got.Current != StagePR || len(got.Cards) != len(owed.Cards) {
+		t.Fatalf("pr stage probe with an owed turn must stay stale: act=%+v pr=%+v current=%s", act, got.PR, got.Current)
+	}
+}
+
 func TestApplyEarlyPRProbeIgnoresOtherBranchesAndClosedPRs(t *testing.T) {
 	otherBranch := probeFound()
 	otherBranch.HeadRef = "feature/elsewhere"

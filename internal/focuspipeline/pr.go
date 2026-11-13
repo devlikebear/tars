@@ -374,17 +374,23 @@ func applyProbe(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		return p, noAction, ErrInvalidProbe
 	}
 	probe := *ev.Probe
-	if !p.Active() || (p.OpenGate != GateNone && p.OpenGate != GateMerge) || p.PendingTurn != "" {
-		// Stale: a gate decides now, the pipeline ended, or a probe started
-		// before the owed turn and would judge facts it has not changed yet.
+	if !p.Active() {
 		return p, noAction, nil
 	}
 	if kind := p.CurrentKind(); kind == StageBuild || kind == StageReview {
 		// A one-shot probe after a build/review turn (tars dogfooding fix
 		// #3b, WantsEarlyPRProbe/the driver's probeEarlyPR): notice only,
 		// never record or act — the pr stage's own probe decides this PR
-		// from scratch once the pipeline actually reaches it.
+		// from scratch once the pipeline actually reaches it. It skips the
+		// staleness rule below on purpose: the probe runs alongside the
+		// turn's verification, which often lands first and owes the next
+		// turn or opens a gate, and neither changes whether a PR is open.
 		return applyEarlyPRProbe(p, probe, now)
+	}
+	if (p.OpenGate != GateNone && p.OpenGate != GateMerge) || p.PendingTurn != "" {
+		// Stale: a gate decides now, or a probe started before the owed
+		// turn and would judge facts it has not changed yet.
+		return p, noAction, nil
 	}
 	next := p.clone()
 	act := noAction
