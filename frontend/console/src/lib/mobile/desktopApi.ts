@@ -5,7 +5,8 @@
 import { APIRequestError, requestJSONAt, type APITarget } from '../api/client.ts'
 import type { PairingTarget } from '../devicePairing.ts'
 import type { ActivitySnapshot } from '../sessionBoard.ts'
-import type { FocusListItem } from '../types.ts'
+import type { FocusListItem, FocusTemplate, FocusTemplateList } from '../types.ts'
+import type { RegisteredFolder } from './ideas.ts'
 import { statusFrom, type DesktopStatus, type HealthAnswer } from './desktops.ts'
 
 export type DevicePairAnswer = { device_id: string; name: string; role: string; token: string }
@@ -54,6 +55,36 @@ export const desktopAPI: DesktopAPI = {
       tokenStatus = err instanceof APIRequestError ? err.status : 0
     }
     return statusFrom(health, tokenStatus)
+  },
+}
+
+// The calls behind sending an idea: the folders the desk registered for
+// phones, its templates, and starting the pipeline. The desk starts the
+// first turn itself for a phone and refuses goal mode, releases and the
+// other opt-ins, so the request carries only the goal, folder and template.
+export type TaskAPI = {
+  folders(target: APITarget): Promise<RegisteredFolder[]>
+  templates(target: APITarget): Promise<FocusTemplate[]>
+  createPipeline(target: APITarget, request: { goal: string; cwd: string; template?: string }): Promise<{ session_id: string }>
+}
+
+export const taskAPI: TaskAPI = {
+  async folders(target) {
+    const answer = await requestJSONAt<{ folders?: RegisteredFolder[] }>(target, '/v1/focus/folders', { signal: AbortSignal.timeout(probeTimeoutMs) })
+    return answer.folders ?? []
+  },
+
+  async templates(target) {
+    const answer = await requestJSONAt<FocusTemplateList>(target, '/v1/focus/templates', { signal: AbortSignal.timeout(probeTimeoutMs) })
+    return answer.templates ?? []
+  },
+
+  createPipeline(target, request) {
+    return requestJSONAt<{ session_id: string }>(target, '/v1/focus/pipelines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    })
   },
 }
 
