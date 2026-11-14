@@ -24,7 +24,7 @@ import (
 // <workspace>/sessions/<id>.pipeline.json:
 //
 //	POST /v1/focus/pipelines                      {goal, cwd, isolate, extra_dirs?, title?, kind?, kickoff?, start?, release_items?, release_since?} → 201 {session_id, pipeline, started}; 409 {error, session_id} when kind is release and the repository's release is still running. extra_dirs adds more folders the session can reach besides cwd, which stays the only active/isolated one
-//	GET  /v1/focus/pipelines                      → [{session_id, title, goal, current, open_gate, needs_input, updated_at}]
+//	GET  /v1/focus/pipelines                      → [{session_id, title, goal, current, open_gate, needs_input, updated_at, waiting?, qa_session_id?}]
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
 //	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?, pr?, card_id?} → {pipeline, next_prompt}; 409 {error, pipeline} when the gate is not open, card_id is not the open gate's card, or approving merge finds the PR head moved (the probe it runs first closes G4)
 //	POST /v1/focus/pipelines/{id}/cards/{card}    {state, decision?} → {pipeline, next_prompt}
@@ -632,6 +632,25 @@ type focusListItem struct {
 	CurrentLabel string `json:"current_label,omitempty"`
 	Template     string `json:"template,omitempty"`
 	GoalMode     bool   `json:"goal_mode,omitempty"`
+	// Waiting is what the pipeline waits on its developer for, by the rule
+	// the phone's Telegram alert uses (focuspipeline.WaitingOf): the open
+	// gate and how many decision and finding cards nobody has decided.
+	// Always sent, so the phone's inbox (docs/decisions/mobile-remote.md
+	// §2) tells "nothing waits" from a server too old to say.
+	Waiting focusListWaiting `json:"waiting"`
+	// QASessionID is the hidden Q&A session, so a tool call queued there
+	// can be shown under its pipeline.
+	QASessionID string `json:"qa_session_id,omitempty"`
+}
+
+type focusListWaiting struct {
+	Gate  string `json:"gate,omitempty"`
+	Cards int    `json:"cards"`
+}
+
+func focusListWaitingOf(p focuspipeline.Pipeline) focusListWaiting {
+	w := focuspipeline.WaitingOf(p)
+	return focusListWaiting{Gate: w.Gate, Cards: len(w.Cards)}
 }
 
 func (a *focusAPI) list(w http.ResponseWriter, _ *http.Request) {
@@ -657,6 +676,8 @@ func (a *focusAPI) list(w http.ResponseWriter, _ *http.Request) {
 			CurrentLabel: focusCurrentLabel(p),
 			Template:     p.Template,
 			GoalMode:     p.GoalActive(),
+			Waiting:      focusListWaitingOf(p),
+			QASessionID:  p.QASessionID,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

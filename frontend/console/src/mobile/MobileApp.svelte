@@ -1,23 +1,33 @@
 <script lang="ts">
-  // The TARS mobile app's first screen (docs/decisions/mobile-remote.md §2):
-  // the desktops this phone is paired with and whether each answers now.
-  // Scanning a desk's QR code with the camera opens a tars-mobile://pair
-  // link, which lands here and opens the pairing sheet filled in.
+  // The TARS mobile app's screen (docs/decisions/mobile-remote.md §2): what
+  // waits on you across every paired desktop, and the desktops themselves
+  // with whether each answers now. Scanning a desk's QR code with the camera
+  // opens a tars-mobile://pair link, which lands here and opens the pairing
+  // sheet filled in.
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../i18n'
   import type { PairingTarget } from '../lib/devicePairing'
   import type { DesktopStore } from '../lib/mobile/desktopStore.svelte'
+  import type { InboxStore } from '../lib/mobile/inboxStore.svelte'
   import type { PairedDesktop } from '../lib/mobile/desktops'
   import type { AppLinks } from '../lib/mobile/appLinks'
+  import InboxView from './InboxView.svelte'
   import PairSheet from './PairSheet.svelte'
 
   interface Props {
     store: DesktopStore
+    inbox: InboxStore
     links: AppLinks
   }
 
-  let { store, links }: Props = $props()
+  let { store, inbox, links }: Props = $props()
 
+  // While the app is open it reads again this often; there is no event
+  // stream for phones yet.
+  const pollMs = 30_000
+
+  let tab = $state<'inbox' | 'desktops'>('inbox')
+  let checking = $state(false)
   let pairOpen = $state(false)
   let pairInitial = $state<PairingTarget | null>(null)
   let notice = $state('')
@@ -32,12 +42,38 @@
   function onPaired(name: string) {
     pairOpen = false
     notice = $t.mobileApp.pairedWith(name)
+    void refresh()
   }
 
   async function forget(desktop: PairedDesktop) {
     if (!confirm($t.mobileApp.confirmForget(desktop.name))) return
     await store.forget(desktop.id)
+    void refresh()
   }
+
+  // refresh checks which desktops answer, then asks those for what waits.
+  async function refresh() {
+    if (checking) return
+    checking = true
+    try {
+      await store.refresh()
+      await inbox.refresh(store.desktops.filter((d) => store.statuses[d.id]?.state === 'online'))
+    } finally {
+      checking = false
+    }
+  }
+
+  // The desktops whose pipelines the inbox cannot show now.
+  const missing = $derived(
+    store.desktops
+      .filter((d) => {
+        const state = store.statuses[d.id]?.state
+        return (state && state !== 'online' && state !== 'checking') || inbox.failed.includes(d.id)
+      })
+      .map((d) => d.name),
+  )
+
+  const waitingCount = $derived(inbox.entries.length)
 
   function host(desktop: PairedDesktop): string {
     try {
@@ -48,13 +84,17 @@
   }
 
   onMount(() => {
-    void store.load().then(() => store.refresh())
+    void store.load().then(() => refresh())
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh()
+    }, pollMs)
     stops.push(
       links.listen((url) => {
         const target = store.readLink(url)
         if (target) openPair(target)
       }),
-      links.onResume(() => void store.refresh()),
+      links.onResume(() => void refresh()),
+      () => clearInterval(timer),
     )
   })
 
@@ -64,17 +104,45 @@
 <main class="mobile">
   <header>
     <h1>{$t.mobileApp.title}</h1>
-    <button type="button" class="btn btn-ghost btn-sm" onclick={() => store.refresh()} disabled={!store.loaded}>
-      {$t.mobileApp.refresh}
+    <button type="button" class="btn btn-ghost btn-sm" onclick={() => refresh()} disabled={!store.loaded || checking}>
+      {checking ? $t.mobileApp.refreshing : $t.mobileApp.refresh}
     </button>
   </header>
+
+  <div class="tabs" role="tablist">
+    <button
+      type="button"
+      role="tab"
+      aria-selected={tab === 'inbox'}
+      class:active={tab === 'inbox'}
+      onclick={() => (tab = 'inbox')}
+      data-testid="mobile-tab-inbox"
+    >
+      {$t.mobileApp.tabs.inbox}
+      {#if waitingCount > 0}
+        <span class="badge" data-testid="mobile-inbox-count">{waitingCount}</span>
+      {/if}
+    </button>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={tab === 'desktops'}
+      class:active={tab === 'desktops'}
+      onclick={() => (tab = 'desktops')}
+      data-testid="mobile-tab-desktops"
+    >
+      {$t.mobileApp.tabs.desktops}
+    </button>
+  </div>
 
   {#if notice}
     <p class="notice" role="status">{notice}</p>
   {/if}
 
+  {#if tab === 'inbox'}
+    <InboxView {inbox} desktops={store.desktops} {missing} {checking} />
+  {:else}
   <section aria-label={$t.mobileApp.desktopsTitle}>
-    <h2>{$t.mobileApp.desktopsTitle}</h2>
     {#if store.loaded && store.desktops.length === 0}
       <p class="empty" data-testid="mobile-empty">{$t.mobileApp.empty}</p>
     {/if}
@@ -101,6 +169,7 @@
       </article>
     {/each}
   </section>
+  {/if}
 
   <footer>
     <button type="button" class="btn btn-primary" onclick={() => openPair()} data-testid="mobile-pair-open">
@@ -134,14 +203,6 @@
     margin: 0;
     font-size: var(--text-xl);
     letter-spacing: 0.04em;
-  }
-
-  h2 {
-    margin: 0 0 var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
   }
 
   section {
@@ -228,6 +289,49 @@
     justify-content: flex-end;
     gap: var(--space-2);
     margin-top: var(--space-2);
+  }
+
+  .tabs {
+    display: flex;
+    gap: var(--space-1);
+    padding: 3px;
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+  }
+
+  .tabs button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: 36px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: var(--text-sm);
+  }
+
+  .tabs button.active {
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+  }
+
+  .badge {
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--warning);
+    color: var(--surface-base);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  footer {
+    margin-top: auto;
   }
 
   footer .btn {

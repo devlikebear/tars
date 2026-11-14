@@ -43,6 +43,32 @@ export const mobileAppEn = {
 
   forget: 'Forget',
   confirmForget: (name: string) => `Forget ${name} on this phone? The desktop keeps listing this phone until you revoke it there.`,
+
+  refreshing: 'Checking...',
+  tabs: { inbox: 'Waiting', desktops: 'Desktops' },
+  inboxNoDesktops: 'Pair a desktop to see what waits on you there.',
+  inboxChecking: 'Asking your desktops...',
+  inboxEmpty: 'Nothing waits on you.',
+  inboxEmptyHint: 'A focus pipeline shows here when a gate opens, a card needs a decision, or a tool call waits for an answer.',
+  notShown: (names: string) => `Not shown: ${names} did not answer.`,
+  gates: {
+    plan: 'Plan ready for approval (G1)',
+    triage: 'Findings to triage',
+    pr: 'Ready to open a pull request (G3)',
+    merge: 'Ready to merge (G4)',
+    blocked: 'Blocked: needs a decision',
+  } as Record<string, string>,
+  cardsToDecide: (n: number) => (n === 1 ? '1 card to decide' : `${n} cards to decide`),
+  toolCall: 'Tool call waiting',
+  approve: 'Approve',
+  reject: 'Reject',
+  allowOnce: 'Allow once',
+  deny: 'Deny',
+  answerFailures: {
+    gone: 'Already answered, or it timed out.',
+    failed: "Couldn't send the answer. Try again.",
+  },
+  openOnDesktop: 'Open in the desktop console',
 }
 
 export type MobileAppTranslations = typeof mobileAppEn
@@ -90,4 +116,30 @@ export const mobileAppKo: MobileAppTranslations = {
 
   forget: '지우기',
   confirmForget: (name) => `이 휴대폰에서 ${name}을(를) 지울까요? 데스크톱에서 연결을 해제하기 전까지는 그쪽 목록에 이 휴대폰이 남아 있습니다.`,
+
+  refreshing: '확인 중...',
+  tabs: { inbox: '대기 중', desktops: '데스크톱' },
+  inboxNoDesktops: '데스크톱을 연결하면 그곳에서 기다리는 일이 여기에 보입니다.',
+  inboxChecking: '데스크톱에 묻는 중...',
+  inboxEmpty: '기다리는 일이 없습니다.',
+  inboxEmptyHint: '게이트가 열리거나, 카드에 결정이 필요하거나, 도구 호출이 답을 기다리면 포커스 파이프라인이 여기에 나타납니다.',
+  notShown: (names) => `표시 안 됨: ${names}이(가) 응답하지 않았습니다.`,
+  gates: {
+    plan: '계획 승인 대기 (G1)',
+    triage: '분류할 지적 사항',
+    pr: '풀 리퀘스트 열기 대기 (G3)',
+    merge: '머지 대기 (G4)',
+    blocked: '막힘: 결정 필요',
+  },
+  cardsToDecide: (n) => `결정할 카드 ${n}개`,
+  toolCall: '도구 호출 대기',
+  approve: '승인',
+  reject: '거절',
+  allowOnce: '한 번 허용',
+  deny: '거부',
+  answerFailures: {
+    gone: '이미 답했거나 시간이 지났습니다.',
+    failed: '답을 보내지 못했습니다. 다시 시도하세요.',
+  },
+  openOnDesktop: '데스크톱 콘솔에서 열기',
 }

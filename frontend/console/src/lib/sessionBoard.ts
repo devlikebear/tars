@@ -192,7 +192,7 @@ export type QueuedApproval = {
 
 export type ActivitySnapshot = {
   running: { session_id: string; session_title?: string; started_at?: string }[]
-  pending_approvals: { request_id: string; session_id: string; session_title?: string; tool_name?: string }[]
+  pending_approvals: { request_id: string; session_id: string; session_title?: string; tool_name?: string; preview?: string; asked_at?: string }[]
   // Absent from servers before #1033.
   queued_approvals?: QueuedApproval[]
 }

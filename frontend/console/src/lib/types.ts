@@ -2851,6 +2851,12 @@ export type FocusListItem = {
   current_label?: string
   template?: string
   goal_mode?: boolean
+  // What waits on the developer, by the phone alert's rule: the open gate
+  // and the undecided decision and finding cards. Absent only from servers
+  // before the phone inbox.
+  waiting?: { gate?: FocusGate; cards: number }
+  // The hidden Q&A session, whose queued tool calls belong to this pipeline.
+  qa_session_id?: string
 }
 
 // The release train (GET /v1/focus/release-train): pipelines finished since

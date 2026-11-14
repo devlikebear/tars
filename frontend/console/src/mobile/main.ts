@@ -8,8 +8,9 @@ import '../app.css'
 import './mobile.css'
 import MobileApp from './MobileApp.svelte'
 import type { AppLinks } from '../lib/mobile/appLinks'
-import { desktopAPI } from '../lib/mobile/desktopApi'
+import { desktopAPI, inboxAPI } from '../lib/mobile/desktopApi'
 import { DesktopStore } from '../lib/mobile/desktopStore.svelte'
+import { InboxStore } from '../lib/mobile/inboxStore.svelte'
 import { appSecureStore } from '../lib/mobile/secureStore'
 
 const store = new DesktopStore({
@@ -48,7 +49,7 @@ const links: AppLinks = Capacitor.isNativePlatform()
 
 const app = mount(MobileApp, {
   target: document.getElementById('app')!,
-  props: { store, links },
+  props: { store, inbox: new InboxStore({ api: inboxAPI }), links },
 })
 
 export default app
