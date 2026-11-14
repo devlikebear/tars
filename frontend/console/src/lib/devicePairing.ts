@@ -15,16 +15,25 @@ export const PAIRING_SCHEME = 'tars-mobile:'
 
 export type PairingTarget = { baseURL: string; code: string }
 
+// PairingOptions.allowLoopbackHTTP lets a development build of the app pair
+// with a server on this machine (the iOS Simulator reaches the Mac's
+// loopback). Release builds never pass it.
+export type PairingOptions = { allowLoopbackHTTP?: boolean }
+
+const loopbackHosts = new Set(['127.0.0.1', 'localhost', '[::1]'])
+
 // normalizeBaseURL keeps an https origin (with its port) and drops any path,
 // query or trailing slash; anything else is "".
-export function normalizeBaseURL(raw: string): string {
+export function normalizeBaseURL(raw: string, opts: PairingOptions = {}): string {
   let url: URL
   try {
     url = new URL(raw.trim())
   } catch {
     return ''
   }
-  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) return ''
+  if (!url.hostname || url.username || url.password) return ''
+  const loopbackHTTP = opts.allowLoopbackHTTP && url.protocol === 'http:' && loopbackHosts.has(url.hostname)
+  if (url.protocol !== 'https:' && !loopbackHTTP) return ''
   return url.origin
 }
 
@@ -37,7 +46,7 @@ export function pairingLink(baseURL: string, code: string): string {
 }
 
 // parsePairingLink reads a scanned link; null when it is not one.
-export function parsePairingLink(text: string): PairingTarget | null {
+export function parsePairingLink(text: string, opts: PairingOptions = {}): PairingTarget | null {
   let url: URL
   try {
     url = new URL(text.trim())
@@ -45,7 +54,7 @@ export function parsePairingLink(text: string): PairingTarget | null {
     return null
   }
   if (url.protocol !== PAIRING_SCHEME || url.hostname !== 'pair') return null
-  const baseURL = normalizeBaseURL(url.searchParams.get('url') ?? '')
+  const baseURL = normalizeBaseURL(url.searchParams.get('url') ?? '', opts)
   const code = (url.searchParams.get('code') ?? '').trim()
   if (!baseURL || !code) return null
   return { baseURL, code }

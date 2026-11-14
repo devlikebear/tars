@@ -1,0 +1,19 @@
+{
+  "name": "tars-mobile",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Capacitor shell for the TARS mobile remote (docs/decisions/mobile-remote.md). The web bundle is built from frontend/console (npm run build:mobile).",
+  "scripts": {
+    "build:web": "npm --prefix ../frontend/console run build:mobile",
+    "sync": "npm run build:web && cap sync ios",
+    "open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/ios": "8.6.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0"
+  }
+}

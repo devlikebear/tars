@@ -25,7 +25,27 @@ export async function requestJSON<T>(input: string, init?: RequestInit): Promise
     },
     ...init,
   })
+  return readJSON<T>(response)
+}
 
+// APITarget is a TARS server other than the page's own: the mobile app
+// (docs/decisions/mobile-remote.md) talks to each paired desktop at its
+// base URL with that desktop's device token, never with a cookie.
+export type APITarget = { baseURL: string; token: string }
+
+export async function requestJSONAt<T>(target: APITarget, path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers)
+  headers.set('Accept', 'application/json')
+  if (target.token) headers.set('Authorization', `Bearer ${target.token}`)
+  const response = await fetch(`${target.baseURL.replace(/\/+$/, '')}${path}`, {
+    ...init,
+    credentials: 'omit',
+    headers,
+  })
+  return readJSON<T>(response)
+}
+
+async function readJSON<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`.trim()
     let payload: APIErrorPayload | undefined
