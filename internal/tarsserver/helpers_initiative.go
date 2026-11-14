@@ -715,18 +715,28 @@ func resolveInitiativeLLMBackend(cfg config.Config, router llm.Router) (initiati
 // credential/endpoint the user's words already went to during the chat
 // turn that produced them."
 func chatProviderAlias(cfg config.Config) string {
+	resolved, ok := resolveChatTier(cfg)
+	if !ok {
+		return ""
+	}
+	return resolved.ProviderAlias
+}
+
+// resolveChatTier resolves the chat role's tier: RoleChatMain if mapped,
+// else the default tier.
+func resolveChatTier(cfg config.Config) (config.ResolvedLLMTier, bool) {
 	tier := strings.TrimSpace(cfg.LLMRoleDefaults[string(llm.RoleChatMain)])
 	if tier == "" {
 		tier = strings.TrimSpace(cfg.LLMDefaultTier)
 	}
 	if tier == "" {
-		return ""
+		return config.ResolvedLLMTier{}, false
 	}
 	resolved, err := config.ResolveLLMTier(&cfg, tier)
 	if err != nil {
-		return ""
+		return config.ResolvedLLMTier{}, false
 	}
-	return resolved.ProviderAlias
+	return resolved, true
 }
 
 // initiativeBackendInfoFromPlan carries a BackendPlan into the runtime's

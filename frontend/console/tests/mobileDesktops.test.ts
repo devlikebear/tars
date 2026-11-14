@@ -4,6 +4,9 @@ import assert from 'node:assert/strict'
 import { requestJSONAt, APIRequestError } from '../src/lib/api/client.ts'
 import {
   addressToBaseURL,
+  blocksTasks,
+  readinessLine,
+  readinessProblems,
   desktopName,
   parseDesktops,
   statusFrom,
@@ -211,4 +214,64 @@ test('a scanned link fills the pairing form', () => {
   const store = new DesktopStore({ storage: memoryStore(backing()), api: fakeAPI().api })
   assert.deepEqual(store.readLink('tars-mobile://pair?url=https%3A%2F%2Fmac.tail1.ts.net&code=42'), { baseURL: 'https://mac.tail1.ts.net', code: '42' })
   assert.equal(store.readLink('https://example.com'), null)
+})
+
+test('readiness: problems in plain words; only a missing model stops a task', () => {
+  const text = {
+    modelMissing: 'no model',
+    modelMissingCLI: (cli: string) => `no ${cli}`,
+    gh: { missing: 'no gh', signed_out: 'gh out' },
+    tailscale: { not_serving: 'no serve' },
+    unknown: '?',
+  }
+  const checks = [
+    { id: 'model', state: 'missing', kind: 'claude-code-cli' },
+    { id: 'gh', state: 'signed_out' },
+    { id: 'tailscale', state: 'ok' },
+  ]
+  assert.deepEqual(readinessProblems(checks).map((c) => readinessLine(c, text)), ['no Claude Code (claude)', 'gh out'])
+  assert.equal(readinessLine({ id: 'model', state: 'missing', kind: '' }, text), 'no model')
+  assert.equal(readinessLine({ id: 'model', state: 'missing', kind: 'antigravity-cli' }, text), 'no Antigravity (agy)')
+  assert.equal(readinessLine({ id: 'tailscale', state: 'not_serving' }, text), 'no serve')
+  assert.equal(readinessLine({ id: 'gh', state: 'unknown' }, text), '?')
+  assert.equal(readinessLine({ id: 'other', state: 'missing' }, text), '?')
+  assert.equal(blocksTasks(checks), true)
+  assert.equal(blocksTasks(checks.slice(1)), false)
+  assert.equal(blocksTasks(undefined), false)
+  assert.deepEqual(readinessProblems(undefined), [])
+})
+
+test('refresh reads readiness of desktops that answer, apart from the status', async () => {
+  const b = backing()
+  b.setItem('tars-mobile:desktops', JSON.stringify([desktop('https://a.ts.net'), desktop('https://b.ts.net'), desktop('https://old.ts.net')]))
+  let release: () => void = () => {}
+  const slow = new Promise<void>((r) => {
+    release = r
+  })
+  const read: string[] = []
+  const { api } = fakeAPI({
+    async status(target) {
+      return target.baseURL === 'https://b.ts.net' ? { state: 'unreachable' } : { state: 'online' }
+    },
+    async readiness(target) {
+      read.push(target.baseURL)
+      if (target.baseURL === 'https://old.ts.net') return null
+      await slow
+      return [{ id: 'model', state: 'ok' }, { id: 'gh', state: 'missing' }, { id: 'tailscale', state: 'ok' }]
+    },
+  })
+  const store = new DesktopStore({ storage: memoryStore(b), api })
+  await store.load()
+  // refresh does not wait for readiness.
+  await store.refresh()
+  assert.equal(store.statuses['https://a.ts.net'].state, 'online')
+  assert.deepEqual(store.readiness, {})
+  release()
+  await new Promise((r) => setTimeout(r, 0))
+  assert.deepEqual(read.sort(), ['https://a.ts.net', 'https://old.ts.net'])
+  assert.deepEqual(Object.keys(store.readiness), ['https://a.ts.net'])
+  assert.equal(store.readiness['https://a.ts.net'][1].state, 'missing')
+
+  await store.forget('https://a.ts.net')
+  assert.deepEqual(store.readiness, {})
 })

@@ -14,6 +14,7 @@ import {
   withoutDesktop,
   type DesktopStatus,
   type PairedDesktop,
+  type ReadinessCheck,
 } from './desktops.ts'
 import type { SecureStore } from './secureStore.ts'
 
@@ -31,6 +32,9 @@ export type DesktopStoreDeps = {
 export class DesktopStore {
   desktops = $state<PairedDesktop[]>([])
   statuses = $state<Record<string, DesktopStatus>>({})
+  // Each answering desktop's readiness, once read; absent while unknown
+  // (an older desk, or not read yet).
+  readiness = $state<Record<string, ReadinessCheck[]>>({})
   loaded = $state(false)
   pairing = $state(false)
   pairFailure = $state<PairFailure | null>(null)
@@ -97,7 +101,8 @@ export class DesktopStore {
     const next = withoutDesktop(this.desktops, id)
     await this.#save(next)
     this.desktops = next
-    this.statuses = Object.fromEntries(Object.entries(this.statuses).filter(([key]) => key !== id))
+    this.statuses = withoutKey(this.statuses, id)
+    this.readiness = withoutKey(this.readiness, id)
   }
 
   // refresh checks every desktop at once; one that sleeps does not hold up
@@ -114,13 +119,27 @@ export class DesktopStore {
           status = { state: 'unreachable' }
         }
         this.statuses = { ...this.statuses, [d.id]: status }
+        if (status.state === 'online') void this.#readReadiness(d)
+        else this.readiness = withoutKey(this.readiness, d.id)
       }),
     )
+  }
+
+  // #readReadiness runs apart from refresh: a desk that has not read it for
+  // a while runs gh and tailscale first, and the lists should not wait.
+  async #readReadiness(desktop: PairedDesktop): Promise<void> {
+    const checks = await this.#deps.api.readiness?.(targetOf(desktop)).catch(() => null)
+    if (!this.desktops.some((d) => d.id === desktop.id)) return
+    this.readiness = checks ? { ...this.readiness, [desktop.id]: checks } : withoutKey(this.readiness, desktop.id)
   }
 
   async #save(list: PairedDesktop[]): Promise<void> {
     await this.#deps.storage.set(storageKey, JSON.stringify(list))
   }
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).filter(([k]) => k !== key))
 }
 
 function pairFailureOf(err: unknown): PairFailure {

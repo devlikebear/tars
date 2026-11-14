@@ -74,6 +74,7 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/goal", "focus goal mode"),
 	userRule([]string{http.MethodGet}, "/v1/focus/templates", "focus template list"),
 	userRule([]string{http.MethodGet}, "/v1/focus/folders", "folders registered for phones"),
+	userRule([]string{http.MethodGet}, "/v1/focus/readiness", "whether a focus task can run here end to end"),
 	userRule([]string{http.MethodGet}, "/v1/focus/release-train", "focus release train read"),
 	userRule([]string{http.MethodGet}, "/v1/admin/plans/archive", "plan archive"),
 
@@ -152,6 +153,7 @@ var focusEndpointRules = []EndpointPolicyRule{
 	focusRule([]string{http.MethodGet}, "/v1/focus/pipelines/:id/checkpoints/:turn/diff", "focus pipeline turn diff"),
 	focusRule([]string{http.MethodGet}, "/v1/focus/templates", "focus template list"),
 	focusRule([]string{http.MethodGet}, "/v1/focus/folders", "folders registered for phones"),
+	focusRule([]string{http.MethodGet}, "/v1/focus/readiness", "whether a focus task can run here end to end"),
 	// The routes below name a session. Their handlers let a phone reach only
 	// focus pipeline sessions (internal/tarsserver/focus_device_scope.go).
 	focusRule([]string{http.MethodPost}, "/v1/chat", "chat turn in a focus pipeline session"),

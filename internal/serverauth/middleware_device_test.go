@@ -150,6 +150,7 @@ func TestFocusEndpointTable(t *testing.T) {
 		{http.MethodPost, "/v1/focus/pipelines/s1/goal"},
 		{http.MethodPost, "/v1/focus/pipelines/s1/plan?x=1"},
 		{http.MethodGet, "/v1/focus/templates"},
+		{http.MethodGet, "/v1/focus/readiness"},
 		{http.MethodGet, "/v1/focus/pipelines/s1/session"},
 		{http.MethodGet, "/v1/focus/pipelines/s1/history?session=qa"},
 		{http.MethodGet, "/v1/focus/pipelines/s1/checkpoints"},
