@@ -165,8 +165,12 @@ func TestApplyAPIMiddleware_DeviceTokenReachesFocusOnly(t *testing.T) {
 	if code := serve(http.MethodGet, "/v1/admin/devices", token); code != http.StatusForbidden {
 		t.Fatalf("admin devices with a device token: got %d, want 403", code)
 	}
-	if code := serve(http.MethodPost, "/v1/chat", token); code != http.StatusForbidden {
-		t.Fatalf("chat with a device token: got %d, want 403", code)
+	if code := serve(http.MethodGet, "/v1/events/stream", token); code != http.StatusForbidden {
+		t.Fatalf("event stream with a device token: got %d, want 403", code)
+	}
+	// Chat passes the table; its handler holds the phone to focus sessions.
+	if code := serve(http.MethodPost, "/v1/chat", token); code != http.StatusNoContent || seenRole != serverauth.RoleFocus {
+		t.Fatalf("chat with a device token: code=%d role=%q", code, seenRole)
 	}
 	if code := serve(http.MethodPost, "/v1/auth/device-pair", ""); code != http.StatusNoContent {
 		t.Fatalf("device-pair must skip bearer auth: got %d", code)

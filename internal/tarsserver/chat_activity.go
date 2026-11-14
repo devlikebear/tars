@@ -297,6 +297,20 @@ func handleChatActivity(w http.ResponseWriter, r *http.Request, activity *chatAc
 	}
 	snap := activity.snapshot()
 	snap.Queued = activity.queuedApprovals()
+	if isFocusDevice(r) {
+		// A paired phone sees only focus pipeline sessions' turns and
+		// questions, never what the rest of the desk is doing.
+		var sessions *session.Store
+		if activity != nil {
+			sessions = activity.sessions
+		}
+		filtered, err := newFocusDeviceScope(sessions).filterActivity(snap)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "", "failed to read focus pipelines")
+			return
+		}
+		snap = filtered
+	}
 	writeJSON(w, http.StatusOK, snap)
 }
 

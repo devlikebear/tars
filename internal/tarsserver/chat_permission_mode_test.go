@@ -326,7 +326,7 @@ func TestPermissionAnswerAcceptsAPlanMode(t *testing.T) {
 	post := func(body string) int {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/permissions/"+id, strings.NewReader(body))
-		handleChatPermissionAnswer(rec, req, broker)
+		handleChatPermissionAnswer(rec, req, broker, focusDeviceScope{})
 		return rec.Code
 	}
 	if code := post(`{"session_id":"s1","decision":"allow_once","mode":"plan"}`); code != http.StatusBadRequest {

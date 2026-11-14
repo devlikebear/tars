@@ -109,6 +109,9 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	if !ok {
 		return
 	}
+	if newFocusDeviceScope(deps.store).refuseChatRequest(w, r, req) {
+		return
+	}
 	// A person's turn wins over the focus driver: its pending step (a
 	// verification, a queued turn) stops, and this turn's post-turn hook
 	// starts a new run.

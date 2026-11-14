@@ -65,6 +65,13 @@ func TestDeviceTokenReachesOnlyFocusRoutes(t *testing.T) {
 		{http.MethodPost, "/v1/focus/pipelines/abc/gates/plan"},
 		{http.MethodGet, "/v1/focus/pipelines/abc"},
 		{http.MethodGet, "/v1/auth/whoami"},
+		{http.MethodPost, "/v1/chat"},
+		{http.MethodGet, "/v1/chat/stream"},
+		{http.MethodPost, "/v1/chat/cancel"},
+		{http.MethodPost, "/v1/chat/permissions/req-1"},
+		{http.MethodGet, "/v1/chat/activity"},
+		{http.MethodPost, "/v1/ops/approvals/a1/approve"},
+		{http.MethodPost, "/v1/ops/approvals/a1/reject"},
 	} {
 		if rec := serveWithBearer(h, tc.method, tc.path, remote, "phone-token"); rec.Code != http.StatusNoContent {
 			t.Fatalf("%s %s: got %d", tc.method, tc.path, rec.Code)
@@ -75,8 +82,12 @@ func TestDeviceTokenReachesOnlyFocusRoutes(t *testing.T) {
 		method, path string
 	}{
 		{http.MethodGet, "/v1/status"},
-		{http.MethodPost, "/v1/chat"},
 		{http.MethodGet, "/v1/events/stream"},
+		{http.MethodGet, "/v1/chat/board"},
+		{http.MethodPost, "/v1/chat/permission-rules"},
+		{http.MethodGet, "/v1/ops/approvals"},
+		{http.MethodPost, "/v1/ops/approvals/a1/apply"},
+		{http.MethodPost, "/v1/ops/cleanup/apply"},
 		{http.MethodGet, "/v1/admin/sessions"},
 		{http.MethodGet, "/v1/focus/exec-report"},
 		{http.MethodPut, "/v1/focus/templates/dev"},

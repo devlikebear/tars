@@ -1351,16 +1351,23 @@ func newChatAPIHandlerWithRuntimeConfig(
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatDeps)
 	})
+	deviceScope := newFocusDeviceScope(store)
 	mux.HandleFunc("/v1/chat/permissions/", func(w http.ResponseWriter, r *http.Request) {
-		handleChatPermissionAnswer(w, r, permissions)
+		handleChatPermissionAnswer(w, r, permissions, deviceScope)
 	})
 	mux.HandleFunc("/v1/chat/permission-rules", func(w http.ResponseWriter, r *http.Request) {
 		handleChatPermissionRules(w, r, permissions.always)
 	})
 	mux.HandleFunc("/v1/chat/stream", func(w http.ResponseWriter, r *http.Request) {
+		if deviceScope.refuse(w, r, r.URL.Query().Get("session_id"), false) {
+			return
+		}
 		handleChatTurnStream(w, r, turnFeeds)
 	})
 	mux.HandleFunc("/v1/chat/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if deviceScope.refuse(w, r, r.URL.Query().Get("session_id"), false) {
+			return
+		}
 		handleChatCancel(w, r, cancelRegistry, tooling.Focus, chatCancelWait)
 	})
 	mux.HandleFunc("/v1/chat/activity", func(w http.ResponseWriter, r *http.Request) {

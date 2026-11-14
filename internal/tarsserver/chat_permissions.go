@@ -337,7 +337,7 @@ func chatPermissionBashPrefix(command string) string {
 }
 
 // handleChatPermissionAnswer serves POST /v1/chat/permissions/{request_id}.
-func handleChatPermissionAnswer(w http.ResponseWriter, r *http.Request, broker *chatPermissionBroker) {
+func handleChatPermissionAnswer(w http.ResponseWriter, r *http.Request, broker *chatPermissionBroker, scope focusDeviceScope) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
 		return
@@ -362,6 +362,9 @@ func handleChatPermissionAnswer(w http.ResponseWriter, r *http.Request, broker *
 	body.Mode = strings.TrimSpace(body.Mode)
 	if body.Mode != "" && body.Mode != chatPermissionModeAcceptEdits && body.Mode != chatPermissionModeAuto {
 		writeError(w, http.StatusBadRequest, "", "mode must be accept_edits or auto")
+		return
+	}
+	if scope.refusePermissionAnswer(w, r, body.SessionID, body.chatPermissionAnswer) {
 		return
 	}
 	if err := broker.answer(requestID, strings.TrimSpace(body.SessionID), body.chatPermissionAnswer); err != nil {

@@ -146,6 +146,9 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
+		if refuseDeviceApproval(w, r, manager, store, approvalID) {
+			return
+		}
 		if handled := reviewToolPermission(w, r, manager, emit, approvalID, action); handled {
 			return
 		}
