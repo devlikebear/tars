@@ -1,7 +1,8 @@
 <script lang="ts">
-  // The TARS mobile app's screen (docs/decisions/mobile-remote.md §2): what
-  // waits on you across every paired desktop, and the desktops themselves
-  // with whether each answers now. Scanning a desk's QR code with the camera
+  // The TARS mobile app's screen (docs/decisions/mobile-remote.md §2, §6):
+  // what waits on you across every paired desktop, ideas kept on this phone
+  // until sent to a desktop as a task, and the desktops themselves with
+  // whether each answers now. Scanning a desk's QR code with the camera
   // opens a tars-mobile://pair link, which lands here and opens the pairing
   // sheet filled in.
   import { onDestroy, onMount } from 'svelte'
@@ -17,20 +18,40 @@
   import InboxView from './InboxView.svelte'
   import MobilePipeline from './MobilePipeline.svelte'
   import PairSheet from './PairSheet.svelte'
+  import IdeasView from './IdeasView.svelte'
+  import SendIdeaSheet from './SendIdeaSheet.svelte'
+  import type { IdeaStore } from '../lib/mobile/ideaStore.svelte'
+  import type { Idea, SentIdea } from '../lib/mobile/ideas'
 
   interface Props {
     store: DesktopStore
     inbox: InboxStore
+    ideas: IdeaStore
     links: AppLinks
   }
 
-  let { store, inbox, links }: Props = $props()
+  let { store, inbox, ideas, links }: Props = $props()
+
+  // The idea being sent, while the send sheet is open.
+  let sending = $state<Idea | null>(null)
+  const onlineDesktops = $derived(store.desktops.filter((d) => store.statuses[d.id]?.state === 'online'))
+
+  function openSend(idea: Idea) {
+    ideas.sendFailure = null
+    sending = idea
+  }
+
+  function onSent(sent: SentIdea) {
+    sending = null
+    notice = $t.mobileApp.sentNotice(sent.desktopName)
+    void refresh()
+  }
 
   // While the app is open it reads again this often; there is no event
   // stream for phones yet.
   const pollMs = 30_000
 
-  let tab = $state<'inbox' | 'desktops'>('inbox')
+  let tab = $state<'inbox' | 'ideas' | 'desktops'>('inbox')
   // The pipeline open on screen, on the desktop that owns it.
   let opened = $state<{ desktopID: string; sessionID: string } | null>(null)
   const openedDesktop = $derived(opened ? store.desktops.find((d) => d.id === opened!.desktopID) ?? null : null)
@@ -107,6 +128,7 @@
 
   onMount(() => {
     void store.load().then(() => refresh())
+    void ideas.load()
     // A pipeline on screen reads its own state; the lists wait for back.
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible' && !opened) void refresh()
@@ -161,6 +183,16 @@
     <button
       type="button"
       role="tab"
+      aria-selected={tab === 'ideas'}
+      class:active={tab === 'ideas'}
+      onclick={() => (tab = 'ideas')}
+      data-testid="mobile-tab-ideas"
+    >
+      {$t.mobileApp.tabs.ideas}
+    </button>
+    <button
+      type="button"
+      role="tab"
       aria-selected={tab === 'desktops'}
       class:active={tab === 'desktops'}
       onclick={() => (tab = 'desktops')}
@@ -176,6 +208,8 @@
 
   {#if tab === 'inbox'}
     <InboxView {inbox} desktops={store.desktops} {missing} {checking} onOpen={openPipeline} />
+  {:else if tab === 'ideas'}
+    <IdeasView {ideas} onSend={openSend} onOpen={openPipeline} paired={(id) => store.desktops.some((d) => d.id === id)} />
   {:else}
   <section aria-label={$t.mobileApp.desktopsTitle}>
     {#if store.loaded && store.desktops.length === 0}
@@ -226,17 +260,25 @@
   </section>
   {/if}
 
-  <footer>
-    <button type="button" class="btn btn-primary" onclick={() => openPair()} data-testid="mobile-pair-open">
-      {$t.mobileApp.pairDesktop}
-    </button>
-  </footer>
+  <!-- Pairing belongs to the Desktops tab, or to any tab while there is
+       nothing paired yet. -->
+  {#if tab === 'desktops' || (store.loaded && store.desktops.length === 0)}
+    <footer>
+      <button type="button" class="btn btn-primary" onclick={() => openPair()} data-testid="mobile-pair-open">
+        {$t.mobileApp.pairDesktop}
+      </button>
+    </footer>
+  {/if}
 </main>
 
 {/if}
 
 {#if pairOpen}
   <PairSheet {store} initial={pairInitial} onDone={onPaired} onCancel={() => (pairOpen = false)} />
+{/if}
+
+{#if sending}
+  <SendIdeaSheet {ideas} idea={sending} desktops={onlineDesktops} {onSent} onCancel={() => (sending = null)} />
 {/if}
 
 <style>
