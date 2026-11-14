@@ -18,11 +18,13 @@ import (
 
 var (
 	graphite = color.NRGBA{0x16, 0x18, 0x1b, 0xff}
-	signal   = color.NRGBA{0x3e, 0xe0, 0x7f, 0xff}
-	amber    = color.NRGBA{0xf5, 0xb7, 0x40, 0xff}
-	grey     = color.NRGBA{0x8a, 0x8f, 0x98, 0xff}
-	red      = color.NRGBA{0xef, 0x5b, 0x5b, 0xff}
-	black    = color.NRGBA{0, 0, 0, 0xff}
+	// page is the console's --surface-base, the mobile app's background.
+	page   = color.NRGBA{0x0d, 0x0f, 0x11, 0xff}
+	signal = color.NRGBA{0x3e, 0xe0, 0x7f, 0xff}
+	amber  = color.NRGBA{0xf5, 0xb7, 0x40, 0xff}
+	grey   = color.NRGBA{0x8a, 0x8f, 0x98, 0xff}
+	red    = color.NRGBA{0xef, 0x5b, 0x5b, 0xff}
+	black  = color.NRGBA{0, 0, 0, 0xff}
 )
 
 // DotColour is the colour of the tray dot for a state; ok is false when the
@@ -51,6 +53,33 @@ func App(size int) []byte {
 	})
 	ring(img, s/2, s/2, s*0.27, s*0.075, signal)
 	disc(img, s/2, s/2, s*0.09, signal)
+	return encode(img)
+}
+
+// Mobile is the iOS app's icon (mobile/): the same mark as App, full bleed
+// and opaque, because iOS rounds the corners itself and refuses an app
+// icon with transparency. The mark is scaled to the tile App draws it on.
+func Mobile(size int) []byte {
+	img := image.NewNRGBA(image.Rect(0, 0, size, size))
+	s := float64(size)
+	paint(img, func(x, y float64) (color.NRGBA, float64) { return graphite, 1 })
+	ring(img, s/2, s/2, s*0.29, s*0.08, signal)
+	disc(img, s/2, s/2, s*0.098, signal)
+	return encode(img)
+}
+
+// Launch is the iOS launch image: the mark small in the middle of the
+// console's page colour (--surface-base), so a cold start goes from this to
+// the app's page — the shell draws the same mark until the page has loaded
+// (LaunchMarkView in mobile/ios/App/App/SceneDelegate.swift) — with no flash
+// and no change of shade. iOS fills the screen with it (aspect fill), so the
+// mark sits well inside any phone's crop.
+func Launch(size int) []byte {
+	img := image.NewNRGBA(image.Rect(0, 0, size, size))
+	s := float64(size)
+	paint(img, func(x, y float64) (color.NRGBA, float64) { return page, 1 })
+	ring(img, s/2, s/2, s*0.045, s*0.012, signal)
+	disc(img, s/2, s/2, s*0.015, signal)
 	return encode(img)
 }
 
