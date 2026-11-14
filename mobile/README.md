@@ -42,9 +42,56 @@ npm --prefix ../frontend/console run dev:mobile
 
 The server answers CORS only for the app's own origin (`capacitor://localhost`). A desktop browser therefore reaches a TARS server only with web security turned off, which is how the pairing flow was checked.
 
+## Run it on your iPhone
+
+The phone reaches each desktop at its Tailscale serve address, over https. Nothing here is distributed yet, so you install it from Xcode with your own Apple ID.
+
+**At the desk (each desktop you want on the phone):**
+
+1. Run a TARS server that has the phone routes. They are on `main` after 0.68.0: a server that answers 404 to `GET /v1/focus/readiness` is too old. Until the next release that means a build of `main` (`make build`), not the app bundle's server.
+2. Settings → Channels & Remote → **Tailscale** → **Enable**. That points Tailscale serve at TARS and gives the desk its `https://<machine>.<tailnet>.ts.net` address. The Phones card stays disabled until this is on.
+3. Settings → Channels & Remote → **Phones** → **Add folder** for each folder a phone may start tasks in. Without one, a phone can continue tasks but not start them.
+
+**On the iPhone:**
+
+4. Install Tailscale and sign in to the same tailnet as the desk.
+5. Turn on Developer Mode: Settings → Privacy & Security → Developer Mode, then restart when asked. It appears once the phone has been connected to Xcode.
+
+**On the Mac with Xcode:**
+
+6. Build the release bundle and open the project:
+
+   ```bash
+   cd mobile
+   npm install
+   npm run sync
+   npm run open
+   ```
+
+7. In Xcode, select the **App** target → Signing & Capabilities → **Team**: your Apple ID (a free Personal Team works). If Xcode says the bundle identifier is taken, change it to something of your own (e.g. `com.<you>.tars.mobile`); nothing on the desk depends on it.
+8. Connect the iPhone by cable (or the same Wi-Fi once paired), pick it as the run destination, and **Run** (⌘R).
+9. The first time, iOS refuses to open an app from an unknown developer: Settings → General → VPN & Device Management → your Apple ID → **Trust**. A Personal Team's install expires after 7 days; run from Xcode again to renew it.
+
+Without clicking through Xcode, the same build, signing and install run from `mobile/` once the phone is connected and trusted. `TEAMID` is your team (`defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier`), `UDID` the phone (`xcrun xctrace list devices`); the team is passed on the command line, so the project file stays unchanged:
+
+```bash
+xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination "id=UDID" -derivedDataPath build/device DEVELOPMENT_TEAM=TEAMID -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+xcrun devicectl device install app --device UDID build/device/Build/Products/Debug-iphoneos/App.app
+xcrun devicectl device process launch --device UDID com.devlikebear.tars.mobile
+```
+
+The first build fails with "Your team has no devices" while the phone is not connected: connect it, unlock it and trust the Mac, then run it again.
+
+**Pair and try it:**
+
+10. At the desk, Phones → **Pair a phone**. Point the iPhone's Camera at the QR code and tap **Open in TARS**; the form fills in. Tap **Pair**.
+11. Waiting lists what waits on you; Ideas → **Send as task** starts a pipeline in a registered folder; open a pipeline to approve the plan and watch the turn run.
+
+If pairing says the desktop cannot be reached: check that Tailscale is connected on the phone, that the address in the form is the `https://…ts.net` one, and that `curl https://<machine>.<tailnet>.ts.net/v1/healthz` answers from another tailnet device.
+
 ## Not yet
 
-Phase 2's pieces are all here, and the development build has been run in the iOS Simulator end to end: pairing from a link, the Keychain across a relaunch, deciding a plan and a card, and a running turn streaming into the pipeline screen. Still open: an event stream for phones (the app reads again on a timer), and a run on a real phone over Tailscale. Nothing here is signed for a device or distributed.
+Phase 2's pieces are all here, and the development build has been run in the iOS Simulator end to end: pairing from a link, the Keychain across a relaunch, deciding a plan and a card, and a running turn streaming into the pipeline screen. Still open: an event stream for phones (the app reads again on a timer), and a run on a real phone over Tailscale (steps above). Nothing here is distributed; a device build is signed with your own Apple ID in Xcode.
 
 The icon and launch image come from the desktop shell's icon code; to redraw them, from `desktop/`:
 
