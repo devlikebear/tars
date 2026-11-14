@@ -1,0 +1,20 @@
+/* The mobile app's page: app.css gives the tokens and base type; this keeps
+   the page from behaving like a web page inside the iOS web view. */
+html,
+body {
+  background: var(--surface-base);
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}

@@ -1,0 +1,9 @@
+{
+  "appId": "com.devlikebear.tars.mobile",
+  "appName": "TARS",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0f1113"
+  }
+}

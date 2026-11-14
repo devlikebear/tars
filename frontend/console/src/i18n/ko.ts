@@ -30,6 +30,7 @@ import { caseBridgeKo } from './sections/caseBridge.ts'
 import { configKo } from './sections/config.ts'
 import { remoteAccessKo } from './sections/remoteAccess.ts'
 import { phonesKo } from './sections/phones.ts'
+import { mobileAppKo } from './sections/mobileApp.ts'
 
 export const ko = {
   common: {
@@ -1542,4 +1543,5 @@ export const ko = {
   config: configKo,
   remoteAccess: remoteAccessKo,
   phones: phonesKo,
+  mobileApp: mobileAppKo,
 } satisfies Translations
