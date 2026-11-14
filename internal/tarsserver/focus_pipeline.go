@@ -397,6 +397,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("GET /v1/focus/templates", api.templates)
 	mux.HandleFunc("GET /v1/focus/folders", api.folders)
 	mux.HandleFunc("GET /v1/focus/exec-report", api.execReport)
+	mux.HandleFunc("GET /v1/focus/answer-report", api.answerReport)
 	return mux
 }
 
@@ -828,6 +829,8 @@ type focusGateRequest struct {
 	// CardID is the gate card the console showed: a gate replaced since
 	// (G4 reopened on a new head) refuses the action with 409.
 	CardID string `json:"card_id,omitempty"`
+	// By is where the action came from, set by the server (never the body).
+	By string `json:"-"`
 }
 
 // gate applies a gate action. Approving the plan also writes the session's
@@ -842,6 +845,7 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
+	req.By = focusAnswerSource(r)
 	p, act, warning, err := focusApplyGate(r.Context(), a.sessions, a.driver, a.logger, a.now, id, gate, req, serverauth.RoleFromRequest(r))
 	switch {
 	case errors.Is(err, errFocusGateUnchecked):
@@ -898,6 +902,7 @@ func focusApplyGate(ctx context.Context, sessions *session.Store, driver *focusD
 			PR:     req.PR,
 			Note:   req.Note,
 			CardID: strings.TrimSpace(req.CardID),
+			By:     req.By,
 		}, now)
 		if err != nil {
 			return p, err
@@ -948,6 +953,18 @@ func focusWritePlanTasks(sessions *session.Store, logger zerolog.Logger, clock f
 type focusCardRequest struct {
 	State    string `json:"state"`
 	Decision string `json:"decision,omitempty"`
+	// By is where the decision came from, set by the server (never the
+	// body): focusAnswerSource for a request, AnswerGoal for goal mode.
+	By string `json:"-"`
+}
+
+// focusAnswerSource is where a gate or card answer in r came from: a paired
+// phone or the desk (the console, or any other caller with a token).
+func focusAnswerSource(r *http.Request) string {
+	if isFocusDevice(r) {
+		return focuspipeline.AnswerPhone
+	}
+	return focuspipeline.AnswerDesk
 }
 
 func (a *focusAPI) card(w http.ResponseWriter, r *http.Request) {
@@ -959,6 +976,7 @@ func (a *focusAPI) card(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
+	req.By = focusAnswerSource(r)
 	p, act, err := focusDecideCard(a.sessions, a.driver, a.now, id, cardID, req, serverauth.RoleFromRequest(r))
 	switch {
 	case errors.Is(err, focuspipeline.ErrCardNotFound):
@@ -982,7 +1000,7 @@ func (a *focusAPI) card(w http.ResponseWriter, r *http.Request) {
 func focusDecideCard(sessions *session.Store, driver *focusDriver, clock func() time.Time, id, cardID string, req focusCardRequest, role string) (focuspipeline.Pipeline, focuspipeline.Action, error) {
 	act := focuspipeline.Action{Kind: focuspipeline.ActionNone}
 	p, _, err := focusStoreFor(sessions).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
-		next, action, err := focuspipeline.SetCardState(p, cardID, strings.TrimSpace(req.State), req.Decision, clock())
+		next, action, err := focuspipeline.SetCardStateBy(p, cardID, strings.TrimSpace(req.State), req.Decision, req.By, clock())
 		act = action
 		return next, err
 	})

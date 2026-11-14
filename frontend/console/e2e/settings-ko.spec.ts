@@ -102,6 +102,11 @@ test('the Tailscale remote-access card is Korean', async ({ page }) => {
 })
 
 test('the phones card is Korean', async ({ page }) => {
+  // Remote access off whatever the host runs, so the card's status note
+  // (the one Tailscale hint) is on screen to check.
+  await page.route('**/v1/admin/remote-access/status', (route) =>
+    route.fulfill({ json: { desired_enabled: false, desired_https_port: 443, target_url: 'http://127.0.0.1:43180', url: '', status: { installed: true, logged_in: true, serve_active: false, owned_by_tars: false }, checks: [] } }),
+  )
   await gotoSettings(page)
   await page.locator('.config-tabs').getByRole('button').nth(tabIds.indexOf('channelsRemote')).click()
   const card = page.getByTestId('phones-card')

@@ -151,7 +151,21 @@ type Card struct {
 	State     string          `json:"state"`
 	Decision  string          `json:"decision,omitempty"`
 	CreatedAt time.Time       `json:"created_at"`
+	// DecidedBy is where the developer decided the card — AnswerPhone,
+	// AnswerDesk or AnswerGoal — and DecidedAt when; absent on cards decided
+	// before this was recorded, and on cards the pipeline closed by itself
+	// (superseded, stopped). docs/decisions/mobile-remote.md phase 3 reads
+	// them to measure how much is answered from a phone.
+	DecidedBy string     `json:"decided_by,omitempty"`
+	DecidedAt *time.Time `json:"decided_at,omitempty"`
 }
+
+// Where a card was decided.
+const (
+	AnswerPhone = "phone" // a paired phone (role focus)
+	AnswerDesk  = "desk"  // the console or any other API caller
+	AnswerGoal  = "goal"  // goal mode, with nobody at the gate
+)
 
 // Plan is what the plan stage proposes and G1 approves.
 type Plan struct {

@@ -1,6 +1,7 @@
 import { APIRequestError, requestJSON } from './client.ts'
 import type {
   FocusActionResult,
+  FocusAnswerReport,
   FocusCardState,
   FocusFindingInput,
   FocusGateAction,
@@ -195,6 +196,12 @@ export function deleteFocusTemplate(id: string): Promise<{ deleted: boolean }> {
 // the admin token.
 export function setFocusGoal(sessionId: string, enabled: boolean): Promise<FocusActionResult> {
   return postAction(`${pipelinePath(sessionId)}/goal`, { enabled })
+}
+
+// Where gates and cards were answered over the last `days` days: a paired
+// phone, the desk, or goal mode (docs/decisions/mobile-remote.md phase 3).
+export function getFocusAnswerReport(days = 30): Promise<{ days: number; report: FocusAnswerReport }> {
+  return requestJSON(`/v1/focus/answer-report?days=${encodeURIComponent(String(days))}`)
 }
 
 export function getReleaseTrain(): Promise<ReleaseTrain> {

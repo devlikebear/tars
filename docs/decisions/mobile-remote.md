@@ -93,4 +93,4 @@ The link is the device's own Tailscale HTTPS address and the console's focus pat
 
 1. **Server**: pairing, `focus` device tokens, registered folders, CORS, deep-link alerts; `remoteaccess` back to maintained. Prove the turn feed streams in an iOS web view over Tailscale.
 2. **App**: device list and readiness, the waiting-on-you inbox, focus screens per device, the idea inbox.
-3. **Measure** how often gates are answered from the phone; decide native push and Android from that.
+3. **Measure** how often gates are answered from the phone; decide native push and Android from that. Each gate and card answer records whether it came from a phone, the desk or goal mode (from 2026-11-14 on); `GET /v1/focus/answer-report` and the Phones card read the counts.

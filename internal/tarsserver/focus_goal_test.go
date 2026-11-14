@@ -104,6 +104,22 @@ func TestFocusGoalRunsToTheEnd(t *testing.T) {
 	if tasks, err := store.GetTasks(id); err != nil || len(tasks.Tasks) != 1 {
 		t.Fatalf("session tasks of the approved plan = %+v %v", tasks, err)
 	}
+	// Goal mode's answers say so (docs/decisions/mobile-remote.md phase 3).
+	if p, _, err := focusStoreFor(store).Get(id); err == nil {
+		byGoal := 0
+		for _, c := range p.Cards {
+			switch {
+			case c.Kind != focuspipeline.CardGate || c.DecidedBy == "":
+			case c.DecidedBy == focuspipeline.AnswerGoal:
+				byGoal++
+			default:
+				t.Errorf("gate %s decided by %q, want goal", c.Title, c.DecidedBy)
+			}
+		}
+		if byGoal == 0 {
+			t.Error("no gate recorded goal mode as its answer")
+		}
+	}
 	waitFor(t, "the announcement", func() bool {
 		mu.Lock()
 		defer mu.Unlock()
