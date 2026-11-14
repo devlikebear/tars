@@ -18,3 +18,19 @@ textarea {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* The page runs under the status bar (viewport-fit=cover), so content that
+   scrolls up would show behind the clock. A band the page's own colour
+   covers that strip on every screen; screens still pad their top by the
+   same inset so nothing starts under it. */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--surface-base);
+  z-index: 1000;
+  pointer-events: none;
+}
