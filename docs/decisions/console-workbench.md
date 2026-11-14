@@ -54,7 +54,7 @@ This ADR does **not** reverse:
 - The credential handling rules (masked, never echoed; long-tail tokens rotated in YAML).
 - The rule that a feature which does not need a browser belongs in a skill, a CLI command, or the YAML file. The workbench adds routes for **working with agents**, not for configuration.
 
-The frozen long-tail internal packages (embodiment, workstore, workscheduler, skillhub, plugin, remoteaccess) remain frozen. This ADR only concerns the console surface.
+The frozen long-tail internal packages (embodiment, workstore, workscheduler, skillhub, plugin) remain frozen. This ADR only concerns the console surface. (`remoteaccess` was on this list until the mobile remote stood on it; it is maintained now — `mobile-remote.md` §3.)
 
 ### 3. Information architecture
 

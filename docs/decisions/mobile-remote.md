@@ -71,7 +71,9 @@ Ideas are written on the phone and stored on the phone, so capture works with ev
 
 ### 7. Notifications: existing channels first
 
-The first version sends no push of its own. A device that has a pipeline waiting (an open gate, an undecided card, a queued approval) alerts through the Telegram channel that already exists, with a deep link (`tars-mobile://<device>/focus/<session>`) the shell opens. Native push needs an APNs relay holding an Apple key — the first hosted part TARS would have — and is decided after phase 1 shows the app is used.
+The first version sends no push of its own. A device that has a pipeline waiting (an open gate, an undecided card, a queued approval) alerts through the Telegram channel that already exists, with a link to that pipeline.
+
+The link is the device's own Tailscale HTTPS address and the console's focus path (`https://<device>.<tailnet>.ts.net/console/focus/<session>`), not a `tars-mobile://` URL: Telegram makes only `http(s)` and `tg://` links tappable, in message text and on buttons alike. The phone is on the tailnet, so the link opens the pipeline in the console today; when the app exists it claims these links (how — universal links on the tailnet name or a hand-off page — is decided with the app, phase 2). The host in the link also tells the phone which device sent it. Native push needs an APNs relay holding an Apple key — the first hosted part TARS would have — and is decided after phase 1 shows the app is used.
 
 ## Consequences
 

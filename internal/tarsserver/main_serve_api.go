@@ -75,8 +75,11 @@ type serveAPIRuntime struct {
 	workLedgerMaintenance func()
 	// sessionRetention archives and deletes old sessions in the background
 	// (session_retention.go); sessionRetentionWait waits for it to stop.
-	sessionRetention      *sessionRetention
-	sessionRetentionWait  func()
+	sessionRetention     *sessionRetention
+	sessionRetentionWait func()
+	// focusAlerts sends a paired phone a Telegram message when a focus
+	// pipeline starts waiting (focus_mobile_alert.go).
+	focusAlerts           *focusMobileAlerts
 	workScheduler         *workscheduler.Scheduler
 	telegramPoller        *telegramUpdatePoller
 	remoteAccessRunner    remoteaccess.Runner
@@ -901,6 +904,7 @@ func buildAPIMux(
 		focusDriver:                 focusDriver,
 		caseBridge:                  caseBridge,
 		sessionRetention:            retention,
+		focusAlerts:                 newFocusMobileAlerts(cfg, sessionStore, unattended, telegramSender, telegramPairings, logger),
 	}, nil
 }
 
@@ -1117,6 +1121,7 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 
 	runtime.workLedgerMaintenance = startWorkLedgerMaintenance(ctx, runtime.workLedger, logger)
 	runtime.sessionRetentionWait = runtime.sessionRetention.start(ctx)
+	startFocusAlerts(ctx, runtime)
 	startLocalEmbed(ctx, runtime, logger)
 
 	if err := runBackgroundStartupStep(logger, "remote_access_reconcile", func() error {
