@@ -58,7 +58,7 @@ func TestAppCORSLeavesOtherRequestsAlone(t *testing.T) {
 		name, method, path, origin, preflight string
 	}{
 		{"unknown origin preflight", http.MethodOptions, "/v1/focus/pipelines", "https://evil.example", http.MethodGet},
-		{"route outside the device table", http.MethodOptions, "/v1/chat", "capacitor://localhost", http.MethodPost},
+		{"route outside the device table", http.MethodOptions, "/v1/events/stream", "capacitor://localhost", http.MethodGet},
 		{"method outside the device table", http.MethodOptions, "/v1/focus/pipelines/s1", "capacitor://localhost", http.MethodDelete},
 		{"no origin", http.MethodGet, "/v1/focus/pipelines", "", ""},
 		{"plain OPTIONS without a preflight method", http.MethodOptions, "/v1/focus/pipelines", "capacitor://localhost", ""},

@@ -145,6 +145,15 @@ var focusEndpointRules = []EndpointPolicyRule{
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/plan", "focus plan edit"),
 	focusRule([]string{http.MethodGet}, "/v1/focus/templates", "focus template list"),
 	focusRule([]string{http.MethodGet}, "/v1/focus/folders", "folders registered for phones"),
+	// The routes below name a session. Their handlers let a phone reach only
+	// focus pipeline sessions (internal/tarsserver/focus_device_scope.go).
+	focusRule([]string{http.MethodPost}, "/v1/chat", "chat turn in a focus pipeline session"),
+	focusRule([]string{http.MethodGet}, "/v1/chat/stream", "turn feed of a focus session"),
+	focusRule([]string{http.MethodPost}, "/v1/chat/cancel", "cancel a focus session's turn"),
+	focusRule([]string{http.MethodPost}, "/v1/chat/permissions/:id", "answer a focus turn's permission question"),
+	focusRule([]string{http.MethodGet}, "/v1/chat/activity", "running turns and questions of focus sessions"),
+	focusRule([]string{http.MethodPost}, "/v1/ops/approvals/:id/approve", "approve a focus session's queued tool call"),
+	focusRule([]string{http.MethodPost}, "/v1/ops/approvals/:id/reject", "reject a focus session's queued tool call"),
 }
 
 func publicRule(methods []string, pattern, note string) EndpointPolicyRule {
