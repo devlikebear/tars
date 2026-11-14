@@ -143,6 +143,13 @@ var focusEndpointRules = []EndpointPolicyRule{
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/qa", "focus Q&A"),
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/goal", "focus goal mode"),
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/plan", "focus plan edit"),
+	// What the pipeline screen reads besides the pipeline, scoped by the
+	// pipeline in the path (internal/apihandlers/focus_reads.go): never the
+	// /v1/admin/sessions routes the desktop console reads them from.
+	focusRule([]string{http.MethodGet}, "/v1/focus/pipelines/:id/session", "focus pipeline session read"),
+	focusRule([]string{http.MethodGet}, "/v1/focus/pipelines/:id/history", "focus pipeline transcript read"),
+	focusRule([]string{http.MethodGet}, "/v1/focus/pipelines/:id/checkpoints", "focus pipeline checkpoint list"),
+	focusRule([]string{http.MethodGet}, "/v1/focus/pipelines/:id/checkpoints/:turn/diff", "focus pipeline turn diff"),
 	focusRule([]string{http.MethodGet}, "/v1/focus/templates", "focus template list"),
 	focusRule([]string{http.MethodGet}, "/v1/focus/folders", "folders registered for phones"),
 	// The routes below name a session. Their handlers let a phone reach only

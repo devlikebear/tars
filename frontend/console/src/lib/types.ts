@@ -2857,6 +2857,9 @@ export type FocusListItem = {
   waiting?: { gate?: FocusGate; cards: number }
   // The hidden Q&A session, whose queued tool calls belong to this pipeline.
   qa_session_id?: string
+  // active | blocked | stopped | finished, by lib/focus pipelinePhase's
+  // rule. Absent from servers before the phone's pipeline list.
+  phase?: 'active' | 'blocked' | 'stopped' | 'finished'
 }
 
 // The release train (GET /v1/focus/release-train): pipelines finished since

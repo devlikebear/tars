@@ -143,6 +143,15 @@ export function mergeInboxes(desks: DesktopInbox[]): InboxEntry[] {
   })
 }
 
+// runningPipelines are the pipelines a phone can continue on a desktop:
+// active or blocked at a gate, the most recently changed first. A server
+// too old to send the phase lists every pipeline.
+export function runningPipelines(items: FocusListItem[]): FocusListItem[] {
+  return items
+    .filter((item) => !item.phase || item.phase === 'active' || item.phase === 'blocked')
+    .sort((a, b) => timeOf(b.updated_at) - timeOf(a.updated_at))
+}
+
 // consoleURL is where a pipeline opens in its desktop's console.
 export function consoleURL(baseURL: string, sessionID: string): string {
   return `${baseURL.replace(/\/+$/, '')}/console/focus/${encodeURIComponent(sessionID)}`

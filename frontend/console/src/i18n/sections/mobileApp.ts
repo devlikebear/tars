@@ -69,6 +69,10 @@ export const mobileAppEn = {
     failed: "Couldn't send the answer. Try again.",
   },
   openOnDesktop: 'Open in the desktop console',
+  open: 'Open',
+  pipelinesTitle: 'Pipelines',
+  noPipelines: 'No pipeline running here.',
+  waitsOnYou: 'waits on you',
 }
 
 export type MobileAppTranslations = typeof mobileAppEn
@@ -142,4 +146,8 @@ export const mobileAppKo: MobileAppTranslations = {
     failed: '답을 보내지 못했습니다. 다시 시도하세요.',
   },
   openOnDesktop: '데스크톱 콘솔에서 열기',
+  open: '열기',
+  pipelinesTitle: '파이프라인',
+  noPipelines: '이 데스크톱에서 실행 중인 파이프라인이 없습니다.',
+  waitsOnYou: '대기 중',
 }

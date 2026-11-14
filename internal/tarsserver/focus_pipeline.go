@@ -641,6 +641,26 @@ type focusListItem struct {
 	// QASessionID is the hidden Q&A session, so a tool call queued there
 	// can be shown under its pipeline.
 	QASessionID string `json:"qa_session_id,omitempty"`
+	// Phase is active, blocked, stopped or finished, by the console's own
+	// rule (lib/focus.ts pipelinePhase), so a list reader does not fetch
+	// every pipeline to tell running ones from finished ones.
+	Phase string `json:"phase"`
+}
+
+// focusListPhase reads a pipeline's phase from its current stage: active,
+// blocked at an open gate, stopped (blocked with no gate), or finished.
+func focusListPhase(p focuspipeline.Pipeline) string {
+	stage, _ := p.Stage(p.Current)
+	switch stage.Status {
+	case focuspipeline.StatusActive:
+		return "active"
+	case focuspipeline.StatusBlocked:
+		if p.OpenGate != focuspipeline.GateNone {
+			return "blocked"
+		}
+		return "stopped"
+	}
+	return "finished"
 }
 
 type focusListWaiting struct {
@@ -678,6 +698,7 @@ func (a *focusAPI) list(w http.ResponseWriter, _ *http.Request) {
 			GoalMode:     p.GoalActive(),
 			Waiting:      focusListWaitingOf(p),
 			QASessionID:  p.QASessionID,
+			Phase:        focusListPhase(p),
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

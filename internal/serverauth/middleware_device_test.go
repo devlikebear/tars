@@ -150,6 +150,10 @@ func TestFocusEndpointTable(t *testing.T) {
 		{http.MethodPost, "/v1/focus/pipelines/s1/goal"},
 		{http.MethodPost, "/v1/focus/pipelines/s1/plan?x=1"},
 		{http.MethodGet, "/v1/focus/templates"},
+		{http.MethodGet, "/v1/focus/pipelines/s1/session"},
+		{http.MethodGet, "/v1/focus/pipelines/s1/history?session=qa"},
+		{http.MethodGet, "/v1/focus/pipelines/s1/checkpoints"},
+		{http.MethodGet, "/v1/focus/pipelines/s1/checkpoints/t1/diff?scope=turn"},
 	}
 	for _, tc := range allowed {
 		if !EndpointAllowsRole(tc.method, tc.path, RoleFocus) {
@@ -166,6 +170,12 @@ func TestFocusEndpointTable(t *testing.T) {
 		{http.MethodGet, "/v1/setup/status"},
 		{http.MethodPost, "/v1/auth/logout"},
 		{http.MethodGet, "/v1/chat/board"},
+		// The pipeline screen's reads come only through the focus routes.
+		{http.MethodGet, "/v1/admin/sessions/s1"},
+		{http.MethodGet, "/v1/admin/sessions/s1/history"},
+		{http.MethodGet, "/v1/admin/sessions/s1/checkpoints"},
+		{http.MethodPost, "/v1/focus/pipelines/s1/checkpoints/t1/revert"},
+		{http.MethodPost, "/v1/focus/pipelines/s1/history"},
 	}
 	for _, tc := range denied {
 		if EndpointAllowsRole(tc.method, tc.path, RoleFocus) {

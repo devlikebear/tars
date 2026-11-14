@@ -36,13 +36,20 @@ export type APITarget = { baseURL: string; token: string }
 export async function requestJSONAt<T>(target: APITarget, path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   headers.set('Accept', 'application/json')
+  return readJSON<T>(await fetchAt(target, path, { ...init, headers }))
+}
+
+// fetchAt sends one request to a desktop: its address, its bearer token,
+// never a cookie. Streams (the turn feed) use it directly; JSON calls go
+// through requestJSONAt.
+export function fetchAt(target: APITarget, path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers)
   if (target.token) headers.set('Authorization', `Bearer ${target.token}`)
-  const response = await fetch(`${target.baseURL.replace(/\/+$/, '')}${path}`, {
+  return fetch(`${target.baseURL.replace(/\/+$/, '')}${path}`, {
     ...init,
     credentials: 'omit',
     headers,
   })
-  return readJSON<T>(response)
 }
 
 async function readJSON<T>(response: Response): Promise<T> {
