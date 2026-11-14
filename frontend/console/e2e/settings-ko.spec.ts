@@ -101,6 +101,15 @@ test('the Tailscale remote-access card is Korean', async ({ page }) => {
   expect(found).toEqual([])
 })
 
+test('the phones card is Korean', async ({ page }) => {
+  await gotoSettings(page)
+  await page.locator('.config-tabs').getByRole('button').nth(tabIds.indexOf('channelsRemote')).click()
+  const card = page.getByTestId('phones-card')
+  await expect(card.getByRole('status')).toBeVisible() // past the loading state
+  const found = (await settingsTexts(card)).filter(untranslated)
+  expect(found).toEqual([])
+})
+
 test('cross-tab search results and the search bar are Korean', async ({ page }) => {
   await gotoSettings(page)
   const search = page.locator('#config-search-input')

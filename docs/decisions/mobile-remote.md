@@ -46,7 +46,7 @@ Every device is reached at its Tailscale serve HTTPS address. No port forwarding
 
 ### 4. A focus device token
 
-Pairing: the desktop console shows a QR code holding the device's base URL and a one-time pairing code; the phone exchanges the code for a **focus device token**. Tokens are per phone, stored hashed on the desktop, listed and revocable from its console.
+Pairing: the desktop console shows a QR code holding the device's base URL and a one-time pairing code; the phone exchanges the code for a **focus device token**. The code is the link `tars-mobile://pair?url=<https base URL>&code=<code>`, so the phone's camera hands it to the app, and the base URL is the device's Tailscale serve address — the console offers no code while serve is off. Tokens are per phone, stored hashed on the desktop, listed and revocable from its console.
 
 The token carries a new role, `focus`, accepted only by:
 
