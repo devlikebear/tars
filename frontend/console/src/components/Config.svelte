@@ -37,6 +37,7 @@
   import ConfigFieldRow from './ConfigFieldRow.svelte'
   import ConfigLLMEditor from './ConfigLLMEditor.svelte'
   import RemoteAccessCard from './RemoteAccessCard.svelte'
+  import PhonesCard from './PhonesCard.svelte'
   import { t } from '../i18n'
 
   interface Props {
@@ -514,6 +515,7 @@
 
       {#if activeTab === 'channelsRemote'}
         <RemoteAccessCard />
+        <PhonesCard />
       {/if}
 
       {#if activeTab === 'llm' && llmProvidersField && llmTiersField && llmRoleDefaultsField}

@@ -29,6 +29,7 @@ import { companionEn } from './sections/companion.ts'
 import { caseBridgeEn } from './sections/caseBridge.ts'
 import { configEn } from './sections/config.ts'
 import { remoteAccessEn } from './sections/remoteAccess.ts'
+import { phonesEn } from './sections/phones.ts'
 
 export const en = {
   common: {
@@ -1542,4 +1543,5 @@ export const en = {
   caseBridge: caseBridgeEn,
   config: configEn,
   remoteAccess: remoteAccessEn,
+  phones: phonesEn,
 } satisfies Translations
