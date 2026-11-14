@@ -36,6 +36,34 @@ func TestApp(t *testing.T) {
 	}
 }
 
+// iOS refuses an app icon with an alpha channel, so the mobile icon and the
+// launch image must be opaque everywhere and encode without alpha.
+func TestMobileAndLaunchAreOpaque(t *testing.T) {
+	for name, tc := range map[string]struct {
+		raw  []byte
+		size int
+	}{"mobile": {Mobile(64), 64}, "launch": {Launch(256), 256}} {
+		// The IHDR colour type (byte 25 of the file): 2 is RGB, 6 is RGBA.
+		if len(tc.raw) < 26 || tc.raw[25] != 2 {
+			t.Errorf("%s: colour type %d, want 2 (RGB, no alpha)", name, tc.raw[25])
+		}
+		img := decode(t, tc.raw, tc.size)
+		for _, p := range [][2]int{{0, 0}, {tc.size - 1, tc.size - 1}, {tc.size / 2, tc.size / 2}} {
+			if alphaAt(img, p[0], p[1]) != 0xffff {
+				t.Errorf("%s: pixel %v is not opaque", name, p)
+			}
+		}
+	}
+	// The mark is green in the middle, on graphite at the corner.
+	img := decode(t, Mobile(64), 64)
+	if r, g, _, _ := img.At(32, 32).RGBA(); g <= r {
+		t.Error("the middle of the mobile icon is the green mark")
+	}
+	if r, g, b, _ := img.At(0, 0).RGBA(); r > 0x2000 || g > 0x2000 || b > 0x2000 {
+		t.Error("the corner of the mobile icon is graphite")
+	}
+}
+
 func TestTrayDotFollowsState(t *testing.T) {
 	centre := func(s tray.State) (uint32, uint32, uint32, uint32) {
 		return decode(t, Tray(s, 32), 32).At(16, 16).RGBA()

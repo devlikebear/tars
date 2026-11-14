@@ -14,7 +14,7 @@ A phone remote for focus mode on your desktops (`docs/decisions/mobile-remote.md
 - **Desktops.** The app shows each paired desktop and whether it answers now: online, unreachable, pair again (revoked at the desk), or needs setup. Under a desktop that answers are what it lacks to run a task end to end (the chat model's CLI, a signed-in `gh` for pull requests, Tailscale serve for alert links) and its running pipelines, so you can open one that waits on nothing.
 - **A pipeline.** The same screen as the desktop console's focus mode, talking to the desktop that owns the pipeline: approve or change the plan, decide cards, add a finding, ask about a card, send an instruction, follow the running turn, stop the pipeline or turn goal mode off. Turning goal mode on, and opening the full chat workbench, stay at the desk.
 
-Each desktop's device token is kept in the iOS Keychain by `ios/App/App/KeychainPlugin.swift`. The token stays on this phone: it is neither synced to iCloud nor restored to another phone.
+Each desktop's device token is kept in the iOS Keychain by `ios/App/App/KeychainPlugin.swift`. The token stays on this phone: it is neither synced to iCloud nor restored to another phone. Like any Keychain item it outlives deleting the app, so a reinstall finds its desktops again; revoke the phone at the desk to end its access.
 
 ## Build
 
@@ -44,4 +44,12 @@ The server answers CORS only for the app's own origin (`capacitor://localhost`).
 
 ## Not yet
 
-Phase 2's pieces are all here, and the development build has been run in the iOS Simulator end to end: pairing from a link, the Keychain across a relaunch, deciding a plan and a card, and a running turn streaming into the pipeline screen. Still open: an event stream for phones (the app reads again on a timer), a run on a real phone over Tailscale, and an app icon. Nothing here is signed for a device or distributed.
+Phase 2's pieces are all here, and the development build has been run in the iOS Simulator end to end: pairing from a link, the Keychain across a relaunch, deciding a plan and a card, and a running turn streaming into the pipeline screen. Still open: an event stream for phones (the app reads again on a timer), and a run on a real phone over Tailscale. Nothing here is signed for a device or distributed.
+
+The icon and launch image come from the desktop shell's icon code; to redraw them, from `desktop/`:
+
+```bash
+go run ./tools/appicon -kind mobile -size 1024 -out ../mobile/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+```
+
+and `-kind launch -size 2732` for each `splash-2732x2732*.png` in `Splash.imageset`. iOS caches launch screens, so uninstall the app from the Simulator before checking a new one.
