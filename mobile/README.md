@@ -72,6 +72,16 @@ The phone reaches each desktop at its Tailscale serve address, over https. Nothi
 8. Connect the iPhone by cable (or the same Wi-Fi once paired), pick it as the run destination, and **Run** (⌘R).
 9. The first time, iOS refuses to open an app from an unknown developer: Settings → General → VPN & Device Management → your Apple ID → **Trust**. A Personal Team's install expires after 7 days; run from Xcode again to renew it.
 
+Without clicking through Xcode, the same build, signing and install run from `mobile/` once the phone is connected and trusted. `TEAMID` is your team (`defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier`), `UDID` the phone (`xcrun xctrace list devices`); the team is passed on the command line, so the project file stays unchanged:
+
+```bash
+xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination "id=UDID" -derivedDataPath build/device DEVELOPMENT_TEAM=TEAMID -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+xcrun devicectl device install app --device UDID build/device/Build/Products/Debug-iphoneos/App.app
+xcrun devicectl device process launch --device UDID com.devlikebear.tars.mobile
+```
+
+The first build fails with "Your team has no devices" while the phone is not connected: connect it, unlock it and trust the Mac, then run it again.
+
 **Pair and try it:**
 
 10. At the desk, Phones → **Pair a phone**. Point the iPhone's Camera at the QR code and tap **Open in TARS**; the form fills in. Tap **Pair**.
