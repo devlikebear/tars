@@ -44,4 +44,4 @@ The server answers CORS only for the app's own origin (`capacitor://localhost`).
 
 ## Not yet
 
-Phase 2's pieces are all here. Still open: an event stream for phones (the app reads again on a timer), and proving the turn feed streams in an iOS web view over Tailscale. There is no app icon yet, and nothing here is signed for a device or distributed.
+Phase 2's pieces are all here, and the development build has been run in the iOS Simulator end to end: pairing from a link, the Keychain across a relaunch, deciding a plan and a card, and a running turn streaming into the pipeline screen. Still open: an event stream for phones (the app reads again on a timer), a run on a real phone over Tailscale, and an app icon. Nothing here is signed for a device or distributed.

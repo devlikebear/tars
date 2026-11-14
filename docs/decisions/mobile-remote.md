@@ -63,7 +63,7 @@ Requests send `Authorization: Bearer`. The mobile bundle replaces `EventSource` 
 
 The shell's web view runs on its own origin (`capacitor://localhost` on iOS, `https://localhost` on Android), so its requests to a device are cross-origin. Each device answers CORS for exactly those origins, only on the routes the `focus` role reaches, and only with a bearer token — never a wildcard, never with cookies.
 
-Capacitor's native HTTP (`CapacitorHttp`) is not used for API calls: it returns a whole response at once, so it cannot carry the turn feed or the event stream. (To be confirmed on a device in phase 1 before relying on it.)
+Capacitor's native HTTP (`CapacitorHttp`) is not used for API calls: it returns a whole response at once, so it cannot carry the turn feed or the event stream. (Confirmed 2026-11-14 in the iOS Simulator: the turn feed streams to the app's web view over plain `fetch`, event by event.)
 
 ### 6. The idea inbox
 
