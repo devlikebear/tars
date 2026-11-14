@@ -10,7 +10,7 @@
   import type { PairingTarget } from '../lib/devicePairing'
   import type { DesktopStore } from '../lib/mobile/desktopStore.svelte'
   import type { InboxStore } from '../lib/mobile/inboxStore.svelte'
-  import type { PairedDesktop } from '../lib/mobile/desktops'
+  import { readinessLine, readinessProblems, type PairedDesktop } from '../lib/mobile/desktops'
   import type { AppLinks } from '../lib/mobile/appLinks'
   import { stageLabel } from '../lib/focus'
   import { runningPipelines, waitingOf } from '../lib/mobile/inbox'
@@ -227,6 +227,17 @@
         {#if $t.mobileApp.stateHints[status]}
           <span class="state-hint">{$t.mobileApp.stateHints[status]}</span>
         {/if}
+        {#if status === 'online' && store.readiness[desktop.id]}
+          {@const problems = readinessProblems(store.readiness[desktop.id])}
+          <div class="readiness" data-testid="mobile-desktop-readiness" data-ready={problems.length === 0 ? 'true' : 'false'}>
+            {#if problems.length === 0}
+              <span class="ready">{$t.mobileApp.ready}</span>
+            {/if}
+            {#each problems as check (check.id)}
+              <span class="problem" class:blocking={check.id === 'model'}>{readinessLine(check, $t.mobileApp.readiness)}</span>
+            {/each}
+          </div>
+        {/if}
         <div class="desktop-actions">
           {#if status === 'unpaired'}
             <button type="button" class="btn btn-primary btn-sm" onclick={() => openPair({ baseURL: desktop.baseURL, code: '' })}>
@@ -278,7 +289,7 @@
 {/if}
 
 {#if sending}
-  <SendIdeaSheet {ideas} idea={sending} desktops={onlineDesktops} {onSent} onCancel={() => (sending = null)} />
+  <SendIdeaSheet {ideas} idea={sending} desktops={onlineDesktops} readiness={store.readiness} {onSent} onCancel={() => (sending = null)} />
 {/if}
 
 <style>
@@ -388,6 +399,26 @@
     justify-content: flex-end;
     gap: var(--space-2);
     margin-top: var(--space-2);
+  }
+
+  .readiness {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+
+  .ready {
+    color: var(--success);
+  }
+
+  .problem {
+    color: var(--warning);
+  }
+
+  .problem.blocking {
+    color: var(--error);
   }
 
   .pipelines {

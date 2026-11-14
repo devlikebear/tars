@@ -103,6 +103,7 @@ type apiRouteHandlers struct {
 	focusTemplateEdit http.Handler
 	focusRelease      http.Handler
 	focusReads        http.Handler
+	focusReadiness    http.Handler
 	permissionMode    http.Handler
 	work              http.Handler
 	memory            http.Handler
@@ -818,6 +819,7 @@ func buildAPIMux(
 		focusTemplateEdit: newFocusTemplateEditHandler(sessionStore, deps.llmRouter, logger),
 		focusRelease:      newFocusReleaseHandler(sessionStore, logger),
 		focusReads:        apihandlers.NewFocusReadsHandler(sessionStore, checkpointStore, logger),
+		focusReadiness:    newFocusReadinessHandler(cfg),
 		checkpoints:       newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
 			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
@@ -978,6 +980,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 		mux.Handle("/v1/focus/pipelines/{id}/history", handlers.focusReads)
 		mux.Handle("/v1/focus/pipelines/{id}/checkpoints", handlers.focusReads)
 		mux.Handle("/v1/focus/pipelines/{id}/checkpoints/{turn}/diff", handlers.focusReads)
+	}
+	if handlers.focusReadiness != nil {
+		mux.Handle("/v1/focus/readiness", handlers.focusReadiness)
 	}
 	if handlers.permissionMode != nil {
 		mux.Handle("/v1/admin/sessions/{id}/permission-mode", handlers.permissionMode)

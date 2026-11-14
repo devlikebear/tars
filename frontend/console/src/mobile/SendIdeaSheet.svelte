@@ -7,19 +7,20 @@
   import { templateText } from '../lib/focus'
   import type { IdeaStore } from '../lib/mobile/ideaStore.svelte'
   import type { Idea, SentIdea } from '../lib/mobile/ideas'
-  import type { PairedDesktop } from '../lib/mobile/desktops'
+  import { blocksTasks, readinessLine, readinessProblems, type PairedDesktop, type ReadinessCheck } from '../lib/mobile/desktops'
   import type { FocusTemplate } from '../lib/types'
 
   interface Props {
     ideas: IdeaStore
     idea: Idea
-    // The desktops that answer now.
+    // The desktops that answer now, and what each lacks to run a task.
     desktops: PairedDesktop[]
+    readiness: Record<string, ReadinessCheck[]>
     onSent: (sent: SentIdea) => void
     onCancel: () => void
   }
 
-  let { ideas, idea, desktops, onSent, onCancel }: Props = $props()
+  let { ideas, idea, desktops, readiness, onSent, onCancel }: Props = $props()
 
   // svelte-ignore state_referenced_locally
   let goal = $state(idea.text)
@@ -29,6 +30,10 @@
 
   const desktop = $derived(desktops.find((d) => d.id === desktopID) ?? null)
   const options = $derived(ideas.options && ideas.options.desktopID === desktopID ? ideas.options : null)
+  // A desktop without a model cannot run the task: say so and do not send.
+  // Missing gh or Tailscale only warns; the plan and build still run.
+  const problems = $derived(readinessProblems(readiness[desktopID]))
+  const blocked = $derived(blocksTasks(readiness[desktopID]))
 
   function pick(id: string) {
     desktopID = id
@@ -83,6 +88,15 @@
       {/each}
     </fieldset>
 
+    {#if desktop && problems.length > 0}
+      <div class="readiness" class:blocked data-testid="mobile-send-readiness">
+        {#if blocked}<strong>{$t.mobileApp.notReadyToSend}</strong>{/if}
+        {#each problems as check (check.id)}
+          <span>{readinessLine(check, $t.mobileApp.readiness)}</span>
+        {/each}
+      </div>
+    {/if}
+
     {#if desktop}
       {#if ideas.loadingOptions}
         <p class="hint">{$t.mobileApp.loadingFolders}</p>
@@ -124,7 +138,7 @@
     {/if}
 
     <div class="actions">
-      <button type="submit" class="btn btn-primary" disabled={ideas.sending || !desktop || !cwd || !goal.trim()} data-testid="mobile-send-submit">
+      <button type="submit" class="btn btn-primary" disabled={ideas.sending || !desktop || !cwd || !goal.trim() || blocked} data-testid="mobile-send-submit">
         {ideas.sending ? $t.mobileApp.sending : $t.mobileApp.send}
       </button>
       <button type="button" class="btn btn-ghost" onclick={onCancel}>{$t.mobileApp.cancel}</button>
@@ -228,6 +242,23 @@
     color: var(--text-tertiary);
     font-size: var(--text-xs);
     overflow-wrap: anywhere;
+  }
+
+  .readiness {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--warning);
+    color: var(--warning);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+
+  .readiness.blocked {
+    border-color: var(--error);
+    color: var(--error);
   }
 
   .error {

@@ -7,13 +7,15 @@ import type { PairingTarget } from '../devicePairing.ts'
 import type { ActivitySnapshot } from '../sessionBoard.ts'
 import type { FocusListItem, FocusTemplate, FocusTemplateList } from '../types.ts'
 import type { RegisteredFolder } from './ideas.ts'
-import { statusFrom, type DesktopStatus, type HealthAnswer } from './desktops.ts'
+import { statusFrom, type DesktopStatus, type HealthAnswer, type ReadinessCheck } from './desktops.ts'
 
 export type DevicePairAnswer = { device_id: string; name: string; role: string; token: string }
 
 export type DesktopAPI = {
   pair(target: PairingTarget, phoneName: string): Promise<DevicePairAnswer>
   status(target: APITarget): Promise<DesktopStatus>
+  // null when the desk is too old to say (no route) or does not answer.
+  readiness?(target: APITarget): Promise<ReadinessCheck[] | null>
 }
 
 // The calls behind the inbox: what each desktop's pipelines wait on, and
@@ -29,6 +31,10 @@ export type InboxAPI = {
 // probeTimeoutMs bounds a probe: a desktop that sleeps never answers, and the
 // list should say so instead of spinning.
 const probeTimeoutMs = 6000
+
+// readinessTimeoutMs is longer: a desk that has not read its readiness for a
+// while runs gh and tailscale before answering.
+const readinessTimeoutMs = 25_000
 
 export const desktopAPI: DesktopAPI = {
   pair(target, phoneName) {
@@ -55,6 +61,15 @@ export const desktopAPI: DesktopAPI = {
       tokenStatus = err instanceof APIRequestError ? err.status : 0
     }
     return statusFrom(health, tokenStatus)
+  },
+
+  async readiness(target) {
+    try {
+      const answer = await requestJSONAt<{ checks?: ReadinessCheck[] }>(target, '/v1/focus/readiness', { signal: AbortSignal.timeout(readinessTimeoutMs) })
+      return answer.checks ?? null
+    } catch {
+      return null
+    }
   },
 }
 

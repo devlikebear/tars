@@ -91,6 +91,50 @@ export function parseDesktops(raw: string | null | undefined): PairedDesktop[] {
   return out
 }
 
+// Readiness (GET /v1/focus/readiness): whether a focus task can run on a
+// desktop end to end. Each check is a fixed state the desk decided; the
+// phone only words it. Absent from servers before it.
+export type ReadinessCheck = {
+  id: 'model' | 'gh' | 'tailscale' | string
+  state: 'ok' | 'missing' | 'signed_out' | 'not_serving' | 'unknown' | string
+  kind?: string
+}
+
+// readinessProblems lists the checks that are not ok, in the desk's order.
+export function readinessProblems(checks: ReadinessCheck[] | undefined): ReadinessCheck[] {
+  return (checks ?? []).filter((c) => c.state !== 'ok')
+}
+
+// blocksTasks reports whether a task cannot run at all: no model to run it.
+// gh and Tailscale only stop the PR stages and the alert's link.
+export function blocksTasks(checks: ReadinessCheck[] | undefined): boolean {
+  return (checks ?? []).some((c) => c.id === 'model' && c.state !== 'ok')
+}
+
+export type ReadinessText = {
+  modelMissing: string
+  modelMissingCLI: (cli: string) => string
+  gh: Record<string, string>
+  tailscale: Record<string, string>
+  unknown: string
+}
+
+// cliNames name the binary a CLI provider kind runs, for the person.
+const cliNames: Record<string, string> = {
+  'claude-code-cli': 'Claude Code (claude)',
+  'antigravity-cli': 'Antigravity (agy)',
+}
+
+// readinessLine words one check that is not ok.
+export function readinessLine(check: ReadinessCheck, text: ReadinessText): string {
+  if (check.id === 'model') {
+    const cli = cliNames[check.kind ?? '']
+    return cli ? text.modelMissingCLI(cli) : text.modelMissing
+  }
+  const states = check.id === 'gh' ? text.gh : check.id === 'tailscale' ? text.tailscale : {}
+  return states[check.state] ?? text.unknown
+}
+
 export type HealthAnswer = { ok?: boolean; needs_setup?: boolean; version?: string }
 
 // statusFrom turns the two probes into one state. health is null when the

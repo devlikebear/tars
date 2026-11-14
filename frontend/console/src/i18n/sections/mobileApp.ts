@@ -74,6 +74,23 @@ export const mobileAppEn = {
   noPipelines: 'No pipeline running here.',
   waitsOnYou: 'waits on you',
 
+  ready: 'Ready for focus tasks.',
+  readiness: {
+    modelMissing: "No chat model is set up here, so a task can't run.",
+    modelMissingCLI: (cli: string) => `${cli} isn't installed on this desktop, so a task can't run.`,
+    gh: {
+      missing: "GitHub CLI (gh) isn't installed, so pull requests won't open.",
+      signed_out: "GitHub CLI (gh) is signed out, so pull requests won't open.",
+    } as Record<string, string>,
+    tailscale: {
+      missing: "Tailscale isn't installed.",
+      signed_out: 'Tailscale is signed out.',
+      not_serving: "Tailscale serve isn't pointing at TARS, so alert links won't open.",
+    } as Record<string, string>,
+    unknown: "Couldn't check this.",
+  },
+  notReadyToSend: "This desktop can't run a task right now:",
+
   ideaPlaceholder: 'An idea for later. It stays on this phone until you send it to a desktop.',
   saveIdea: 'Save',
   ideasEmpty: 'No ideas yet. Write one down whenever it comes; no desktop needs to be awake.',
@@ -178,6 +195,23 @@ export const mobileAppKo: MobileAppTranslations = {
   pipelinesTitle: '파이프라인',
   noPipelines: '이 데스크톱에서 실행 중인 파이프라인이 없습니다.',
   waitsOnYou: '대기 중',
+
+  ready: '포커스 작업을 실행할 수 있습니다.',
+  readiness: {
+    modelMissing: '이 데스크톱에 채팅 모델이 설정되지 않아 작업을 실행할 수 없습니다.',
+    modelMissingCLI: (cli) => `이 데스크톱에 ${cli}이(가) 설치되지 않아 작업을 실행할 수 없습니다.`,
+    gh: {
+      missing: 'GitHub 명령줄 도구(gh)가 설치되지 않아 풀 리퀘스트를 열 수 없습니다.',
+      signed_out: 'GitHub 명령줄 도구(gh)에 로그인되어 있지 않아 풀 리퀘스트를 열 수 없습니다.',
+    },
+    tailscale: {
+      missing: 'Tailscale이 설치되지 않았습니다.',
+      signed_out: 'Tailscale에 로그인되어 있지 않습니다.',
+      not_serving: 'Tailscale의 serve 설정이 TARS를 가리키지 않아 알림 링크가 열리지 않습니다.',
+    },
+    unknown: '확인하지 못했습니다.',
+  },
+  notReadyToSend: '이 데스크톱은 지금 작업을 실행할 수 없습니다:',
 
   ideaPlaceholder: '나중을 위한 아이디어. 데스크톱으로 보내기 전까지 이 휴대폰에만 저장됩니다.',
   saveIdea: '저장',
