@@ -3,6 +3,8 @@ package apihandlers
 import (
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,7 +44,66 @@ func NewDevicesHandler(store *consoleauth.Store, logger zerolog.Logger) http.Han
 	h.mux.HandleFunc("GET /v1/admin/devices", h.list)
 	h.mux.HandleFunc("POST /v1/admin/devices/pairing-code", h.pairingCode)
 	h.mux.HandleFunc("DELETE /v1/admin/devices/{id}", h.revoke)
+	h.mux.HandleFunc("GET /v1/admin/devices/folders", h.folders)
+	h.mux.HandleFunc("PUT /v1/admin/devices/folders", h.setFolders)
 	return h
+}
+
+// DeviceFolderView is one registered folder as the desk and the phone see
+// it. Exists is read when the list is read, not when it is written: a folder
+// can disappear after it is registered, and creating a pipeline in it fails
+// then anyway.
+type DeviceFolderView struct {
+	Path   string `json:"path"`
+	Name   string `json:"name"`
+	Exists bool   `json:"exists"`
+}
+
+// DeviceFolderViews reads the registered folders from store with their
+// names and whether each exists now.
+func DeviceFolderViews(store *consoleauth.Store) ([]DeviceFolderView, error) {
+	paths, err := store.DeviceFolders()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DeviceFolderView, 0, len(paths))
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		out = append(out, DeviceFolderView{Path: path, Name: filepath.Base(path), Exists: err == nil && info.IsDir()})
+	}
+	return out, nil
+}
+
+// folders returns the folders a paired device may start a focus pipeline in.
+func (h *devicesAPIHandler) folders(w http.ResponseWriter, _ *http.Request) {
+	h.writeFolders(w, http.StatusOK)
+}
+
+// setFolders replaces the list. The store checks only that each entry is an
+// absolute path; the answer is the stored list read back, each with whether
+// it exists, so a typo shows at the desk as a missing folder.
+func (h *devicesAPIHandler) setFolders(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Folders []string `json:"folders"`
+	}
+	if !httpapi.DecodeJSONBody(w, r, &req) {
+		return
+	}
+	if _, err := h.store.SetDeviceFolders(req.Folders); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, "invalid_folders", err.Error())
+		return
+	}
+	h.writeFolders(w, http.StatusOK)
+}
+
+func (h *devicesAPIHandler) writeFolders(w http.ResponseWriter, status int) {
+	views, err := DeviceFolderViews(h.store)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("read device folders")
+		httpapi.WriteError(w, http.StatusInternalServerError, "device_folders_unavailable", "failed to read device folders")
+		return
+	}
+	httpapi.WriteJSON(w, status, map[string]any{"folders": views})
 }
 
 func (h *devicesAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

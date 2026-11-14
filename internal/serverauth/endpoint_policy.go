@@ -73,6 +73,7 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	// turn it off.
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/goal", "focus goal mode"),
 	userRule([]string{http.MethodGet}, "/v1/focus/templates", "focus template list"),
+	userRule([]string{http.MethodGet}, "/v1/focus/folders", "folders registered for phones"),
 	userRule([]string{http.MethodGet}, "/v1/focus/release-train", "focus release train read"),
 	userRule([]string{http.MethodGet}, "/v1/admin/plans/archive", "plan archive"),
 
@@ -143,6 +144,7 @@ var focusEndpointRules = []EndpointPolicyRule{
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/goal", "focus goal mode"),
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/plan", "focus plan edit"),
 	focusRule([]string{http.MethodGet}, "/v1/focus/templates", "focus template list"),
+	focusRule([]string{http.MethodGet}, "/v1/focus/folders", "folders registered for phones"),
 }
 
 func publicRule(methods []string, pattern, note string) EndpointPolicyRule {

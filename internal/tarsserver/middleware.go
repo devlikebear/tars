@@ -30,7 +30,9 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 		BrowserSessionRoleResolver:    browserSessionRoleResolver(cfg.WorkspaceDir),
 		DeviceTokenResolver:           deviceTokenRoleResolver(cfg.WorkspaceDir),
 	}, authLog)
-	return requestDebugMiddleware(logger, auth(withDefaultWorkspaceBinding(next)))
+	// The mobile app's CORS sits outside auth: a preflight carries no token.
+	appCORS := serverauth.NewAppCORS(serverauth.DefaultAppOrigins)
+	return appCORS(requestDebugMiddleware(logger, auth(withDefaultWorkspaceBinding(next))))
 }
 
 func browserSessionRoleResolver(workspaceDir string) func(sessionID string) (string, bool) {
