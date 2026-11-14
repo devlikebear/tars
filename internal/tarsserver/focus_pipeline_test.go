@@ -360,6 +360,14 @@ func TestFocusListAndGet(t *testing.T) {
 	if len(items) != 1 || items[0].SessionID != live.ID || items[0].Title != "focus" || items[0].OpenGate != focuspipeline.GatePlan || items[0].NeedsInput != 1 || items[0].Current != focuspipeline.StagePlan {
 		t.Fatalf("items = %+v", items)
 	}
+	// What waits, for the phone's inbox: the open plan gate (its own card is
+	// the gate, not a card to decide).
+	if w := items[0].Waiting; w.Gate != focuspipeline.GatePlan || w.Cards != 0 {
+		t.Fatalf("waiting = %+v", items[0].Waiting)
+	}
+	if !strings.Contains(rec.Body.String(), `"waiting":{"gate":"plan","cards":0}`) {
+		t.Fatalf("list body = %s", rec.Body.String())
+	}
 
 	if rec := focusRequest(t, h, http.MethodGet, "/v1/focus/pipelines/"+live.ID, "", false); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"open_gate":"plan"`) {
 		t.Fatalf("get: %d %s", rec.Code, rec.Body.String())
@@ -372,6 +380,38 @@ func TestFocusListAndGet(t *testing.T) {
 	plain, _ := f.store.Create("plain")
 	if rec := focusRequest(t, h, http.MethodGet, "/v1/focus/pipelines/"+plain.ID, "", false); rec.Code != http.StatusNotFound {
 		t.Fatalf("session without pipeline: %d", rec.Code)
+	}
+}
+
+func TestFocusListWaitingOf(t *testing.T) {
+	p := focuspipeline.Pipeline{
+		Current: focuspipeline.StageReview,
+		Stages:  []focuspipeline.Stage{{ID: focuspipeline.StageReview, Status: focuspipeline.StatusActive}},
+		Cards: []focuspipeline.Card{
+			{ID: "f1", Kind: focuspipeline.CardFinding, Stage: focuspipeline.StageReview, State: focuspipeline.CardSeen},
+			{ID: "f2", Kind: focuspipeline.CardFinding, Stage: focuspipeline.StageReview, State: focuspipeline.CardDecided},
+			{ID: "q1", Kind: focuspipeline.CardDecision, Stage: focuspipeline.StageReview, State: focuspipeline.CardUnseen},
+		},
+		QASessionID: "qa-1",
+	}
+	if w := focusListWaitingOf(p); w.Gate != "" || w.Cards != 2 {
+		t.Fatalf("cards only: %+v", w)
+	}
+	p.OpenGate = focuspipeline.GateTriage
+	if w := focusListWaitingOf(p); w.Gate != focuspipeline.GateTriage || w.Cards != 2 {
+		t.Fatalf("gate and cards: %+v", w)
+	}
+	p.GoalMode = &focuspipeline.GoalMode{Enabled: true}
+	if w := focusListWaitingOf(p); w != (focusListWaiting{}) {
+		t.Fatalf("goal mode waits on nobody: %+v", w)
+	}
+	// Nothing waits: still sent, so the phone tells it from an older server.
+	body, err := json.Marshal(focusListItem{SessionID: "s", Waiting: focusListWaitingOf(p)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"waiting":{"cards":0}`) || strings.Contains(string(body), "qa_session_id") {
+		t.Fatalf("list item: %s", body)
 	}
 }
 

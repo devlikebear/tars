@@ -9,6 +9,7 @@ A phone remote for focus mode on your desktops (`docs/decisions/mobile-remote.md
 ## What it does now
 
 - **Pairing.** On a desktop, open Settings → Channels & Remote → Phones and choose **Pair a phone**. Scan the QR code with the iPhone camera. The code is a `tars-mobile://pair?url=…&code=…` link, so iOS opens this app with the pairing form filled in. You can also type the address and code by hand.
+- **Waiting.** One list, across every paired desktop, of the focus pipelines that wait on you: an open gate, cards to decide, or a tool call waiting for an answer. Each row names its desktop. Answer a tool call right there; a gate or a card opens in that desktop's console for now. A desktop that does not answer is named under the list. The list is read again when the app comes back to the front and every 30 seconds while it is open.
 - **Desktops.** The app shows each paired desktop and whether it answers now: online, unreachable, pair again (revoked at the desk), or needs setup.
 
 Each desktop's device token is kept in the iOS Keychain by `ios/App/App/KeychainPlugin.swift`. The token stays on this phone: it is neither synced to iCloud nor restored to another phone.
@@ -41,4 +42,4 @@ The server answers CORS only for the app's own origin (`capacitor://localhost`).
 
 ## Not yet
 
-The waiting-on-you inbox, the focus screens for each desktop, and the idea inbox come in later phase 2 changes. There is no app icon yet, and nothing here is signed for a device or distributed.
+The focus screens for each desktop (deciding a gate or a card in the app) and the idea inbox come in later phase 2 changes. There is no app icon yet, and nothing here is signed for a device or distributed.
