@@ -10,6 +10,7 @@
 // app. The base URL must be https: a phone reaches a desktop only through
 // its Tailscale serve address (§3), never over plain http.
 import qrcode from 'qrcode-generator'
+import type { FocusAnswerCounts, FocusAnswerReport } from './types.ts'
 
 export const PAIRING_SCHEME = 'tars-mobile:'
 
@@ -117,4 +118,15 @@ export function withFolder(folders: string[], path: string): string[] {
 
 export function withoutFolder(folders: string[], path: string): string[] {
   return folders.filter((f) => f !== path)
+}
+
+// answerShare reads the answer report into what the Phones card says: how
+// many gate and card answers came from a phone, out of all answers that
+// recorded where they came from. null when none did yet.
+export function answerShare(report: FocusAnswerReport | null | undefined): { phone: number; total: number; pipelines: number } | null {
+  if (!report) return null
+  const sum = (c: FocusAnswerCounts) => c.phone + c.desk + c.goal
+  const total = sum(report.gates) + sum(report.cards)
+  if (total === 0) return null
+  return { phone: report.gates.phone + report.cards.phone, total, pipelines: report.phone_pipelines }
 }

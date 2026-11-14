@@ -2747,6 +2747,9 @@ export type FocusCard = {
   state: FocusCardState
   decision?: string
   created_at: string
+  // Where and when the developer decided it: 'phone', 'desk' or 'goal'.
+  decided_by?: 'phone' | 'desk' | 'goal'
+  decided_at?: string
 }
 
 // The PR stages (P4): the latest gh probe's checks, normalized by the server.
@@ -2860,6 +2863,17 @@ export type FocusListItem = {
   // active | blocked | stopped | finished, by lib/focus pipelinePhase's
   // rule. Absent from servers before the phone's pipeline list.
   phase?: 'active' | 'blocked' | 'stopped' | 'finished'
+}
+
+// GET /v1/focus/answer-report: gate and card answers by where they were
+// given, since a time. Only answers that recorded a source count.
+export type FocusAnswerCounts = { phone: number; desk: number; goal: number }
+export type FocusAnswerReport = {
+  since: string
+  gates: FocusAnswerCounts
+  cards: FocusAnswerCounts
+  pipelines: number
+  phone_pipelines: number
 }
 
 // The release train (GET /v1/focus/release-train): pipelines finished since

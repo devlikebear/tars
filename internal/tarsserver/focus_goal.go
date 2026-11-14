@@ -159,7 +159,7 @@ func (d *focusDriver) goalStep(sessionID string) {
 		}
 		return
 	case focuspipeline.GoalGate:
-		req := focusGateRequest{Action: step.Action, Note: step.Note, CardID: step.CardID}
+		req := focusGateRequest{Action: step.Action, Note: step.Note, CardID: step.CardID, By: focuspipeline.AnswerGoal}
 		if _, _, _, err := focusApplyGate(d.ctx, d.sessions, d, d.logger, d.now, sessionID, step.Gate, req, serverauth.RoleAdmin); err != nil {
 			// A person decided it first, or the PR head moved under G4: the
 			// next tick sees the pipeline as it is now.
@@ -167,7 +167,7 @@ func (d *focusDriver) goalStep(sessionID string) {
 			return
 		}
 	case focuspipeline.GoalCard:
-		req := focusCardRequest{State: focuspipeline.CardDecided, Decision: step.Decision}
+		req := focusCardRequest{State: focuspipeline.CardDecided, Decision: step.Decision, By: focuspipeline.AnswerGoal}
 		if _, _, err := focusDecideCard(d.sessions, d, d.now, sessionID, step.CardID, req, serverauth.RoleAdmin); err != nil {
 			if !errors.Is(err, focuspipeline.ErrCardDecided) {
 				log.Warn().Err(err).Str("card", step.CardID).Msg("focus goal: card not decided")

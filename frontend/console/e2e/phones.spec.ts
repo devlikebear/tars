@@ -1,6 +1,6 @@
 // Pairing a phone from the settings page (docs/decisions/mobile-remote.md
-// §4). The runner has no Tailscale, so the remote-access status is the one
-// response mocked here; the pairing code, the trade at /v1/auth/device-pair,
+// §4). The remote-access status is the one response mocked here (the runner
+// may or may not have Tailscale); the pairing code, the trade at /v1/auth/device-pair,
 // the device list, revoking and the folder list are the real server's.
 import { expect, test, type Page } from '@playwright/test'
 
@@ -22,6 +22,9 @@ async function openPhones(page: Page) {
 }
 
 test('without a Tailscale address, a phone cannot be paired', async ({ page }) => {
+  // Mocked too: a developer's Mac may really be serving TARS over Tailscale.
+  const notServing = { ...servedStatus, desired_enabled: false, url: '', status: { ...servedStatus.status, serve_active: false, owned_by_tars: false } }
+  await page.route('**/v1/admin/remote-access/status', (route) => route.fulfill({ json: notServing }))
   const card = await openPhones(page)
   await expect(card.getByRole('status')).toContainText('Turn on Tailscale remote access')
   await expect(card.getByTestId('phones-pair')).toBeDisabled()

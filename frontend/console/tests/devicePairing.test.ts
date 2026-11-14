@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  answerShare,
   formatCountdown,
   newlyPaired,
   normalizeBaseURL,
@@ -85,4 +86,20 @@ test('folder list edits', () => {
   assert.equal(withFolder(list, '/repo'), list)
   assert.equal(withFolder(list, '  '), list)
   assert.deepEqual(withoutFolder(['/repo', '/other'], '/repo'), ['/other'])
+})
+
+test('the Phones card reads how much was answered on a phone', () => {
+  const zero = { phone: 0, desk: 0, goal: 0 }
+  assert.equal(answerShare(null), null)
+  assert.equal(answerShare({ since: '', gates: zero, cards: zero, pipelines: 0, phone_pipelines: 0 }), null)
+  assert.deepEqual(
+    answerShare({
+      since: '',
+      gates: { phone: 2, desk: 1, goal: 3 },
+      cards: { phone: 1, desk: 4, goal: 0 },
+      pipelines: 4,
+      phone_pipelines: 2,
+    }),
+    { phone: 3, total: 11, pipelines: 2 },
+  )
 })

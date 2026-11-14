@@ -9,6 +9,7 @@
     APIRequestError,
     createDevicePairingCode,
     getDeviceFolders,
+    getFocusAnswerReport,
     getRemoteAccessStatus,
     listPairedDevices,
     revokePairedDevice,
@@ -18,6 +19,7 @@
     type PairedDevice,
   } from '../lib/api'
   import {
+    answerShare,
     formatCountdown,
     newlyPaired,
     pairingBaseURL,
@@ -39,6 +41,9 @@
   let knownIDs: string[] = []
   let now = $state(Date.now())
   let picking = $state(false)
+  // How much was answered on a phone lately; null until there is any
+  // answer that recorded where it came from (or on an older server).
+  let share = $state<ReturnType<typeof answerShare>>(null)
   let timer: ReturnType<typeof setInterval> | undefined
   let polls = 0
 
@@ -64,6 +69,9 @@
       })
       devices = list
       folders = dirs
+      // Apart from the card's own reads: a server without the report
+      // leaves the line out, never the card.
+      getFocusAnswerReport(30).then((r) => (share = answerShare(r.report)), () => (share = null))
     } catch (err) {
       error = messageFor(err)
     } finally {
@@ -231,6 +239,9 @@
         {/if}
       </div>
     {/each}
+    {#if share}
+      <span class="phones-muted" data-testid="phones-answer-share">{$t.phones.answeredOnPhone(share.phone, share.total, share.pipelines)}</span>
+    {/if}
   </div>
 
   <div class="phones-section">

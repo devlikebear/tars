@@ -19,6 +19,8 @@ export const phonesEn = {
 
   devicesTitle: 'Paired',
   noDevices: 'No phone is paired yet.',
+  answeredOnPhone: (phone: number, total: number, pipelines: number) =>
+    `Last 30 days: ${phone} of ${total} gate and card answers came from a phone${pipelines > 0 ? `, in ${pipelines} ${pipelines === 1 ? 'task' : 'tasks'}` : ''}.`,
   pairedOn: (date: string) => `Paired ${date}`,
   revoked: 'Revoked',
   revoke: 'Revoke',
@@ -54,6 +56,8 @@ export const phonesKo: PhonesTranslations = {
 
   devicesTitle: '연결됨',
   noDevices: '아직 연결된 휴대폰이 없습니다.',
+  answeredOnPhone: (phone, total, pipelines) =>
+    `지난 30일: 게이트·카드 답 ${total}건 중 ${phone}건을 휴대폰에서 했습니다${pipelines > 0 ? `(작업 ${pipelines}개)` : ''}.`,
   pairedOn: (date) => `${date} 연결`,
   revoked: '해제됨',
   revoke: '연결 해제',

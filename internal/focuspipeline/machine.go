@@ -99,6 +99,9 @@ type Event struct {
 	// CardID is the gate card the developer acted on (EventGate): when
 	// set, a gate replaced since (G4 reopened on a new head) refuses it.
 	CardID string
+	// By is where a gate action came from (AnswerPhone, AnswerDesk,
+	// AnswerGoal); the decided gate card records it. Empty records nothing.
+	By string
 	// Verification is the verification result (EventVerification).
 	Verification *Verification
 	// PR is G3's edited draft (EventGate on GatePR); Probe the probe's
@@ -422,6 +425,7 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		if cardIdx >= 0 {
 			p.Cards[cardIdx].State = CardDecided
 			p.Cards[cardIdx].Decision = ev.Action
+			stampDecided(&p.Cards[cardIdx], ev.By, now)
 		}
 		p.OpenGate = GateNone
 		p.UpdatedAt = now
@@ -641,6 +645,22 @@ func nonNil(s []string) []string {
 // cards are decided only through their gate (Apply). On error p is returned
 // unchanged.
 func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pipeline, Action, error) {
+	return SetCardStateBy(p, cardID, state, decision, "", now)
+}
+
+// stampDecided records where and when a card was decided; by "" records
+// nothing, so a caller that does not say leaves the card as before.
+func stampDecided(card *Card, by string, now time.Time) {
+	if by == "" {
+		return
+	}
+	at := now.UTC()
+	card.DecidedBy, card.DecidedAt = by, &at
+}
+
+// SetCardStateBy is SetCardState recording where a decision came from (by:
+// AnswerPhone, AnswerDesk, AnswerGoal; "" records nothing).
+func SetCardStateBy(p Pipeline, cardID, state, decision, by string, now time.Time) (Pipeline, Action, error) {
 	idx := -1
 	for i, c := range p.Cards {
 		if c.ID == cardID {
@@ -678,6 +698,7 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 		}
 		card.State = CardDecided
 		card.Decision = decision
+		stampDecided(&card, by, now)
 	default:
 		return p, noAction, fmt.Errorf("%w: %q", ErrInvalidCardState, state)
 	}
