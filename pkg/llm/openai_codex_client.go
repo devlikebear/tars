@@ -628,7 +628,13 @@ func parseOpenAICodexSSE(body io.Reader, opts ChatOptions, nameMap openAICodexTo
 				opts.OnReasoningDelta(delta)
 			}
 		case "response.output_item.added":
-			parseOpenAICodexToolCallFromItem(castMapAny(event["item"]), toolCallsByID, &toolOrder, nameMap)
+			item := castMapAny(event["item"])
+			parseOpenAICodexToolCallFromItem(item, toolCallsByID, &toolOrder, nameMap)
+			if opts.OnToolCallStart != nil && strings.TrimSpace(getStringAny(item["type"])) == "function_call" {
+				if name := strings.TrimSpace(getStringAny(item["name"])); name != "" {
+					opts.OnToolCallStart(nameMap.original(name))
+				}
+			}
 		case "response.content_part.added":
 		// no-op in v1: content_part lifecycle only
 		case "response.output_item.done":
