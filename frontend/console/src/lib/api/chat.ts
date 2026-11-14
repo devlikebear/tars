@@ -1,4 +1,4 @@
-import { APIRequestError, requestJSON } from './client.ts'
+import { APIRequestError, fetchAt, requestJSON, type APITarget } from './client.ts'
 import type {
   APIErrorPayload,
   ChatEvent,
@@ -114,14 +114,29 @@ export function streamEvents(
   }
 }
 
-export async function streamChat(
+// send reaches this console's own server, or a desktop when target is set
+// (the mobile app, which carries a bearer token and never a cookie).
+function send(target: APITarget | null, path: string, init: RequestInit): Promise<Response> {
+  if (target) return fetchAt(target, path, init)
+  return fetch(path, { ...init, credentials: 'same-origin' })
+}
+
+export function streamChat(
   request: ChatRequest,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch('/v1/chat', {
+  return streamChatAt(null, request, onEvent, signal)
+}
+
+export async function streamChatAt(
+  target: APITarget | null,
+  request: ChatRequest,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await send(target, '/v1/chat', {
     method: 'POST',
-    credentials: 'same-origin',
     headers: {
       Accept: 'text/event-stream',
       'Content-Type': 'application/json',
@@ -150,13 +165,21 @@ export async function streamChat(
 // attachChatStream follows the turn running in a session, from its first
 // event (#971): a turn outlives the console that started it, so coming back
 // to the session picks it up. Resolves false at once when no turn runs.
-export async function attachChatStream(
+export function attachChatStream(
   sessionId: string,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  const response = await fetch(`/v1/chat/stream?session_id=${encodeURIComponent(sessionId)}`, {
-    credentials: 'same-origin',
+  return attachChatStreamAt(null, sessionId, onEvent, signal)
+}
+
+export async function attachChatStreamAt(
+  target: APITarget | null,
+  sessionId: string,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const response = await send(target, `/v1/chat/stream?session_id=${encodeURIComponent(sessionId)}`, {
     headers: { Accept: 'text/event-stream' },
     signal,
   })

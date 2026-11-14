@@ -11,7 +11,11 @@
   import type { InboxStore } from '../lib/mobile/inboxStore.svelte'
   import type { PairedDesktop } from '../lib/mobile/desktops'
   import type { AppLinks } from '../lib/mobile/appLinks'
+  import { stageLabel } from '../lib/focus'
+  import { runningPipelines, waitingOf } from '../lib/mobile/inbox'
+  import type { FocusListItem } from '../lib/types'
   import InboxView from './InboxView.svelte'
+  import MobilePipeline from './MobilePipeline.svelte'
   import PairSheet from './PairSheet.svelte'
 
   interface Props {
@@ -27,6 +31,9 @@
   const pollMs = 30_000
 
   let tab = $state<'inbox' | 'desktops'>('inbox')
+  // The pipeline open on screen, on the desktop that owns it.
+  let opened = $state<{ desktopID: string; sessionID: string } | null>(null)
+  const openedDesktop = $derived(opened ? store.desktops.find((d) => d.id === opened!.desktopID) ?? null : null)
   let checking = $state(false)
   let pairOpen = $state(false)
   let pairInitial = $state<PairingTarget | null>(null)
@@ -75,6 +82,21 @@
 
   const waitingCount = $derived(inbox.entries.length)
 
+  function openPipeline(desktopID: string, sessionID: string) {
+    opened = { desktopID, sessionID }
+    window.scrollTo(0, 0)
+  }
+
+  // Back from a pipeline: what waits has likely changed.
+  function closePipeline() {
+    opened = null
+    void refresh()
+  }
+
+  function stageOf(item: FocusListItem): string {
+    return stageLabel({ template: item.template, stages: [{ id: item.current, label: item.current_label ?? '' }] }, item.current, $t.focus)
+  }
+
   function host(desktop: PairedDesktop): string {
     try {
       return new URL(desktop.baseURL).host
@@ -85,15 +107,18 @@
 
   onMount(() => {
     void store.load().then(() => refresh())
+    // A pipeline on screen reads its own state; the lists wait for back.
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh()
+      if (document.visibilityState === 'visible' && !opened) void refresh()
     }, pollMs)
     stops.push(
       links.listen((url) => {
         const target = store.readLink(url)
         if (target) openPair(target)
       }),
-      links.onResume(() => void refresh()),
+      links.onResume(() => {
+        if (!opened) void refresh()
+      }),
       () => clearInterval(timer),
     )
   })
@@ -101,6 +126,16 @@
   onDestroy(() => stops.forEach((stop) => stop()))
 </script>
 
+{#if opened && openedDesktop}
+  {#key `${opened.desktopID}\n${opened.sessionID}`}
+    <MobilePipeline
+      desktop={openedDesktop}
+      sessionId={opened.sessionID}
+      onOpen={(sessionID) => openPipeline(openedDesktop.id, sessionID)}
+      onClose={closePipeline}
+    />
+  {/key}
+{:else}
 <main class="mobile">
   <header>
     <h1>{$t.mobileApp.title}</h1>
@@ -140,7 +175,7 @@
   {/if}
 
   {#if tab === 'inbox'}
-    <InboxView {inbox} desktops={store.desktops} {missing} {checking} />
+    <InboxView {inbox} desktops={store.desktops} {missing} {checking} onOpen={openPipeline} />
   {:else}
   <section aria-label={$t.mobileApp.desktopsTitle}>
     {#if store.loaded && store.desktops.length === 0}
@@ -166,6 +201,26 @@
           {/if}
           <button type="button" class="btn btn-ghost btn-sm" onclick={() => forget(desktop)}>{$t.mobileApp.forget}</button>
         </div>
+        {#if status === 'online' && inbox.pipelines[desktop.id]}
+          {@const running = runningPipelines(inbox.pipelines[desktop.id])}
+          <div class="pipelines" data-testid="mobile-desktop-pipelines">
+            <span class="pipelines-title">{$t.mobileApp.pipelinesTitle}</span>
+            {#if running.length === 0}
+              <span class="state-hint">{$t.mobileApp.noPipelines}</span>
+            {/if}
+            {#each running as item (item.session_id)}
+              {@const waits = waitingOf(item)}
+              <button type="button" class="pipeline-row" onclick={() => openPipeline(desktop.id, item.session_id)} data-testid="mobile-desktop-pipeline">
+                <span class="pipeline-title">{item.title || item.goal}</span>
+                <span class="pipeline-meta">
+                  {stageOf(item)}
+                  {#if waits.gate || waits.cards > 0}<span class="pipeline-waits">· {$t.mobileApp.waitsOnYou}</span>{/if}
+                  {#if item.goal_mode}<span>· {$t.focus.screen.goal}</span>{/if}
+                </span>
+              </button>
+            {/each}
+          </div>
+        {/if}
       </article>
     {/each}
   </section>
@@ -177,6 +232,8 @@
     </button>
   </footer>
 </main>
+
+{/if}
 
 {#if pairOpen}
   <PairSheet {store} initial={pairInitial} onDone={onPaired} onCancel={() => (pairOpen = false)} />
@@ -289,6 +346,53 @@
     justify-content: flex-end;
     gap: var(--space-2);
     margin-top: var(--space-2);
+  }
+
+  .pipelines {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pipelines-title {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .pipeline-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
+    text-align: left;
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    font: inherit;
+  }
+
+  .pipeline-title {
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .pipeline-meta {
+    display: flex;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .pipeline-waits {
+    color: var(--warning);
   }
 
   .tabs {

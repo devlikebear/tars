@@ -102,6 +102,7 @@ type apiRouteHandlers struct {
 	focus             http.Handler
 	focusTemplateEdit http.Handler
 	focusRelease      http.Handler
+	focusReads        http.Handler
 	permissionMode    http.Handler
 	work              http.Handler
 	memory            http.Handler
@@ -816,6 +817,7 @@ func buildAPIMux(
 		focus:             newFocusPipelineHandler(sessionStore, sessionWorktrees, focusDriver, logger),
 		focusTemplateEdit: newFocusTemplateEditHandler(sessionStore, deps.llmRouter, logger),
 		focusRelease:      newFocusReleaseHandler(sessionStore, logger),
+		focusReads:        apihandlers.NewFocusReadsHandler(sessionStore, checkpointStore, logger),
 		checkpoints:       newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
 			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
@@ -968,6 +970,14 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	if handlers.focusRelease != nil {
 		mux.Handle("/v1/focus/release-train", handlers.focusRelease)
+	}
+	// A pipeline screen's session, transcript and checkpoint reads, scoped by
+	// the pipeline in the path, for paired phones (never /v1/admin).
+	if handlers.focusReads != nil {
+		mux.Handle("/v1/focus/pipelines/{id}/session", handlers.focusReads)
+		mux.Handle("/v1/focus/pipelines/{id}/history", handlers.focusReads)
+		mux.Handle("/v1/focus/pipelines/{id}/checkpoints", handlers.focusReads)
+		mux.Handle("/v1/focus/pipelines/{id}/checkpoints/{turn}/diff", handlers.focusReads)
 	}
 	if handlers.permissionMode != nil {
 		mux.Handle("/v1/admin/sessions/{id}/permission-mode", handlers.permissionMode)

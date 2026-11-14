@@ -9,7 +9,7 @@
   import { findingEntry, pipelinePhase, promoteDraft, stageLabel, stepperItems, triageProgress, type QAEntry } from '../../lib/focus'
   import { finishedText, finishOutcome, ghUnavailable, prStageChip, type PRStageChip } from '../../lib/focusPR'
   import { shortCwdLabel } from '../../lib/sessionLabels'
-  import { FocusStore } from '../../lib/stores/focusStore.svelte'
+  import { FocusStore, type FocusStoreApi } from '../../lib/stores/focusStore.svelte'
   import { focusViewedSession } from '../../lib/stores/focusViewedSession.svelte'
   import type { FocusCard, FocusGateAction, FocusPlan, FocusPRDraft, FocusStageId } from '../../lib/types'
   import FocusAddFinding from './FocusAddFinding.svelte'
@@ -20,11 +20,20 @@
   interface Props {
     sessionId: string
     onNavigate: (path: string) => void
+    // The mobile app's API for the desktop that owns the pipeline
+    // (lib/mobile/focusRemote.ts); this console's own server when absent.
+    remoteApi?: FocusStoreApi
+    // The mobile app: no workbench to open, and goal mode can only be
+    // turned off (turning it on needs the desk's admin token).
+    remote?: boolean
   }
 
-  let { sessionId, onNavigate }: Props = $props()
+  let { sessionId, onNavigate, remoteApi, remote = false }: Props = $props()
 
-  const store = new FocusStore({
+  // One API for the screen's life: the mobile app remounts the screen
+  // ({#key}) to open another pipeline or desktop.
+  // svelte-ignore state_referenced_locally
+  const store = new FocusStore(remoteApi ?? {
     getPipeline: api.getFocusPipeline,
     getSession: api.getSession,
     getHistory: api.getSessionHistory,
@@ -185,15 +194,17 @@
       {/if}
     </div>
     <div class="focus-header-actions">
-      <button
-        type="button"
-        class="btn btn-secondary btn-sm"
-        title={$t.focus.screen.viewAdvancedTitle}
-        data-testid="focus-view-advanced"
-        onclick={() => onNavigate(`/console/chat/${encodeURIComponent(sessionId)}`)}
-      >{$t.focus.screen.viewAdvanced}</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console')} data-testid="focus-open-board">{$t.focus.home.advanced}</button>
-      {#if pipeline && goal && (phase === 'active' || goalOn)}
+      {#if !remote}
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          title={$t.focus.screen.viewAdvancedTitle}
+          data-testid="focus-view-advanced"
+          onclick={() => onNavigate(`/console/chat/${encodeURIComponent(sessionId)}`)}
+        >{$t.focus.screen.viewAdvanced}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console')} data-testid="focus-open-board">{$t.focus.home.advanced}</button>
+      {/if}
+      {#if pipeline && goal && (phase === 'active' || goalOn) && (!remote || goalOn)}
         <button
           type="button"
           class="btn btn-sm {goalOn ? 'btn-primary' : 'btn-ghost'}"
@@ -203,7 +214,7 @@
           onclick={() => void toggleGoal()}
           data-testid="focus-goal-toggle"
         ><span aria-hidden="true">◎</span> {$t.focus.screen.goal}{#if goalOn && goal.pushes > 0} <span class="goal-count">{goal.pushes}/{goal.max_pushes}</span>{/if}</button>
-      {:else if pipeline && phase === 'active'}
+      {:else if pipeline && phase === 'active' && !remote}
         <button
           type="button"
           class="btn btn-ghost btn-sm"

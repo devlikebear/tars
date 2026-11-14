@@ -15,9 +15,11 @@
     // Names of the desktops whose pipelines are not in the list now.
     missing: string[]
     checking: boolean
+    // Opens a pipeline in the app, on the desktop that owns it.
+    onOpen: (desktopID: string, sessionID: string) => void
   }
 
-  let { inbox, desktops, missing, checking }: Props = $props()
+  let { inbox, desktops, missing, checking, onOpen }: Props = $props()
 
   function desktopOf(entry: InboxEntry): PairedDesktop | undefined {
     return desktops.find((d) => d.id === entry.desktopID)
@@ -89,9 +91,16 @@
       {/each}
 
       {#if desktop}
-        <a class="open" href={consoleURL(desktop.baseURL, entry.sessionID)} target="_blank" rel="noopener noreferrer">
-          {$t.mobileApp.openOnDesktop}
-        </a>
+        <div class="entry-actions">
+          {#if entry.current}
+            <button type="button" class="btn btn-secondary btn-sm" onclick={() => onOpen(entry.desktopID, entry.sessionID)} data-testid="mobile-inbox-open">
+              {$t.mobileApp.open}
+            </button>
+          {/if}
+          <a class="open" href={consoleURL(desktop.baseURL, entry.sessionID)} target="_blank" rel="noopener noreferrer">
+            {$t.mobileApp.openOnDesktop}
+          </a>
+        </div>
       {/if}
     </article>
   {/each}
@@ -221,9 +230,19 @@
     min-width: 88px;
   }
 
-  .open {
-    align-self: flex-start;
+  .entry-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
     margin-top: var(--space-2);
+  }
+
+  .entry-actions .btn {
+    min-height: 40px;
+    min-width: 88px;
+  }
+
+  .open {
     font-size: var(--text-sm);
     color: rgb(var(--primary-rgb));
   }

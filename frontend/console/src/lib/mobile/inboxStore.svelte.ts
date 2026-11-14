@@ -6,6 +6,7 @@ import { APIRequestError } from '../api/client.ts'
 import type { InboxAPI } from './desktopApi.ts'
 import { targetOf, type PairedDesktop } from './desktops.ts'
 import { mergeInboxes, type DesktopInbox, type InboxApproval, type InboxEntry } from './inbox.ts'
+import type { FocusListItem } from '../types.ts'
 
 // Why answering a tool call did not go through.
 //   gone   — already answered (at the desk, or it timed out); the list is
@@ -15,6 +16,8 @@ export type AnswerFailure = 'gone' | 'failed'
 
 export class InboxStore {
   entries = $state<InboxEntry[]>([])
+  // Each desktop's pipelines from the last read that answered, by desktop id.
+  pipelines = $state<Record<string, FocusListItem[]>>({})
   // Desktops asked on the last read that did not answer it.
   failed = $state<string[]>([])
   loading = $state(false)
@@ -92,7 +95,9 @@ export class InboxStore {
   }
 
   #publish(): void {
-    this.entries = mergeInboxes([...this.#desks.values()])
+    const desks = [...this.#desks.values()]
+    this.entries = mergeInboxes(desks)
+    this.pipelines = Object.fromEntries(desks.map((d) => [d.desktopID, d.pipelines]))
   }
 }
 

@@ -27,9 +27,11 @@ import type {
 
 const base = '/v1/focus/pipelines'
 
-function pipelinePath(sessionId: string): string {
+export function focusPipelinePath(sessionId: string): string {
   return `${base}/${encodeURIComponent(sessionId)}`
 }
+
+const pipelinePath = focusPipelinePath
 
 export function listFocusPipelines(): Promise<FocusListItem[]> {
   return requestJSON<FocusListItem[]>(base)
@@ -100,9 +102,19 @@ export function createFocusPipeline(request: FocusCreateRequest): Promise<{ sess
   })
 }
 
-async function postAction(path: string, body: unknown): Promise<FocusActionResult> {
+function postAction(path: string, body: unknown): Promise<FocusActionResult> {
+  return postFocusAction(requestJSON, path, body)
+}
+
+// FocusRequester sends one JSON request: this console's requestJSON, or the
+// mobile app's call to a chosen desktop.
+export type FocusRequester = <T>(path: string, init?: RequestInit) => Promise<T>
+
+// postFocusAction sends a pipeline action through request and turns a 409
+// that carries the server's pipeline into a conflict result.
+export async function postFocusAction(request: FocusRequester, path: string, body: unknown): Promise<FocusActionResult> {
   try {
-    return await requestJSON<FocusActionResult>(path, {
+    return await request<FocusActionResult>(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

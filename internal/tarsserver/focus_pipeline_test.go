@@ -365,7 +365,7 @@ func TestFocusListAndGet(t *testing.T) {
 	if w := items[0].Waiting; w.Gate != focuspipeline.GatePlan || w.Cards != 0 {
 		t.Fatalf("waiting = %+v", items[0].Waiting)
 	}
-	if !strings.Contains(rec.Body.String(), `"waiting":{"gate":"plan","cards":0}`) {
+	if !strings.Contains(rec.Body.String(), `"waiting":{"gate":"plan","cards":0}`) || items[0].Phase != "active" {
 		t.Fatalf("list body = %s", rec.Body.String())
 	}
 
@@ -412,6 +412,33 @@ func TestFocusListWaitingOf(t *testing.T) {
 	}
 	if !strings.Contains(string(body), `"waiting":{"cards":0}`) || strings.Contains(string(body), "qa_session_id") {
 		t.Fatalf("list item: %s", body)
+	}
+}
+
+func TestFocusListPhase(t *testing.T) {
+	p := focuspipeline.Pipeline{
+		Current: focuspipeline.StageReview,
+		Stages:  []focuspipeline.Stage{{ID: focuspipeline.StageReview, Status: focuspipeline.StatusActive}},
+	}
+	for _, tc := range []struct {
+		status focuspipeline.StageStatus
+		gate   string
+		want   string
+	}{
+		{focuspipeline.StatusActive, "", "active"},
+		{focuspipeline.StatusBlocked, focuspipeline.GateBlocked, "blocked"},
+		{focuspipeline.StatusBlocked, "", "stopped"},
+		{focuspipeline.StatusDone, "", "finished"},
+	} {
+		p.Stages[0].Status, p.OpenGate = tc.status, tc.gate
+		if got := focusListPhase(p); got != tc.want {
+			t.Errorf("%s gate %q: %s, want %s", tc.status, tc.gate, got, tc.want)
+		}
+	}
+	// Past the last stage there is no current stage: finished.
+	p.Current = "gone"
+	if got := focusListPhase(p); got != "finished" {
+		t.Errorf("past the end: %s", got)
 	}
 }
 
