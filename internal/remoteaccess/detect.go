@@ -27,6 +27,21 @@ type Status struct {
 	OwnedByTARS bool   `json:"owned_by_tars"`
 }
 
+// URL is the HTTPS address a phone on the tailnet reaches this server at:
+// the MagicDNS name on the port Tailscale serve forwards to TARS. It is ""
+// unless serve is active and points at TARS, since any other address would
+// lead nowhere or somewhere else.
+func (s Status) URL() string {
+	host := strings.TrimSuffix(strings.TrimSpace(s.TailnetURL), ".")
+	if host == "" || !s.ServeActive || !s.OwnedByTARS {
+		return ""
+	}
+	if s.ServePort > 0 && s.ServePort != DefaultHTTPSPort {
+		return fmt.Sprintf("https://%s:%d", host, s.ServePort)
+	}
+	return "https://" + host
+}
+
 type Options struct {
 	Binary    string
 	Runner    Runner
