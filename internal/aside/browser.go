@@ -80,6 +80,20 @@ func (c Client) Verify(ctx context.Context, check Check) (CheckResult, error) {
 	origin := u.Scheme + "://" + u.Host
 	out, err := c.Exec(ctx, CheckPrompt(check, origin))
 	if err != nil {
+		// Aside can also stop on its own model's error with a non-zero exit,
+		// the "• Error 429 {…}" line then in stderr (and so in err), not in
+		// the transcript: seen while dogfooding as "aside exec failed: exit
+		// status 1: … • Error 429". That is the same incomplete run as one
+		// that exits 0 on that line, so it is read the same way.
+		if ctx.Err() == nil {
+			if checkerErr := lastCheckerError(strings.Split(strings.TrimSpace(err.Error()), "\n")); checkerErr != "" {
+				return CheckResult{
+					Incomplete: true,
+					Reason:     "the checker stopped on an error: " + checkerErr,
+					Transcript: strings.TrimSpace(strings.TrimSpace(out) + "\n" + err.Error()),
+				}, nil
+			}
+		}
 		return CheckResult{Transcript: out}, err
 	}
 	return ParseVerdict(out), nil

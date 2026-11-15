@@ -110,4 +110,28 @@ func TestVerify(t *testing.T) {
 	if _, err := c.Verify(context.Background(), Check{StartURL: "http://localhost:3000", Goal: "x"}); err == nil {
 		t.Fatal("want exec error")
 	}
+
+	// Aside exiting non-zero on its own model's rate limit (seen while
+	// dogfooding) is an incomplete run, not an exec error.
+	f.stdout = "Opening the page…\n"
+	f.stderr = "created new session: DZ5boe27\n\n • Error 429 {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}"
+	f.err = errors.New("exit status 1")
+	res, err = c.Verify(context.Background(), Check{StartURL: "http://localhost:3000", Goal: "x"})
+	if err != nil || !res.Incomplete || res.Passed || !strings.Contains(res.Reason, "Error 429 rate_limit_error") || !strings.Contains(res.Transcript, "Opening the page") {
+		t.Fatalf("rate-limited exit: %+v, %v", res, err)
+	}
+
+	// Any other non-zero exit stays an error, even with an error line earlier.
+	f.stderr = " • Error 429 {rate_limit_error}\nthen something else broke"
+	if _, err := c.Verify(context.Background(), Check{StartURL: "http://localhost:3000", Goal: "x"}); err == nil {
+		t.Fatal("an exit whose last line is not a checker error must stay an error")
+	}
+
+	// A cancelled run is never read as incomplete.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	f.stderr = " • Error 429 {rate_limit_error}"
+	if res, err := c.Verify(ctx, Check{StartURL: "http://localhost:3000", Goal: "x"}); err == nil || res.Incomplete {
+		t.Fatalf("cancelled: %+v, %v", res, err)
+	}
 }
