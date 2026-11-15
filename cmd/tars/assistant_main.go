@@ -99,7 +99,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	}
 	startCmd.Flags().StringVar(&opts.serverURL, "server-url", opts.serverURL, "tars server url")
 	startCmd.Flags().StringVar(&opts.sessionID, "session", opts.sessionID, "session id")
-	startCmd.Flags().StringVar(&opts.apiToken, "api-token", opts.apiToken, "api token")
+	secretStringVar(startCmd.Flags(), &opts.apiToken, "api-token", "TARS_API_TOKEN", "api token")
 	startCmd.Flags().StringVar(&opts.workspace, "workspace-dir", opts.workspace, "workspace directory")
 	startCmd.Flags().StringVar(&opts.hotkey, "hotkey", opts.hotkey, "global hotkey (display only in fallback mode)")
 	startCmd.Flags().StringVar(&opts.audioInput, "audio-input", opts.audioInput, "avfoundation audio input (default|index|name)")
@@ -135,7 +135,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	}
 	installCmd.Flags().StringVar(&opts.serverURL, "server-url", opts.serverURL, "tars server url")
 	installCmd.Flags().StringVar(&opts.sessionID, "session", opts.sessionID, "session id")
-	installCmd.Flags().StringVar(&opts.apiToken, "api-token", opts.apiToken, "api token")
+	secretStringVar(installCmd.Flags(), &opts.apiToken, "api-token", "TARS_API_TOKEN", "api token")
 	installCmd.Flags().StringVar(&opts.workspace, "workspace-dir", opts.workspace, "workspace directory")
 	installCmd.Flags().StringVar(&opts.hotkey, "hotkey", opts.hotkey, "global hotkey")
 	installCmd.Flags().StringVar(&opts.audioInput, "audio-input", opts.audioInput, "avfoundation audio input (default|index|name)")

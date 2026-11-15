@@ -65,7 +65,7 @@ func newUpdateCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command 
 	cmd.Flags().BoolVar(&opts.noRestart, "no-restart", false, "leave a running server on the old version")
 	cmd.Flags().BoolVar(&opts.jsonOutput, "json", false, "print the result as JSON")
 	cmd.Flags().StringVar(&opts.serverURL, "server-url", opts.serverURL, "server to restart after updating")
-	cmd.Flags().StringVar(&opts.adminToken, "admin-api-token", opts.adminToken, "admin api token for the restart")
+	secretStringVar(cmd.Flags(), &opts.adminToken, "admin-api-token", "TARS_ADMIN_API_TOKEN", "admin api token for the restart")
 	return cmd
 }
 
