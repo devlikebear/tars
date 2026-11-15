@@ -321,6 +321,9 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 				prev.ID = tc.ID
 			}
 			if tc.Function.Name != "" {
+				if prev.Name == "" && opts.OnToolCallStart != nil {
+					opts.OnToolCallStart(tc.Function.Name)
+				}
 				prev.Name = tc.Function.Name
 			}
 			if tc.Function.Arguments != "" {

@@ -413,7 +413,7 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts
 	defer resp.Body.Close()
 
 	if streaming {
-		return c.chatStreamingResponse(resp.Body, opts.OnDelta, opts.OnReasoningDelta)
+		return c.chatStreamingResponse(resp.Body, opts.OnDelta, opts.OnReasoningDelta, opts.OnToolCallStart)
 	}
 	return c.chatNonStreamingResponse(resp.Body)
 }
@@ -670,7 +670,7 @@ func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse
 	}, nil
 }
 
-func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(text string), onReasoningDelta func(text string)) (ChatResponse, error) {
+func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(text string), onReasoningDelta func(text string), onToolCallStart func(name string)) (ChatResponse, error) {
 	var (
 		response         ChatResponse
 		eventType        string
@@ -755,6 +755,9 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 					prev.ID = id
 				}
 				if name := strings.TrimSpace(parsed.ContentBlock.Name); name != "" {
+					if prev.Name == "" && onToolCallStart != nil {
+						onToolCallStart(name)
+					}
 					prev.Name = name
 				}
 				if len(parsed.ContentBlock.Input) > 0 {

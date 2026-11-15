@@ -199,7 +199,16 @@ type ChatOptions struct {
 	// OnDelta. Providers that cannot report tools live never call it; the
 	// final ProviderExecutedTools stays the complete list either way.
 	OnProviderTool func(ProviderToolEvent)
-	Tools          []ToolSchema
+	// OnToolCallStart receives the name of a tool call the model has started
+	// writing, as soon as the stream names it and before its arguments
+	// arrive. A call whose arguments are long (a whole document, a list of
+	// findings) can stream for minutes with nothing else to show, so a
+	// caller can use this to say what the model is preparing. Called at most
+	// once per call, on the goroutine that drives Chat, in stream order with
+	// OnDelta, and only while streaming. Providers that deliver calls whole
+	// or run their own tools never call it. nil = ignore.
+	OnToolCallStart func(name string)
+	Tools           []ToolSchema
 	// ToolChoice picks how the LLM selects tools. nil = provider default (auto).
 	ToolChoice *ToolChoice
 	// ResponseFormat constrains the response shape. nil = free-form text.

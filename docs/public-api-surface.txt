@@ -163,6 +163,7 @@ pkg/llm field ChatOptions.ClaudeCodeSkills
 pkg/llm field ChatOptions.OnDelta
 pkg/llm field ChatOptions.OnProviderTool
 pkg/llm field ChatOptions.OnReasoningDelta
+pkg/llm field ChatOptions.OnToolCallStart
 pkg/llm field ChatOptions.PersistSession
 pkg/llm field ChatOptions.ReasoningEffort
 pkg/llm field ChatOptions.ResponseFormat
