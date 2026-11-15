@@ -85,7 +85,12 @@ const (
 )
 
 // GoalDecisionAnswer is how goal mode answers a question the agent asked.
-const GoalDecisionAnswer = "Decide yourself: choose the option that best serves the goal, say which one and why in your report, and continue."
+// It asks for the decision in the summary and not as the question again:
+// in dogfooding (2026-11-15) an agent decided, then copied the same question
+// into the next report's decisions, which ends goal mode as a repeated
+// question (GoalEndRepeatedQuestion).
+const GoalDecisionAnswer = "Decide yourself: choose the option that best serves the goal, say which one and why in your report's " +
+	"summary, and continue. This question is settled: do not list it again under decisions."
 
 // NoticeGoalEnded is the title of the notice goal mode leaves when it ends
 // before the pipeline does.

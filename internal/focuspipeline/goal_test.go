@@ -203,7 +203,7 @@ func TestNextGoalStepAnswersDecisions(t *testing.T) {
 		t.Fatalf("decision step = %+v", step)
 	}
 	p, act, err := SetCardState(p, step.CardID, CardDecided, step.Decision, t0)
-	if err != nil || act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "Decide yourself") {
+	if err != nil || act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "Decide yourself") || !strings.Contains(act.Prompt, "do not list it again") {
 		t.Fatalf("answer: %v %+v", err, act)
 	}
 	if g := Guidance(p); !strings.Contains(g, "Goal mode: nobody is watching") {
