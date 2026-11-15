@@ -5,6 +5,10 @@ export const mobileAppEn = {
   desktopsTitle: 'Desktops',
   empty: "No desktop yet. On a desktop, open Settings → Channels & Remote → Phones, choose Pair a phone, and scan the code with this phone's camera.",
   pairDesktop: 'Pair a desktop',
+  tryDemo: 'Try the demo desk',
+  demoAdded: 'Demo desk added. It runs inside this app: nothing is sent anywhere and no real work is done.',
+  demoHint: 'A sample desktop inside this app. Approve a plan, decide findings, merge a pull request, or send an idea as a task to see how it works.',
+  confirmForgetDemo: 'Remove the demo desk? You can add it again from here.',
   refresh: 'Refresh',
 
   pairTitle: 'Pair with a desktop',
@@ -128,6 +132,10 @@ export const mobileAppKo: MobileAppTranslations = {
   desktopsTitle: '데스크톱',
   empty: '아직 데스크톱이 없습니다. 데스크톱에서 설정 → 채널·원격 → 휴대폰을 열고 휴대폰 연결을 누른 뒤, 이 휴대폰 카메라로 코드를 스캔하세요.',
   pairDesktop: '데스크톱 연결',
+  tryDemo: '데모 데스크톱 사용해 보기',
+  demoAdded: '데모 데스크톱을 추가했습니다. 이 앱 안에서만 동작하며, 어디로도 전송되지 않고 실제 작업도 하지 않습니다.',
+  demoHint: '이 앱 안에 있는 예시 데스크톱입니다. 계획 승인, 지적 사항 결정, 풀 리퀘스트 머지, 아이디어를 작업으로 보내기를 직접 해 볼 수 있습니다.',
+  confirmForgetDemo: '데모 데스크톱을 지울까요? 여기서 다시 추가할 수 있습니다.',
   refresh: '새로고침',
 
   pairTitle: '데스크톱과 연결',

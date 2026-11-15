@@ -7,6 +7,7 @@
   import FocusPipeline from '../components/focus/FocusPipeline.svelte'
   import { remoteFocusApi } from '../lib/mobile/focusRemote'
   import { targetOf, type PairedDesktop } from '../lib/mobile/desktops'
+  import { isDemoDesktop } from '../lib/mobile/demoDesk'
   import { pipelineChanges, type DesktopEvents } from '../lib/mobile/desktopEvents'
 
   interface Props {
@@ -31,6 +32,8 @@
     if (path === '/console/focus') return onClose()
     const pipeline = /^\/console\/focus\/([^/?#]+)$/.exec(path)
     if (pipeline) return onOpen(decodeURIComponent(pipeline[1]))
+    // The demo desk has no console to open.
+    if (isDemoDesktop(desktop)) return
     window.open(`${desktop.baseURL.replace(/\/+$/, '')}${path}`, '_blank', 'noopener')
   }
 

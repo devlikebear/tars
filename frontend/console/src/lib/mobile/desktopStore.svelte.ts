@@ -5,6 +5,7 @@
 import { parseFocusLink, parsePairingLink, type FocusLinkTarget, type PairingTarget } from '../devicePairing.ts'
 import { APIRequestError } from '../api/client.ts'
 import type { DesktopAPI } from './desktopApi.ts'
+import { demoDesktop } from './demoDesk.ts'
 import {
   addressToBaseURL,
   desktopName,
@@ -103,6 +104,17 @@ export class DesktopStore {
     } finally {
       this.pairing = false
     }
+  }
+
+  // addDemo adds the demo desk (lib/mobile/demoDesk.ts), which answers
+  // inside the app. It is kept like a paired desktop until forgotten.
+  async addDemo(): Promise<PairedDesktop> {
+    const desktop = demoDesktop(this.#deps.now?.() ?? new Date())
+    const next = withDesktop(this.desktops, desktop)
+    await this.#save(next)
+    this.desktops = next
+    this.statuses = { ...this.statuses, [desktop.id]: { state: 'online' } }
+    return desktop
   }
 
   // forget removes a desktop from this phone only. The desk still lists the

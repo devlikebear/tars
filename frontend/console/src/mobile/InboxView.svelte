@@ -5,6 +5,7 @@
   // card opens in that desktop's console until the app has focus screens.
   import { t } from '../i18n'
   import { stageLabel } from '../lib/focus'
+  import { isDemoDesktop } from '../lib/mobile/demoDesk'
   import { consoleURL, type InboxApproval, type InboxEntry } from '../lib/mobile/inbox'
   import type { InboxStore } from '../lib/mobile/inboxStore.svelte'
   import type { PairedDesktop } from '../lib/mobile/desktops'
@@ -97,9 +98,11 @@
               {$t.mobileApp.open}
             </button>
           {/if}
-          <a class="open" href={consoleURL(desktop.baseURL, entry.sessionID)} target="_blank" rel="noopener noreferrer">
-            {$t.mobileApp.openOnDesktop}
-          </a>
+          {#if !isDemoDesktop(desktop)}
+            <a class="open" href={consoleURL(desktop.baseURL, entry.sessionID)} target="_blank" rel="noopener noreferrer">
+              {$t.mobileApp.openOnDesktop}
+            </a>
+          {/if}
         </div>
       {/if}
     </article>
