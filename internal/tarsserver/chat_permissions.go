@@ -82,6 +82,10 @@ func (b *chatPermissionBroker) settle(stream *chatStreamWriter, id, outcome stri
 // record writes one decision to the automation audit log: who decided
 // (the person in the console, or the session's permission mode), what, and
 // for which tool call.
+// chatPermissionAllowedByMode is the audit result of a queued call that ran
+// because its session's permission mode changed to one that does not ask.
+const chatPermissionAllowedByMode = "allowed_by_mode"
+
 func (b *chatPermissionBroker) record(id, outcome string, info chatPermissionAudit) {
 	if b == nil || b.audit == nil {
 		return
@@ -90,7 +94,7 @@ func (b *chatPermissionBroker) record(id, outcome string, info chatPermissionAud
 	if info.source != "" {
 		actor = "ops"
 	}
-	if strings.HasPrefix(outcome, "refused_") || outcome == "withdrawn" || outcome == "expired" {
+	if strings.HasPrefix(outcome, "refused_") || outcome == "withdrawn" || outcome == "expired" || outcome == chatPermissionAllowedByMode {
 		actor = "tars"
 	}
 	details := map[string]any{"tool": info.tool}

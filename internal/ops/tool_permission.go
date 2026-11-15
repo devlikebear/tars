@@ -95,13 +95,20 @@ func (m *Manager) ReviewToolPermission(approvalID string, approve bool) error {
 	if approve {
 		next = ApprovalStatusApproved
 	}
-	return m.closeToolPermission(approvalID, next)
+	return m.closeToolPermission(approvalID, next, "")
+}
+
+// AllowToolPermission approves a pending question without a reviewer: the
+// rule that made the turn ask no longer does (its session's permission mode
+// changed). note says why, on the approval itself.
+func (m *Manager) AllowToolPermission(approvalID, note string) error {
+	return m.closeToolPermission(approvalID, ApprovalStatusApproved, note)
 }
 
 // ExpireToolPermission closes a pending question its turn stopped waiting
 // for. Closing one already reviewed is not an error.
 func (m *Manager) ExpireToolPermission(approvalID string) error {
-	err := m.closeToolPermission(approvalID, ApprovalStatusExpired)
+	err := m.closeToolPermission(approvalID, ApprovalStatusExpired, "")
 	if errors.Is(err, errApprovalNotPending) {
 		return nil
 	}
@@ -138,7 +145,7 @@ func (m *Manager) ExpirePendingToolPermissions() (int, error) {
 
 var errApprovalNotPending = errors.New("approval is no longer pending")
 
-func (m *Manager) closeToolPermission(approvalID, next string) error {
+func (m *Manager) closeToolPermission(approvalID, next, note string) error {
 	if m == nil {
 		return fmt.Errorf("ops manager is nil")
 	}
@@ -160,6 +167,9 @@ func (m *Manager) closeToolPermission(approvalID, next string) error {
 		return errApprovalNotPending
 	}
 	markApprovalReviewed(&items[index], next, m.nowFn().UTC())
+	if note = strings.TrimSpace(note); note != "" {
+		items[index].Note = note
+	}
 	if err := m.saveApprovalsLocked(items); err != nil {
 		return err
 	}

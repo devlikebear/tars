@@ -236,6 +236,76 @@ func TestUnattendedGateCancelledTurnWithdraws(t *testing.T) {
 	}
 }
 
+// A call queued while the session asked goes through once the session's mode
+// becomes auto (goal mode turned on, or switched by hand): its question is
+// closed as approved with a note, and the audit says the mode allowed it.
+func TestUnattendedQueuedCallRunsWhenTheSessionTurnsAuto(t *testing.T) {
+	f := newUnattendedFixture(t, chatPermissionModeManual)
+	var changes atomic.Int32
+	f.perms.changed = func() { changes.Add(1) }
+	gate := f.perms.options(f.session, f.dir, focusTurnSource, "").authorizer
+	go func() {
+		for i := 0; i < 400; i++ {
+			if items, _ := f.ops.ListApprovals(); len(items) == 1 {
+				_ = f.store.SetPermissionMode(f.session, chatPermissionModeAuto)
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+	d, err := gate.Authorize(context.Background(), agentloop.ToolCallRequest{ToolName: "exec", ToolArgs: `{"command":"make"}`})
+	if err != nil || !d.Allow {
+		t.Fatalf("queued call after auto: %+v %v", d, err)
+	}
+	items, _ := f.ops.ListApprovals()
+	if len(items) != 1 || items[0].Status != ops.ApprovalStatusApproved || !strings.Contains(items[0].Note, "auto") {
+		t.Fatalf("approval after auto: %+v", items)
+	}
+	if n := changes.Load(); n != 2 {
+		t.Fatalf("changes told %d times, want 2", n)
+	}
+	if got := f.auditResults(t); len(got) != 1 || got[0] != "tars:allowed_by_mode" {
+		t.Fatalf("audit = %v", got)
+	}
+
+	// The rest of the turn no longer queues: the session does not ask.
+	d, err = gate.Authorize(context.Background(), agentloop.ToolCallRequest{ToolName: "exec", ToolArgs: `{"command":"make test"}`})
+	if err != nil || !d.Allow {
+		t.Fatalf("later call: %+v %v", d, err)
+	}
+	if items, _ := f.ops.ListApprovals(); len(items) != 1 {
+		t.Fatalf("later call was queued: %+v", items)
+	}
+	if got := f.auditResults(t); len(got) != 2 || got[0] != "tars:allowed_by_mode" {
+		t.Fatalf("audit = %v", got)
+	}
+}
+
+// An answer that lands first stands: the mode does not overwrite it.
+func TestUnattendedAllowByModeKeepsAnEarlierAnswer(t *testing.T) {
+	f := newUnattendedFixture(t, chatPermissionModeManual)
+	approval, err := f.ops.CreateToolPermissionApproval(ops.ToolPermissionRequest{SessionID: f.session, ToolName: "exec"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ops.ReviewToolPermission(approval.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	run := unattendedRun{sessionID: f.session, source: "cron", mode: chatPermissionModeManual}
+	if f.perms.allowByMode(run, "exec", approval.ID) {
+		t.Fatal("a rejected call must not be allowed by the mode")
+	}
+	if got, _ := f.ops.GetApproval(approval.ID); got.Status != ops.ApprovalStatusRejected {
+		t.Fatalf("status = %s", got.Status)
+	}
+	if got := f.auditResults(t); len(got) != 0 {
+		t.Fatalf("audit = %v", got)
+	}
+	if f.perms.sessionStoppedAsking("missing") {
+		t.Fatal("unknown session")
+	}
+}
+
 func TestUnattendedClaudeCodeHandler(t *testing.T) {
 	f := newUnattendedFixture(t, chatPermissionModeManual)
 	handler := f.perms.options(f.session, f.dir, "cron", "").handler

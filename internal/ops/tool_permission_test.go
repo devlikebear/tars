@@ -104,4 +104,25 @@ func TestToolPermissionNilManager(t *testing.T) {
 	if _, err := mgr.ExpirePendingToolPermissions(); err == nil {
 		t.Fatal("expire pending")
 	}
+	if err := mgr.AllowToolPermission("x", "note"); err == nil {
+		t.Fatal("allow")
+	}
+}
+
+func TestAllowToolPermissionClosesWithANote(t *testing.T) {
+	mgr := NewManager(t.TempDir(), Options{HomeDir: t.TempDir()})
+	pending, _ := mgr.CreateToolPermissionApproval(ToolPermissionRequest{ToolName: "exec"})
+	if err := mgr.AllowToolPermission(pending.ID, "  mode changed  "); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := mgr.GetApproval(pending.ID)
+	if got.Status != ApprovalStatusApproved || got.Note != "mode changed" || got.ReviewedAt == nil {
+		t.Fatalf("allowed: %+v", got)
+	}
+	if err := mgr.AllowToolPermission(pending.ID, "again"); !IsApprovalNotPending(err) {
+		t.Fatalf("second close: %v", err)
+	}
+	if got, _ := mgr.GetApproval(pending.ID); got.Note != "mode changed" {
+		t.Fatalf("note overwritten: %q", got.Note)
+	}
 }
