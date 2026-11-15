@@ -67,6 +67,21 @@ func defaultPriceTable() map[string]ModelPrice {
 		// 3.3x undercount on the priciest models in the lineup.
 		"anthropic/claude-fable-5":  {InputPer1MUSD: 10.00, OutputPer1MUSD: 50.00, CacheReadPer1MUSD: 1.00, CacheWritePer1MUSD: 12.50},
 		"anthropic/claude-mythos-5": {InputPer1MUSD: 10.00, OutputPer1MUSD: 50.00, CacheReadPer1MUSD: 1.00, CacheWritePer1MUSD: 12.50},
+		// Point releases priced apart from their family (Anthropic pricing
+		// page, 2026-11). Lookup is by exact ID, so each needs its own row:
+		// the family prefixes below price them at the older tier, 10x too
+		// high for Haiku 5.5 and far too low for Fable 5.1/5.2.
+		"anthropic/claude-fable-5-1":  {InputPer1MUSD: 10.00, OutputPer1MUSD: 50.00, CacheReadPer1MUSD: 0.25, CacheWritePer1MUSD: 12.50},
+		"anthropic/claude-mythos-5-1": {InputPer1MUSD: 10.00, OutputPer1MUSD: 50.00, CacheReadPer1MUSD: 0.25, CacheWritePer1MUSD: 12.50},
+		"anthropic/claude-fable-5-2":  {InputPer1MUSD: 8.00, OutputPer1MUSD: 40.00, CacheReadPer1MUSD: 0.20, CacheWritePer1MUSD: 10.00},
+		"anthropic/claude-mythos-5-2": {InputPer1MUSD: 8.00, OutputPer1MUSD: 40.00, CacheReadPer1MUSD: 0.20, CacheWritePer1MUSD: 10.00},
+		"anthropic/claude-opus-5-5":   {InputPer1MUSD: 4.00, OutputPer1MUSD: 20.00, CacheReadPer1MUSD: 0.20, CacheWritePer1MUSD: 5.00},
+		"anthropic/claude-sonnet-5":   {InputPer1MUSD: 2.00, OutputPer1MUSD: 10.00, CacheReadPer1MUSD: 0.20, CacheWritePer1MUSD: 2.50},
+		"anthropic/claude-sonnet-5-5": {InputPer1MUSD: 2.00, OutputPer1MUSD: 10.00, CacheReadPer1MUSD: 0.10, CacheWritePer1MUSD: 2.50},
+		// Haiku 5.5 is priced by prompt length; this is the rate for prompts
+		// up to 100K tokens. A longer prompt pays 5x, which a flat per-token
+		// table cannot express, so those calls are undercounted.
+		"anthropic/claude-haiku-5-5": {InputPer1MUSD: 0.10, OutputPer1MUSD: 0.50, CacheReadPer1MUSD: 0.01, CacheWritePer1MUSD: 0.125},
 		// Fallback for gateway-hosted or unrecognized Anthropic-kind models
 		// (e.g. config/default.yaml routes MiniMax through kind: anthropic);
 		// Sonnet-class mid rates so unknown traffic still gets an estimate.

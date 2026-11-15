@@ -77,6 +77,29 @@ func TestEstimateCost_AnthropicFamiliesProduceDifferentCosts(t *testing.T) {
 	}
 }
 
+// The 5.x point releases are priced apart from their families, so each has
+// its own row; without one the family prefix priced Haiku 5.5 at 10x and
+// Fable 5.2 at Sonnet's wildcard rate.
+func TestResolvePrice_PointReleasesUseTheirOwnRates(t *testing.T) {
+	tracker := newCostTestTracker(t)
+	cases := map[string]ModelPrice{
+		"claude-haiku-5-5":  {InputPer1MUSD: 0.10, OutputPer1MUSD: 0.50, CacheReadPer1MUSD: 0.01, CacheWritePer1MUSD: 0.125},
+		"claude-sonnet-5":   {InputPer1MUSD: 2.00, OutputPer1MUSD: 10.00, CacheReadPer1MUSD: 0.20, CacheWritePer1MUSD: 2.50},
+		"claude-sonnet-5-5": {InputPer1MUSD: 2.00, OutputPer1MUSD: 10.00, CacheReadPer1MUSD: 0.10, CacheWritePer1MUSD: 2.50},
+		"claude-opus-5-5":   {InputPer1MUSD: 4.00, OutputPer1MUSD: 20.00, CacheReadPer1MUSD: 0.20, CacheWritePer1MUSD: 5.00},
+		"claude-fable-5-1":  {InputPer1MUSD: 10.00, OutputPer1MUSD: 50.00, CacheReadPer1MUSD: 0.25, CacheWritePer1MUSD: 12.50},
+		"claude-mythos-5-1": {InputPer1MUSD: 10.00, OutputPer1MUSD: 50.00, CacheReadPer1MUSD: 0.25, CacheWritePer1MUSD: 12.50},
+		"claude-fable-5-2":  {InputPer1MUSD: 8.00, OutputPer1MUSD: 40.00, CacheReadPer1MUSD: 0.20, CacheWritePer1MUSD: 10.00},
+		"claude-mythos-5-2": {InputPer1MUSD: 8.00, OutputPer1MUSD: 40.00, CacheReadPer1MUSD: 0.20, CacheWritePer1MUSD: 10.00},
+	}
+	for model, want := range cases {
+		got, ok := tracker.resolvePrice("anthropic", model)
+		if !ok || got != want {
+			t.Errorf("%s: got %+v (ok=%v), want %+v", model, got, ok, want)
+		}
+	}
+}
+
 func TestResolvePrice_AnthropicFamilyPrefixMatchesDatedVariants(t *testing.T) {
 	tracker := newCostTestTracker(t)
 

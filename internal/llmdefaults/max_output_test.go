@@ -13,6 +13,9 @@ func TestMaxOutputTokens_DocumentedFamilies(t *testing.T) {
 		"claude-sonnet-5":   128000,
 		"claude-sonnet-4-6": 128000,
 		"claude-haiku-4-5":  64000,
+		"claude-opus-5-5":   128000,
+		"claude-sonnet-5-5": 128000,
+		"claude-haiku-5-5":  128000,
 	}
 	for model, want := range cases {
 		if got := MaxOutputTokens(model); got != want {
@@ -66,6 +69,11 @@ func TestModelBehaviorFor_ThinkingModeSplit(t *testing.T) {
 	adaptive := []string{
 		"claude-fable-5", "claude-mythos-5", "claude-opus-5",
 		"claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5",
+		// The 5.5 releases and the 5.1/5.2 point releases: budget_tokens is a
+		// 400 on all of them (claude-haiku-5-5 used to miss the table and got
+		// thinking: enabled).
+		"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
+		"claude-fable-5-1", "claude-fable-5-2", "claude-mythos-5-2",
 	}
 	budget := []string{
 		"claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5",
@@ -111,13 +119,13 @@ func TestModelBehaviorFor_UnknownModelIsBudgetMode(t *testing.T) {
 }
 
 func TestModelBehaviorFor_ThinkingCanBeDisabledExceptOnAlwaysThinkingModels(t *testing.T) {
-	for _, model := range []string{"claude-fable-5", "claude-mythos-5"} {
+	for _, model := range []string{"claude-fable-5", "claude-mythos-5", "claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5"} {
 		behavior, _ := ModelBehaviorFor(model)
 		if behavior.CanDisableThinking {
 			t.Errorf("%s: CanDisableThinking = true, but this model rejects an explicit disable", model)
 		}
 	}
-	for _, model := range []string{"claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5"} {
+	for _, model := range []string{"claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5", "claude-haiku-5-5"} {
 		behavior, _ := ModelBehaviorFor(model)
 		if !behavior.CanDisableThinking {
 			t.Errorf("%s: CanDisableThinking = false, want true", model)
