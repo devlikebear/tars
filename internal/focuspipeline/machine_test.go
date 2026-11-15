@@ -213,6 +213,53 @@ func TestApplyNoticeTitle(t *testing.T) {
 	}
 }
 
+// A turn that ends with no block at all has no parse errors; the notice must
+// still say which block was missing instead of carrying an empty list.
+func TestApplyFormatNoticeNamesMissingBlock(t *testing.T) {
+	noticeErrors := func(t *testing.T, p Pipeline) []string {
+		t.Helper()
+		last := p.Cards[len(p.Cards)-1]
+		if last.Kind != CardNotice || last.Title != NoticeFormatMissing {
+			t.Fatalf("last card = %+v", last)
+		}
+		var payload struct {
+			Errors []string `json:"errors"`
+		}
+		if err := json.Unmarshal(last.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload.Errors
+	}
+	fixing := atStage(t, StageReview)
+	fixing.Review.Fixing = true
+	for _, tt := range []struct {
+		name   string
+		p      Pipeline
+		blocks Blocks
+		want   []string
+	}{
+		{"plan", New("s1", "g", t0), Blocks{}, []string{"no <focus-plan> block in the reply"}},
+		{"build", atStage(t, StageBuild), Blocks{}, []string{"no <focus-report> or <focus-findings> block in the reply"}},
+		{"review", atStage(t, StageReview), Blocks{}, []string{"no <focus-findings> block in the reply"}},
+		{"review fixing", fixing, Blocks{}, []string{"no <focus-report> block in the reply"}},
+		{"pr", atStage(t, StagePR), Blocks{}, []string{"no <focus-report> or <focus-findings> or <focus-pr> block in the reply"}},
+		{"other block malformed", atStage(t, StageReview), Blocks{Errors: []string{"focus-plan-edit: bad"}},
+			[]string{"no <focus-findings> block in the reply", "focus-plan-edit: bad"}},
+		{"required block malformed", atStage(t, StageReview), Blocks{Errors: []string{"focus-findings: bad"}},
+			[]string{"focus-findings: bad"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, _, err := Apply(tt.p, Event{Kind: EventTurnCompleted, Turn: 1, Blocks: tt.blocks}, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := noticeErrors(t, p); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("errors = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestApplyPlanCardPayload(t *testing.T) {
 	p := planned(t)
 	gate := p.Cards[0]
