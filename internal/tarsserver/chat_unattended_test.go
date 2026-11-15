@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -146,6 +147,8 @@ func TestUnattendedGateVerdicts(t *testing.T) {
 func TestUnattendedGateQueuesAndWaits(t *testing.T) {
 	ctx := context.Background()
 	f := newUnattendedFixture(t, chatPermissionModeManual)
+	var changes atomic.Int32
+	f.perms.changed = func() { changes.Add(1) }
 	gate := f.perms.options(f.session, f.dir, "cron", "cron:nightly").authorizer
 	call := agentloop.ToolCallRequest{ToolName: "exec", ToolArgs: `{"command":"go test ./..."}`}
 
@@ -153,6 +156,10 @@ func TestUnattendedGateQueuesAndWaits(t *testing.T) {
 	d, err := gate.Authorize(ctx, call)
 	if err != nil || !d.Allow {
 		t.Fatalf("approved: %+v %v", d, err)
+	}
+	// The focus event stream hears the call join the queue and leave it.
+	if n := changes.Load(); n != 2 {
+		t.Fatalf("changes told %d times, want 2", n)
 	}
 	f.answerNext(t, false)
 	d, err = gate.Authorize(ctx, call)

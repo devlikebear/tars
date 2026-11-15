@@ -52,7 +52,7 @@ The token carries a new role, `focus`, accepted only by:
 
 - the focus pipeline, card, gate, finding, plan-edit and Q&A routes;
 - the chat turn and turn-feed routes, for focus pipeline sessions only;
-- the event stream, the chat activity and board reads, and `/v1/ops/approvals/{id}/approve|reject` for focus sessions;
+- a focus event stream (`GET /v1/focus/events`, which names the pipeline that changed and nothing else — the general `/v1/events/stream` carries other sessions' events and stays closed to phones), the chat activity and board reads, and `/v1/ops/approvals/{id}/approve|reject` for focus sessions;
 - turning goal mode off.
 
 Creating a pipeline keeps its admin rule for every other caller. For a `focus` token it is allowed only in a folder the desktop's owner has registered for the phone; the phone picks from that list and never sends a free path. This keeps "a phone can make the server run an agent in any folder" off the table.

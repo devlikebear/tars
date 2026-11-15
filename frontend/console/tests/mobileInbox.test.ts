@@ -137,6 +137,24 @@ test('the inbox reads every desktop that answers, and says which did not', async
   assert.deepEqual(inbox.failed, [])
 })
 
+test('a desktop whose stream says a pipeline changed is read alone', async () => {
+  const a = paired('https://a.ts.net')
+  const b = paired('https://b.ts.net')
+  const lists: Record<string, FocusListItem[] | Error> = {
+    [a.id]: [item('p1', { waiting: { gate: 'plan', cards: 0 } })],
+    [b.id]: [item('p2', { waiting: { cards: 1 } })],
+  }
+  const { api } = fakeInboxAPI(lists)
+  const inbox = new InboxStore({ api })
+  await inbox.refresh([a, b])
+
+  lists[a.id] = [item('p1', { waiting: { gate: 'merge', cards: 0 } })]
+  lists[b.id] = new TypeError('not read')
+  await inbox.refreshDesktop(a)
+  assert.deepEqual(inbox.entries.map((e) => `${e.desktopName}/${e.sessionID}/${e.gate}`).sort(), ['a/p1/merge', 'b/p2/'])
+  assert.deepEqual(inbox.failed, [])
+})
+
 test('answering a tool call goes to the desktop that asked, then reads it again', async () => {
   const a = paired('https://a.ts.net')
   const activity: Record<string, ActivitySnapshot> = {

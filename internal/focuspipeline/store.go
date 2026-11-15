@@ -35,6 +35,11 @@ func NewStore(sessionsDir string) *Store {
 	return &Store{dir: sessionsDir}
 }
 
+// Dir is the sessions folder the store keeps pipelines in.
+func (s *Store) Dir() string {
+	return s.dir
+}
+
 func (s *Store) lock() func() {
 	mu, _ := dirLocks.LoadOrStore(filepath.Clean(s.dir), &sync.Mutex{})
 	m := mu.(*sync.Mutex)
@@ -104,7 +109,11 @@ func (s *Store) save(p Pipeline) error {
 	if err != nil {
 		return err
 	}
-	return atomicwrite.Write(path, raw)
+	if err := atomicwrite.Write(path, raw); err != nil {
+		return err
+	}
+	s.changed(p.SessionID)
+	return nil
 }
 
 // Update reads a session's pipeline, applies fn and saves the result, all
@@ -145,9 +154,13 @@ func (s *Store) Delete(sessionID string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return err
 	}
+	s.changed(sessionID)
 	return nil
 }
 

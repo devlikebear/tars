@@ -9,7 +9,7 @@ A phone remote for focus mode on your desktops (`docs/decisions/mobile-remote.md
 ## What it does now
 
 - **Pairing.** On a desktop, open Settings → Channels & Remote → Phones and choose **Pair a phone**. Scan the QR code with the iPhone camera. The code is a `tars-mobile://pair?url=…&code=…` link, so iOS opens this app with the pairing form filled in. You can also type the address and code by hand.
-- **Waiting.** One list, across every paired desktop, of the focus pipelines that wait on you: an open gate, cards to decide, or a tool call waiting for an answer. Each row names its desktop. Answer a tool call right there, or open the pipeline. A desktop that does not answer is named under the list. The list is read again when the app comes back to the front and every 30 seconds while it is open.
+- **Waiting.** One list, across every paired desktop, of the focus pipelines that wait on you: an open gate, cards to decide, or a tool call waiting for an answer. Each row names its desktop. Answer a tool call right there, or open the pipeline. A desktop that does not answer is named under the list. Each desktop that answers keeps a stream open that says the moment one of its pipelines changes, and that desktop is read again then; the whole list is also read when the app comes back to the front and every 30 seconds while it is open.
 - **Ideas.** Write an idea down whenever it comes; it stays on this phone (in the Keychain), with no desktop needed. When it's ready, **Send as task**: pick a desktop that answers, one of the folders registered for phones at that desk (Settings → Channels & Remote → Phones), and a template. The desktop drafts a plan and waits for your approval in the Waiting list. Goal mode is never turned on from the phone.
 - **Desktops.** The app shows each paired desktop and whether it answers now: online, unreachable, pair again (revoked at the desk), or needs setup. Under a desktop that answers are what it lacks to run a task end to end (the chat model's CLI, a signed-in `gh` for pull requests, Tailscale serve for alert links) and its running pipelines, so you can open one that waits on nothing.
 - **A pipeline.** The same screen as the desktop console's focus mode, talking to the desktop that owns the pipeline: approve or change the plan, decide cards, add a finding, ask about a card, send an instruction, follow the running turn, stop the pipeline or turn goal mode off. Turning goal mode on, and opening the full chat workbench, stay at the desk.
@@ -91,7 +91,7 @@ If pairing says the desktop cannot be reached: check that Tailscale is connected
 
 ## Not yet
 
-Phase 2's pieces are all here, and the development build has been run in the iOS Simulator end to end: pairing from a link, the Keychain across a relaunch, deciding a plan and a card, and a running turn streaming into the pipeline screen. Still open: an event stream for phones (the app reads again on a timer), and a run on a real phone over Tailscale (steps above). Nothing here is distributed; a device build is signed with your own Apple ID in Xcode.
+Phase 2's pieces are all here, and the development build has been run in the iOS Simulator end to end: pairing from a link, the Keychain across a relaunch, deciding a plan and a card, and a running turn streaming into the pipeline screen. Still open: a run on a real phone over Tailscale (steps above). Nothing here is distributed; a device build is signed with your own Apple ID in Xcode.
 
 The icon and launch image come from the desktop shell's icon code; to redraw them, from `desktop/`:
 

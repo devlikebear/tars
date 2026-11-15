@@ -80,7 +80,10 @@ type serveAPIRuntime struct {
 	sessionRetentionWait func()
 	// focusAlerts sends a paired phone a Telegram message when a focus
 	// pipeline starts waiting (focus_mobile_alert.go).
-	focusAlerts           *focusMobileAlerts
+	focusAlerts *focusMobileAlerts
+	// focusEvents tells GET /v1/focus/events clients which pipeline changed
+	// (focus_events.go).
+	focusEvents           *focusEventHub
 	workScheduler         *workscheduler.Scheduler
 	telegramPoller        *telegramUpdatePoller
 	remoteAccessRunner    remoteaccess.Runner
@@ -105,6 +108,7 @@ type apiRouteHandlers struct {
 	focusRelease      http.Handler
 	focusReads        http.Handler
 	focusReadiness    http.Handler
+	focusEvents       http.Handler
 	permissionMode    http.Handler
 	work              http.Handler
 	memory            http.Handler
@@ -252,6 +256,7 @@ func buildAPIMux(
 		logger.Info().Int("count", expired).Msg("expired tool approvals left by a previous run")
 	}
 	unattended := newUnattendedPermissions(opsManager, sessionStore, newChatAlwaysRuleStore(cfg.WorkspaceDir), dispatcher.Emit)
+	focusEvents := newFocusEventHub(sessionStore, unattended)
 	// deps.LLMReady is true here — the setup-only branch returned earlier.
 	_, chatResolution, err := deps.llmRouter.ClientFor(llm.RoleChatMain)
 	if err != nil {
@@ -501,6 +506,7 @@ func buildAPIMux(
 	chatTooling.InitiativeSpeak = initiativeSetup.Speaker
 	chatTooling.OpsManager = opsManager
 	chatTooling.Unattended = unattended
+	chatTooling.FocusEvents = focusEvents
 	chatTooling.ExecMaxTimeoutMS = cfg.ToolsExecMaxTimeoutMS
 	chatTooling.ExecMaxBackgroundTimeoutMS = cfg.ToolsProcessMaxTimeoutMS
 	chatTooling.ExecSandbox = execSandboxFromConfig(cfg)
@@ -824,6 +830,7 @@ func buildAPIMux(
 		focusRelease:      newFocusReleaseHandler(sessionStore, logger),
 		focusReads:        apihandlers.NewFocusReadsHandler(sessionStore, checkpointStore, logger),
 		focusReadiness:    newFocusReadinessHandler(cfg),
+		focusEvents:       newFocusEventsHandler(focusEvents),
 		checkpoints:       newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
 			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
@@ -913,6 +920,7 @@ func buildAPIMux(
 		caseBridge:                  caseBridge,
 		sessionRetention:            retention,
 		focusAlerts:                 newFocusMobileAlerts(cfg, sessionStore, unattended, telegramSender, telegramPairings, logger),
+		focusEvents:                 focusEvents,
 	}, nil
 }
 
@@ -988,6 +996,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	if handlers.focusReadiness != nil {
 		mux.Handle("/v1/focus/readiness", handlers.focusReadiness)
+	}
+	if handlers.focusEvents != nil {
+		mux.Handle("/v1/focus/events", handlers.focusEvents)
 	}
 	if handlers.permissionMode != nil {
 		mux.Handle("/v1/admin/sessions/{id}/permission-mode", handlers.permissionMode)
@@ -1142,6 +1153,7 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	runtime.workLedgerMaintenance = startWorkLedgerMaintenance(ctx, runtime.workLedger, logger)
 	runtime.sessionRetentionWait = runtime.sessionRetention.start(ctx)
 	startFocusAlerts(ctx, runtime)
+	runtime.focusEvents.start(ctx)
 	startLocalEmbed(ctx, runtime, logger)
 
 	if err := runBackgroundStartupStep(logger, "remote_access_reconcile", func() error {
