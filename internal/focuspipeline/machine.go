@@ -293,7 +293,7 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		act = reviewTurnAction(&p, b, ev.Turn, now, ev.FixUnchanged)
 	}
 	if missing {
-		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": nonNil(b.Errors)}, now)
+		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": missingBlockErrors(p, b.Errors)}, now)
 		build, _ := p.Stage(p.Current)
 		switch {
 		case kind == StageBuild && build.Turns >= buildTurnCap(p):
@@ -354,6 +354,46 @@ func missingRequiredBlock(p Pipeline, b Blocks) bool {
 	default:
 		return b.Report == nil && b.Findings == nil
 	}
+}
+
+// requiredBlockTags lists the blocks any one of which satisfies the current
+// stage, in the order missingRequiredBlock checks them.
+func requiredBlockTags(p Pipeline) []string {
+	switch p.CurrentKind() {
+	case StagePlan:
+		return []string{TagPlan}
+	case StagePR:
+		return []string{TagReport, TagFindings, TagPR}
+	case StageReview:
+		if p.Review.Fixing {
+			return []string{TagReport}
+		}
+		return []string{TagFindings}
+	default:
+		return []string{TagReport, TagFindings}
+	}
+}
+
+// missingBlockErrors is the error list of the card a turn without its
+// required block raises. The parse errors say what was wrong with a block
+// that was there; when none of them is about a block the stage accepts, the
+// reply had no such block at all, and the list says so — otherwise the card
+// would carry an empty list and tell the developer nothing.
+func missingBlockErrors(p Pipeline, parseErrors []string) []string {
+	tags := requiredBlockTags(p)
+	for _, e := range parseErrors {
+		for _, tag := range tags {
+			if strings.HasPrefix(e, tag+":") {
+				return parseErrors
+			}
+		}
+	}
+	names := make([]string, len(tags))
+	for i, tag := range tags {
+		names[i] = "<" + tag + ">"
+	}
+	msg := "no " + strings.Join(names, " or ") + " block in the reply"
+	return append([]string{msg}, parseErrors...)
 }
 
 func lastCardIsFormatNotice(p Pipeline) bool {
@@ -631,13 +671,6 @@ func AddNotice(p Pipeline, title string, payload any, now time.Time) Pipeline {
 	next.addCard(CardNotice, 0, title, payload, now.UTC())
 	next.UpdatedAt = now.UTC()
 	return next
-}
-
-func nonNil(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }
 
 // SetCardState marks a card seen, or decides a decision/finding card. A
