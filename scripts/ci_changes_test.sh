@@ -15,7 +15,7 @@ check() {
 }
 
 check 'docs only' 'code=false desktop=false' $'docs/decisions/product-focus.md\nREADME.md\nCLAUDE.md\n'
-check 'changelog and license' 'code=false desktop=false' $'CHANGELOG.md\nLICENSE\n.github/pull_request_template.md\n'
+check 'changelog and license' 'code=false desktop=false' $'CHANGELOG.md\nLICENSE\n.github/pull_request_template.md\n.github/FUNDING.yml\n'
 check 'api snapshot is code' 'code=true desktop=false' $'docs/public-api-surface.txt\n'
 check 'go source' 'code=true desktop=false' $'internal/tarsserver/handler_chat.go\n'
 check 'docs with one source file' 'code=true desktop=false' $'docs/console.md\npkg/llm/router.go\n'

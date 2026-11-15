@@ -11,6 +11,7 @@
     <a href="https://github.com/devlikebear/tars/actions/workflows/codeql.yml"><img src="https://github.com/devlikebear/tars/actions/workflows/codeql.yml/badge.svg" alt="CodeQL" /></a>
     <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/devlikebear/tars" alt="Go" /></a>
     <a href="https://github.com/devlikebear/tars/releases"><img src="https://img.shields.io/github/v/release/devlikebear/tars" alt="Release" /></a>
+    <a href="https://github.com/sponsors/devlikebear"><img src="https://img.shields.io/badge/sponsor-%E2%9D%A4-db61a2?style=flat&logo=githubsponsors&logoColor=white" alt="Sponsor" /></a>
   </p>
   <p><strong>TARS runs a development task from plan to merged pull request, on your own machine.</strong></p>
   <p><strong>Homepage:</strong> <a href="https://tars.marvin-42.com">tars.marvin-42.com</a> — project overview, features, and quickstart.</p>
