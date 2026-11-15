@@ -11,6 +11,7 @@
   import type { DesktopStore } from '../lib/mobile/desktopStore.svelte'
   import type { InboxStore } from '../lib/mobile/inboxStore.svelte'
   import { readinessLine, readinessProblems, type PairedDesktop } from '../lib/mobile/desktops'
+  import { isDemoDesktop } from '../lib/mobile/demoDesk'
   import type { AppLinks } from '../lib/mobile/appLinks'
   import type { DesktopChange, DesktopEvents } from '../lib/mobile/desktopEvents'
   import { stageLabel } from '../lib/focus'
@@ -81,8 +82,20 @@
     void refresh()
   }
 
+  const hasDemo = $derived(store.desktops.some(isDemoDesktop))
+
+  // tryDemo adds the desk that lives inside the app and shows what waits
+  // there, for someone with no desktop paired yet.
+  async function tryDemo() {
+    await store.addDemo()
+    notice = $t.mobileApp.demoAdded
+    noticeWarns = false
+    tab = 'inbox'
+    void refresh()
+  }
+
   async function forget(desktop: PairedDesktop) {
-    if (!confirm($t.mobileApp.confirmForget(desktop.name))) return
+    if (!confirm(isDemoDesktop(desktop) ? $t.mobileApp.confirmForgetDemo : $t.mobileApp.confirmForget(desktop.name))) return
     await store.forget(desktop.id)
     void refresh()
   }
@@ -269,7 +282,11 @@
           <strong>{desktop.name}</strong>
           <span class="state">{$t.mobileApp.states[status]}</span>
         </div>
-        <span class="host">{host(desktop)}</span>
+        {#if isDemoDesktop(desktop)}
+          <span class="state-hint" data-testid="mobile-demo-hint">{$t.mobileApp.demoHint}</span>
+        {:else}
+          <span class="host">{host(desktop)}</span>
+        {/if}
         {#if $t.mobileApp.stateHints[status]}
           <span class="state-hint">{$t.mobileApp.stateHints[status]}</span>
         {/if}
@@ -324,6 +341,11 @@
       <button type="button" class="btn btn-primary" onclick={() => openPair()} data-testid="mobile-pair-open">
         {$t.mobileApp.pairDesktop}
       </button>
+      {#if store.loaded && !hasDemo}
+        <button type="button" class="btn btn-ghost" onclick={tryDemo} data-testid="mobile-demo-open">
+          {$t.mobileApp.tryDemo}
+        </button>
+      {/if}
     </footer>
   {/if}
 </main>
@@ -559,6 +581,9 @@
 
   footer {
     margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   footer .btn {

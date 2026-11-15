@@ -14,6 +14,8 @@ A phone remote for focus mode on your desktops (`docs/decisions/mobile-remote.md
 - **Desktops.** The app shows each paired desktop and whether it answers now: online, unreachable, pair again (revoked at the desk), or needs setup. Under a desktop that answers are what it lacks to run a task end to end (the chat model's CLI, a signed-in `gh` for pull requests, Tailscale serve for alert links) and its running pipelines, so you can open one that waits on nothing.
 - **A pipeline.** The same screen as the desktop console's focus mode, talking to the desktop that owns the pipeline: approve or change the plan, decide cards, add a finding, ask about a card, send an instruction, follow the running turn, stop the pipeline or turn goal mode off. Turning goal mode on, and opening the full chat workbench, stay at the desk.
 
+- **The demo desk.** With nothing paired, the Desktops tab also offers **Try the demo desk**: a desktop that lives inside the app (`frontend/console/src/lib/mobile/demoDesk.ts`). It answers the same routes a paired desktop does from memory, with fixed text, so every screen is the real one: three pipelines wait (a plan to approve, findings to triage with a tool call, a pull request to merge), and an idea can be sent as a task. Nothing leaves the phone and no model runs; its state starts over when the app starts. It is there for someone who has no desktop set up yet, and for App Store review, which cannot join the owner's tailnet.
+
 Each desktop's device token is kept in the iOS Keychain by `ios/App/App/KeychainPlugin.swift`. The token stays on this phone: it is neither synced to iCloud nor restored to another phone. Like any Keychain item it outlives deleting the app, so a reinstall finds its desktops again; revoke the phone at the desk to end its access.
 
 ## Build
@@ -44,7 +46,7 @@ The server answers CORS only for the app's own origin (`capacitor://localhost`).
 
 ## Run it on your iPhone
 
-The phone reaches each desktop at its Tailscale serve address, over https. Nothing here is distributed yet, so you install it from Xcode with your own Apple ID.
+The phone reaches each desktop at its Tailscale serve address, over https. Until the App Store version is out (`store/README.md` has the submission: build and upload script, listing, review notes), you install it from Xcode with your own Apple ID.
 
 **At the desk (each desktop you want on the phone):**
 

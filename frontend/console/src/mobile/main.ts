@@ -9,16 +9,22 @@ import './mobile.css'
 import MobileApp from './MobileApp.svelte'
 import type { AppLinks } from '../lib/mobile/appLinks'
 import { desktopAPI, eventsAPI, inboxAPI, taskAPI } from '../lib/mobile/desktopApi'
+import { createDemoDesk, demoBaseURL } from '../lib/mobile/demoDesk'
 import { DesktopEvents } from '../lib/mobile/desktopEvents'
 import { DesktopStore } from '../lib/mobile/desktopStore.svelte'
 import { IdeaStore } from '../lib/mobile/ideaStore.svelte'
 import { InboxStore } from '../lib/mobile/inboxStore.svelte'
 import { appSecureStore } from '../lib/mobile/secureStore'
+import { serveLocally } from '../lib/api/client'
 
 // Desktops with their tokens and the idea inbox both live in the Keychain:
 // one store the app owns, which iOS does not clear under storage pressure
 // the way it may clear a web view's localStorage.
 const storage = appSecureStore()
+
+// The demo desk answers inside the app; it is only reached once someone
+// adds it from the Desktops tab.
+serveLocally(demoBaseURL, createDemoDesk().handle)
 
 const store = new DesktopStore({
   storage,

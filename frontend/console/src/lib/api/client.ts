@@ -39,10 +39,21 @@ export async function requestJSONAt<T>(target: APITarget, path: string, init?: R
   return readJSON<T>(await fetchAt(target, path, { ...init, headers }))
 }
 
+// A desk answered inside the app instead of over the network: the mobile
+// app's demo desk (lib/mobile/demoDesk.ts). Nothing is registered in the
+// console.
+const localDesks = new Map<string, (path: string, init?: RequestInit) => Promise<Response>>()
+
+export function serveLocally(baseURL: string, handler: (path: string, init?: RequestInit) => Promise<Response>): void {
+  localDesks.set(baseURL, handler)
+}
+
 // fetchAt sends one request to a desktop: its address, its bearer token,
 // never a cookie. Streams (the turn feed) use it directly; JSON calls go
 // through requestJSONAt.
 export function fetchAt(target: APITarget, path: string, init?: RequestInit): Promise<Response> {
+  const local = localDesks.get(target.baseURL)
+  if (local) return local(path, init)
   const headers = new Headers(init?.headers)
   if (target.token) headers.set('Authorization', `Bearer ${target.token}`)
   return fetch(`${target.baseURL.replace(/\/+$/, '')}${path}`, {
