@@ -72,8 +72,8 @@ type Demo = {
 
 const devStages: FocusStageId[] = ['plan', 'build', 'review', 'pr', 'pr_review', 'merge']
 const folders = [
-  { path: '/Users/demo/code/storefront', name: 'storefront', exists: true },
-  { path: '/Users/demo/code/notes-app', name: 'notes-app', exists: true },
+  { path: '/Volumes/code/storefront', name: 'storefront', exists: true },
+  { path: '/Volumes/code/notes-app', name: 'notes-app', exists: true },
 ]
 const templates: FocusTemplate[] = [
   { id: 'dev', name: 'Development', description: 'Plan, build, review, pull request, CI review, merge.', builtin: true, stages: devStages.map((id) => ({ id })) },
@@ -409,7 +409,7 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
   }
 
   function session(d: Demo): Session {
-    const dir = `/Users/demo/code/${d.folder}`
+    const dir = `/Volumes/code/${d.folder}`
     return {
       id: d.pipeline.session_id, title: d.title, kind: 'main', work_dirs: [dir], current_dir: dir,
       created_at: d.history[0]?.timestamp ?? d.pipeline.updated_at, updated_at: d.pipeline.updated_at,

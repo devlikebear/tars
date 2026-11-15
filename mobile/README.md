@@ -46,7 +46,7 @@ The server answers CORS only for the app's own origin (`capacitor://localhost`).
 
 ## Run it on your iPhone
 
-The phone reaches each desktop at its Tailscale serve address, over https. Nothing here is distributed yet, so you install it from Xcode with your own Apple ID.
+The phone reaches each desktop at its Tailscale serve address, over https. Until the App Store version is out (`store/README.md` has the submission: build and upload script, listing, review notes), you install it from Xcode with your own Apple ID.
 
 **At the desk (each desktop you want on the phone):**
 
