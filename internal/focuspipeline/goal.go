@@ -55,8 +55,15 @@ const (
 	// GoalEndUsageLimit: a turn failed on the provider's usage limit
 	// (UsageLimitError).
 	GoalEndUsageLimit = "usage_limit"
-	GoalEndCancelled  = "cancelled"
-	GoalEndDisabled   = "disabled"
+	// GoalEndRepeatedQuestion: the agent asks again a question goal mode
+	// already answered in this stage. "Decide yourself" did not settle it
+	// the first time and will not the next: answering it again only spends
+	// the budget one turn at a time (seen in dogfooding: thirteen turns
+	// re-asking whether to keep an end-to-end goal that contradicted the
+	// task). The question is left to the developer.
+	GoalEndRepeatedQuestion = "repeated_question"
+	GoalEndCancelled        = "cancelled"
+	GoalEndDisabled         = "disabled"
 )
 
 // Push budget.
@@ -162,7 +169,7 @@ func EndGoal(p Pipeline, reason string, now time.Time) (Pipeline, bool) {
 	// restore before this).
 	next.GoalMode.PermissionSet, next.GoalMode.RestorePermission = false, ""
 	switch reason {
-	case GoalEndExhausted, GoalEndPRClosed, GoalEndE2EFailed, GoalEndUsageLimit, GoalEndCancelled:
+	case GoalEndExhausted, GoalEndPRClosed, GoalEndE2EFailed, GoalEndUsageLimit, GoalEndRepeatedQuestion, GoalEndCancelled:
 		next.addCard(CardNotice, 0, NoticeGoalEnded, map[string]any{
 			"reason": reason, "pushes": next.GoalMode.Pushes, "max_pushes": next.GoalMode.MaxPushes,
 		}, at)
@@ -252,6 +259,9 @@ func NextGoalStep(p Pipeline, now time.Time) GoalStep {
 			if spent {
 				return GoalStep{Kind: GoalEnd, Reason: GoalEndExhausted}
 			}
+			if goalAnsweredBefore(p, c) {
+				return GoalStep{Kind: GoalEnd, Reason: GoalEndRepeatedQuestion}
+			}
 			// The last open question of a turn sends the answer turn: that
 			// draws on the budget, once however many questions the turn asked.
 			return GoalStep{Kind: GoalCard, CardID: c.ID, Decision: GoalDecisionAnswer, Push: openTurnDecisions(p, c) == 1}
@@ -279,6 +289,30 @@ func NextGoalStep(p Pipeline, now time.Time) GoalStep {
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndExhausted}
 	}
 	return GoalStep{Kind: GoalNudge, Push: true, Prompt: p.goalNudgePrompt()}
+}
+
+// goalAnsweredBefore reports whether goal mode already answered card's
+// question in the same stage: a decided decision card of that stage, decided
+// by goal mode, whose question (the card title) reads the same once case,
+// spacing and trailing punctuation are set aside.
+func goalAnsweredBefore(p Pipeline, card Card) bool {
+	question := normalizeQuestion(card.Title)
+	if question == "" {
+		return false
+	}
+	for _, c := range p.Cards {
+		if c.ID == card.ID || c.Kind != CardDecision || c.State != CardDecided || c.DecidedBy != AnswerGoal || c.Stage != card.Stage {
+			continue
+		}
+		if normalizeQuestion(c.Title) == question {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeQuestion(q string) string {
+	return strings.TrimRight(strings.Join(strings.Fields(strings.ToLower(q)), " "), "?.!: ")
 }
 
 func goalBlockedStep(p Pipeline, g GoalMode, spent bool, now time.Time) GoalStep {
