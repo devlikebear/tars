@@ -188,6 +188,40 @@ func TestSessionRetentionSweepArchivesThenDeletes(t *testing.T) {
 	}
 }
 
+// A pipeline stopped while its PR was awaited keeps PRWait; only an active
+// stage means the server is still waiting on the PR.
+func TestPipelineDrivenWithoutPerson(t *testing.T) {
+	now := time.Now()
+	atPR := func(status focuspipeline.StageStatus, gate string) focuspipeline.Pipeline {
+		p := focuspipeline.New("s", "goal", now)
+		for i := range p.Stages {
+			switch p.Stages[i].ID {
+			case focuspipeline.StagePlan, "build", "review":
+				p.Stages[i].Status = focuspipeline.StatusDone
+			case focuspipeline.StagePR:
+				p.Stages[i].Status = status
+			}
+		}
+		p.Current, p.PRWait, p.OpenGate = focuspipeline.StagePR, focuspipeline.PRWaitOpen, gate
+		return p
+	}
+	for _, tc := range []struct {
+		name string
+		p    focuspipeline.Pipeline
+		want bool
+	}{
+		{"waiting on the PR", atPR(focuspipeline.StatusActive, focuspipeline.GateNone), true},
+		{"stopped", atPR(focuspipeline.StatusBlocked, focuspipeline.GateNone), false},
+		{"blocked gate waits on a person", atPR(focuspipeline.StatusBlocked, focuspipeline.GateBlocked), false},
+		{"at a gate before any PR", focuspipeline.New("s", "goal", now), false},
+		{"goal mode", focuspipeline.StartGoal(focuspipeline.New("s", "goal", now), 0, now), true},
+	} {
+		if got := pipelineDrivenWithoutPerson(tc.p); got != tc.want {
+			t.Errorf("%s: in use = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 // A session someone went back to after it was archived is not deleted.
 func TestSessionRetentionKeepsAnArchivedSessionUsedSince(t *testing.T) {
 	store := session.NewStore(filepath.Join(t.TempDir(), "sessions"))
