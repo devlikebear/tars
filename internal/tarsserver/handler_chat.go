@@ -1193,7 +1193,10 @@ type chatToolingOptions struct {
 	// Unattended gates the tools of turns nobody watches (cron, Telegram)
 	// by their session's permission mode; nil runs them as before.
 	Unattended *unattendedPermissions
-	Compaction chatCompactionOptions
+	// FocusEvents hears about every turn and question, for the focus event
+	// stream; nil tells no one.
+	FocusEvents *focusEventHub
+	Compaction  chatCompactionOptions
 	// ExecMaxTimeoutMS forwards config.ToolsExecMaxTimeoutMS into the
 	// per-call cap on the exec tool. 0 falls back to the tool default.
 	ExecMaxTimeoutMS int
@@ -1316,6 +1319,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 	maxIters := resolveAgentMaxIterations(maxIterations)
 	chatLimiter := newInflightLimiter(tooling.APIMaxInflightChat, 2)
 	chatActivity := newChatActivity(store, tooling.Notify)
+	tooling.FocusEvents.bindActivity(chatActivity)
 	cancelRegistry := newChatCancelRegistry()
 	turnFeeds := newChatTurnFeeds()
 

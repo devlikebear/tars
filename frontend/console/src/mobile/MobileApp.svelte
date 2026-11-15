@@ -12,6 +12,7 @@
   import type { InboxStore } from '../lib/mobile/inboxStore.svelte'
   import { readinessLine, readinessProblems, type PairedDesktop } from '../lib/mobile/desktops'
   import type { AppLinks } from '../lib/mobile/appLinks'
+  import type { DesktopEvents } from '../lib/mobile/desktopEvents'
   import { stageLabel } from '../lib/focus'
   import { runningPipelines, waitingOf } from '../lib/mobile/inbox'
   import type { FocusListItem } from '../lib/types'
@@ -27,10 +28,13 @@
     store: DesktopStore
     inbox: InboxStore
     ideas: IdeaStore
+    // The desktops' focus event streams; optional so a screen built
+    // without them still reads on its timer.
+    events?: DesktopEvents
     links: AppLinks
   }
 
-  let { store, inbox, ideas, links }: Props = $props()
+  let { store, inbox, ideas, events, links }: Props = $props()
 
   // The idea being sent, while the send sheet is open.
   let sending = $state<Idea | null>(null)
@@ -48,8 +52,9 @@
     void refresh()
   }
 
-  // While the app is open it reads again this often; there is no event
-  // stream for phones yet.
+  // While the app is open it reads again this often: for desktops that wake
+  // or sleep, and for desktops too old for the event stream. A desktop
+  // whose stream is open says at once when a pipeline changes.
   const pollMs = 30_000
 
   let tab = $state<'inbox' | 'ideas' | 'desktops'>('inbox')
@@ -88,7 +93,9 @@
     checking = true
     try {
       await store.refresh()
-      await inbox.refresh(store.desktops.filter((d) => store.statuses[d.id]?.state === 'online'))
+      const online = store.desktops.filter((d) => store.statuses[d.id]?.state === 'online')
+      events?.watch(online)
+      await inbox.refresh(online)
     } finally {
       checking = false
     }
@@ -109,6 +116,14 @@
   function openPipeline(desktopID: string, sessionID: string) {
     opened = { desktopID, sessionID }
     window.scrollTo(0, 0)
+  }
+
+  // A desktop's stream said one of its pipelines changed: read that desktop
+  // again. A pipeline on screen reads its own state; the lists wait for back.
+  function onDesktopChanged(desktopID: string) {
+    if (opened) return
+    const desktop = store.desktops.find((d) => d.id === desktopID)
+    if (desktop) void inbox.refreshDesktop(desktop)
   }
 
   // Back from a pipeline: what waits has likely changed.
@@ -167,10 +182,12 @@
     stops.push(
       links.listen((url) => void openLink(url, loading)),
       links.onResume(() => {
+        events?.reconnect()
         if (!opened) void refresh()
       }),
       () => clearInterval(timer),
     )
+    if (events) stops.push(events.listen(onDesktopChanged), () => events.close())
   })
 
   onDestroy(() => stops.forEach((stop) => stop()))

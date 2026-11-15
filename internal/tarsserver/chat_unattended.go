@@ -59,6 +59,9 @@ type unattendedPermissions struct {
 	timeout  time.Duration
 	poll     time.Duration
 	now      func() time.Time
+	// changed is told when a tool call joins the queue and when its wait
+	// ends (the focus event stream); nil tells no one.
+	changed func()
 }
 
 func newUnattendedPermissions(manager *ops.Manager, sessions *session.Store, always *chatAlwaysRuleStore, notify func(context.Context, notificationEvent)) *unattendedPermissions {
@@ -218,6 +221,10 @@ func (u *unattendedPermissions) ask(ctx context.Context, run unattendedRun, tool
 		return false, "", fmt.Errorf("queue tool approval: %w", err)
 	}
 	u.announce(ctx, run, approval)
+	if u.changed != nil {
+		u.changed()
+		defer u.changed()
+	}
 
 	deadline := time.NewTimer(u.timeout)
 	defer deadline.Stop()

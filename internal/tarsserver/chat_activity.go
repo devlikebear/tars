@@ -43,6 +43,10 @@ type chatActivity struct {
 	// queued lists unattended runs' tool calls waiting in the ops queue;
 	// nil lists none.
 	queued func() ([]chatQueuedApproval, error)
+	// changed is told, outside the lock, each time a turn starts or ends
+	// or a question is asked or answered (the focus event stream); nil
+	// tells no one.
+	changed func()
 }
 
 type chatRunningTurn struct {
@@ -119,25 +123,41 @@ func (a *chatActivity) begin(sessionID string) func() {
 		a.running[sessionID] = turn
 	}
 	turn.turns++
+	changed := a.changed
 	a.mu.Unlock()
+	notifyActivityChange(changed)
 	var once sync.Once
 	return func() {
 		once.Do(func() {
 			a.mu.Lock()
-			defer a.mu.Unlock()
-			if t := a.running[sessionID]; t != nil {
-				t.turns--
-				if t.turns > 0 {
-					return
-				}
-				delete(a.running, sessionID)
-			}
-			for id, p := range a.pending {
-				if p.SessionID == sessionID {
-					delete(a.pending, id)
-				}
-			}
+			changed := a.end(sessionID)
+			a.mu.Unlock()
+			notifyActivityChange(changed)
 		})
+	}
+}
+
+// end ends one of a session's turns, with a.mu held, and returns who to
+// tell when the session stopped running.
+func (a *chatActivity) end(sessionID string) func() {
+	if t := a.running[sessionID]; t != nil {
+		t.turns--
+		if t.turns > 0 {
+			return nil
+		}
+		delete(a.running, sessionID)
+	}
+	for id, p := range a.pending {
+		if p.SessionID == sessionID {
+			delete(a.pending, id)
+		}
+	}
+	return a.changed
+}
+
+func notifyActivityChange(changed func()) {
+	if changed != nil {
+		changed()
 	}
 }
 
@@ -165,12 +185,16 @@ func (a *chatActivity) observe(sessionID string, payload map[string]any) {
 		p.Session = a.sessionTitle(sessionID)
 		a.mu.Lock()
 		a.pending[requestID] = p
+		changed := a.changed
 		a.mu.Unlock()
 		a.announce(p)
+		notifyActivityChange(changed)
 	case "permission_resolved":
 		a.mu.Lock()
 		delete(a.pending, requestID)
+		changed := a.changed
 		a.mu.Unlock()
+		notifyActivityChange(changed)
 	}
 }
 

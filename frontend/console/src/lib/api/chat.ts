@@ -189,9 +189,16 @@ export async function attachChatStreamAt(
   return true
 }
 
-async function readChatStream(response: Response, onEvent: (event: ChatEvent) => void): Promise<void> {
+function readChatStream(response: Response, onEvent: (event: ChatEvent) => void): Promise<void> {
+  return readEventStream<ChatEvent>(response, onEvent)
+}
+
+// readEventStream reads a server-sent event body line by line through
+// fetch, so the request can carry a bearer token (EventSource cannot), and
+// resolves when the server ends it.
+export async function readEventStream<T>(response: Response, onEvent: (event: T) => void): Promise<void> {
   if (!response.body) {
-    throw new Error('chat stream body missing')
+    throw new Error('event stream body missing')
   }
 
   const reader = response.body.getReader()
@@ -212,7 +219,7 @@ async function readChatStream(response: Response, onEvent: (event: ChatEvent) =>
       if (!payload) {
         continue
       }
-      onEvent(JSON.parse(payload) as ChatEvent)
+      onEvent(JSON.parse(payload) as T)
     }
 
     if (done) {

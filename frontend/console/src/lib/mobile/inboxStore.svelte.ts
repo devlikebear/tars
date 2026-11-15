@@ -53,6 +53,13 @@ export class InboxStore {
     }
   }
 
+  // refreshDesktop reads one desktop again — the one whose event stream
+  // said a pipeline changed — and leaves the others as they were.
+  async refreshDesktop(desktop: PairedDesktop): Promise<void> {
+    await this.#read(desktop)
+    this.#publish()
+  }
+
   // answer answers a tool call on the desktop that asked: approve or allow
   // once when allow, else reject or deny. The desktop is read again after.
   async answer(desktop: PairedDesktop, approval: InboxApproval, allow: boolean): Promise<boolean> {

@@ -2,7 +2,9 @@
 // trade a pairing code for a token, and check that the desktop answers and
 // still accepts the token. Each call names its desktop; nothing here uses
 // the page's own origin.
-import { APIRequestError, requestJSONAt, type APITarget } from '../api/client.ts'
+import { APIRequestError, fetchAt, requestJSONAt, type APITarget } from '../api/client.ts'
+import { readEventStream } from '../api/chat.ts'
+import type { EventsAPI, FocusStreamEvent } from './desktopEvents.ts'
 import type { PairingTarget } from '../devicePairing.ts'
 import type { ActivitySnapshot } from '../sessionBoard.ts'
 import type { FocusListItem, FocusTemplate, FocusTemplateList } from '../types.ts'
@@ -126,5 +128,15 @@ export const inboxAPI: InboxAPI = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionID, decision }),
     })
+  },
+}
+
+// The focus event stream, read through fetch so it carries the bearer
+// token. No timeout: it stays open while the app is in front.
+export const eventsAPI: EventsAPI = {
+  async open(target, onEvent, signal) {
+    const response = await fetchAt(target, '/v1/focus/events', { headers: { Accept: 'text/event-stream' }, signal })
+    if (!response.ok) throw new APIRequestError(`${response.status} ${response.statusText}`.trim(), response.status)
+    await readEventStream<FocusStreamEvent>(response, onEvent)
   },
 }
