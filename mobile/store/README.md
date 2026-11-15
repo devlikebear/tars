@@ -9,7 +9,7 @@ scripts/mobile_release.sh 1.0.0 1            # archive, export, validate with Ap
 scripts/mobile_release.sh 1.0.0 1 --upload   # the same, then upload; shows under TestFlight
 ```
 
-The script's header lists the environment it needs (team id, App Store Connect API key). The app record must exist in App Store Connect first: create it by hand with the bundle id above, then pass its numeric Apple ID as `ASC_APP_ID` for the first upload. Submitting a build for review, and releasing an approved one, are done in App Store Connect by a person.
+The record is "TARS Remote", Apple ID `6835098160`. The listing text, screenshots, review notes, age rating, price and availability below were entered through the App Store Connect API; the app privacy answers have no API and were set on the web. The script's header lists the environment it needs (team id, App Store Connect API key). The app record must exist in App Store Connect first: create it by hand with the bundle id above, then pass its numeric Apple ID as `ASC_APP_ID` for the first upload. Submitting a build for review, and releasing an approved one, are done in App Store Connect by a person.
 
 The app is iPhone only (`TARGETED_DEVICE_FAMILY = 1`). An iPad runs it in iPhone compatibility mode. Adding iPad later is possible; removing it after a release is not.
 
@@ -97,7 +97,7 @@ If a later version adds an account, analytics or a relay server, these answers c
 
 ## Notes for App Review
 
-Paste into "App Review Information → Notes". Attach one screen recording from a real iPhone that starts on the home screen and shows pairing with a desktop and answering a gate (App Review takes one attachment; join clips into one file).
+As submitted with 1.0.0 (2026-11-15). They go in "App Review Information → Notes", with one screen recording from a real iPhone attached that shows pairing with a desktop and a real task (App Review takes one attachment; join clips into one file, and H.264 at 720 wide keeps it to a few megabytes).
 
 > TARS Remote is a companion to TARS, an open-source AI coding agent that runs on the user's own Mac or PC (https://github.com/devlikebear/tars). It has no account and no server of ours: it connects only to desktops the user pairs, over the user's private Tailscale network. Because that network is private, you cannot reach a real desktop from your test device. The app therefore includes a built-in demo that exercises every feature with the app's real screens.
 >
@@ -106,8 +106,8 @@ Paste into "App Review Information → Notes". Attach one screen recording from 
 > 2. Waiting tab: three sample tasks wait. On "Fix the flaky upload retry", tap Approve on the waiting tool call.
 > 3. Tap Open on "Add a dark mode toggle to Settings". Review the plan and tap Approve. After a few seconds of simulated work a review finding appears; tap Fix, then approve the pull request draft and the merge. The task finishes.
 > 4. Tap "All tasks". Open "Fix the flaky upload retry": decide the two findings (Fix or Dismiss), or tap Ask to ask about one.
-> 5. Ideas tab: type an idea and tap Save, then "Send as task". Choose Demo desk, a folder and a template, and tap Send. The new task appears under Waiting once its plan is drafted.
-> 6. Desktops tab: the demo desk and its tasks. "Pair a desktop" opens the form a real pairing uses; it needs a desktop on the user's own network. The attached video shows a real pairing and a real task.
+> 5. Ideas tab: type an idea and tap Save, then "Send as task". Choose a folder and tap Send. Tap Refresh after a few seconds: the new task appears under Waiting once its plan is drafted.
+> 6. Desktops tab: the demo desk and its tasks. "Pair a desktop" opens the form a real pairing uses; it needs a desktop on the user's own network, which is why the demo exists. The attached screen recording (tars-remote-review.mp4, 2 min 24 s, from a real iPhone; the app's interface is in Korean there) shows the real thing: pairing with a desktop by scanning its QR code with the camera, the task that waits on that desktop, a decision card in its pipeline, and an idea sent to the desktop as a new task.
 >
 > The demo runs entirely inside the app: no network requests, no AI model, and its state resets when the app restarts.
 >
