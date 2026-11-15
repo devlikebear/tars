@@ -1,10 +1,6 @@
 # TARS Remote privacy policy
 
-Draft. Publish it at a public URL and enter that URL in App Store Connect. Fill in the contact line and the date before publishing.
-
----
-
-**Effective date:** (date of publication)
+**Effective date:** November 15, 2026
 
 TARS Remote is an iPhone app that connects to TARS running on your own computers. This policy says what the app does with your information.
 
@@ -35,4 +31,4 @@ If a later version changes what this policy describes, the policy will be update
 
 ## Contact
 
-(contact address)
+Questions about this policy: open an issue at https://github.com/devlikebear/tars/issues.
