@@ -207,6 +207,13 @@ func (u *unattendedPermissions) claudeCodeHandler(run unattendedRun) llm.ClaudeC
 // ask queues the call for review and waits for the answer. A call nobody
 // answers in time is not run; a cancelled turn closes its question.
 func (u *unattendedPermissions) ask(ctx context.Context, run unattendedRun, toolName string, input []byte, reason string) (bool, string, error) {
+	// The turn took its mode when it started; a session switched to auto
+	// since (goal mode on, or by hand) no longer asks.
+	if u.sessionStoppedAsking(run.sessionID) {
+		run.mode = chatPermissionModeAuto
+		u.record(run, toolName, "", chatPermissionAllowedByMode)
+		return true, "", nil
+	}
 	approval, err := u.ops.CreateToolPermissionApproval(ops.ToolPermissionRequest{
 		SessionID: run.sessionID,
 		Source:    run.source,
@@ -247,6 +254,14 @@ func (u *unattendedPermissions) ask(ctx context.Context, run unattendedRun, tool
 			return false, fmt.Sprintf("Nobody approved %s within %s, so it was not run. Finish without it or say what approval you need.", toolName, u.timeout), nil
 		case <-ticker.C:
 			status := u.status(approval.ID)
+			if status == ops.ApprovalStatusPending && u.sessionStoppedAsking(run.sessionID) {
+				if u.allowByMode(run, toolName, approval.ID) {
+					return true, "", nil
+				}
+				// Answered in the meantime (that answer stands) or not
+				// closed: read it again, and keep waiting while it is open.
+				status = u.status(approval.ID)
+			}
 			if status == ops.ApprovalStatusPending || status == "" {
 				continue
 			}
@@ -316,6 +331,27 @@ func (u *unattendedPermissions) status(id string) string {
 		return ""
 	}
 	return approval.Status
+}
+
+// sessionStoppedAsking reports whether the session's permission mode is now
+// auto: a call queued under manual, accept edits or plan would not be asked
+// about any more (goal mode turned on, or the mode switched by hand while
+// it waited), so its question no longer needs an answer.
+func (u *unattendedPermissions) sessionStoppedAsking(sessionID string) bool {
+	sess, err := u.sessions.Get(sessionID)
+	return err == nil && strings.TrimSpace(sess.PermissionMode) == chatPermissionModeAuto
+}
+
+// allowByMode closes a waiting question because the session's mode no
+// longer asks, and reports whether it did: false when the question could
+// not be closed (someone answered it first, or the queue failed to save).
+func (u *unattendedPermissions) allowByMode(run unattendedRun, toolName, id string) bool {
+	if err := u.ops.AllowToolPermission(id, "The session's permission mode changed to auto while the call waited."); err != nil {
+		return false
+	}
+	run.mode = chatPermissionModeAuto
+	u.record(run, toolName, id, chatPermissionAllowedByMode)
+	return true
 }
 
 func (u *unattendedPermissions) outcome(run unattendedRun, toolName, id, status string) (bool, string, error) {
