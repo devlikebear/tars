@@ -151,9 +151,15 @@ func (sh *shadowRepo) call(args ...string) gitCall {
 // objectCall builds a git call that reads or writes only the shadow's own
 // objects and refs. It runs from the shadow instead of the root, so it still
 // works after the root is gone (a session worktree that was kept or
-// discarded).
+// discarded, or a temporary folder that was deleted).
+//
+// It also names the shadow's own folder as the work tree, overriding the
+// shadow's core.worktree: git resolves that path at startup even for
+// commands that never read it, and dies with "Invalid path" once the root's
+// parent folder is gone too. None of these commands touch a work tree.
 func (sh *shadowRepo) objectCall(args ...string) gitCall {
-	return gitCall{gitDir: sh.gitDir, dir: filepath.Dir(sh.gitDir), args: args}
+	dir := filepath.Dir(sh.gitDir)
+	return gitCall{gitDir: sh.gitDir, workTree: dir, dir: dir, args: args}
 }
 
 // writeExcludes rewrites info/exclude for the next snapshot: the defaults,
