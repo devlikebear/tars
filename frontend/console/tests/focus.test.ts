@@ -29,6 +29,7 @@ import {
   secondOpinionNotice,
   secondOpinionTierChoices,
   harnessNotice,
+  e2ePassedNotice,
   promotionNotice,
   defaultExecTier,
   execTierChoices,
@@ -680,4 +681,23 @@ test('execTierNotice: the execution tier fallback in the console language', () =
   assert.match(execTierNotice({ kind: 'notice', title: 'execution tier not used', payload: null })?.body ?? '', /the execution tier runs another/)
   assert.equal(execTierNotice({ kind: 'notice', title: 'report format missing', payload: {} }), null)
   assert.equal(execTierNotice({ kind: 'report', title: 'execution tier not used', payload: {} }), null)
+})
+
+test('e2ePassedNotice: passing end-to-end goals with the checker\'s last lines', () => {
+  const card = {
+    kind: 'notice' as const,
+    title: 'end-to-end checks passed',
+    payload: { checks: [{ goal: '@Browser http://127.0.0.1:1/ chart', summary: 'three bars\nVERDICT: PASS' }, { goal: '@Safari x', skipped: true }, { summary: 'no goal' }] },
+  }
+  assert.deepEqual(e2ePassedNotice(card), {
+    title: 'End-to-end checks passed',
+    checks: [
+      { goal: '@Browser http://127.0.0.1:1/ chart', summary: 'three bars\nVERDICT: PASS' },
+      { goal: '@Safari x', summary: 'skipped: nothing could run it' },
+    ],
+  })
+  assert.equal(e2ePassedNotice(card, focusKo.notice)?.title, '종단 검증 통과')
+  assert.deepEqual(e2ePassedNotice({ ...card, payload: null })?.checks, [])
+  assert.equal(e2ePassedNotice({ kind: 'notice', title: 'plan edited', payload: {} }), null)
+  assert.equal(e2ePassedNotice({ kind: 'report', title: 'end-to-end checks passed', payload: {} }), null)
 })

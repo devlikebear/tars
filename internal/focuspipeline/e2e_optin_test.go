@@ -1,6 +1,7 @@
 package focuspipeline
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -97,5 +98,59 @@ func TestWorkGuidanceTreatsEndToEndGoalsAsChecks(t *testing.T) {
 	p.Plan.E2ESetup = nil
 	if g := Guidance(p); strings.Contains(g, "ask the developer to change the plan") || !strings.Contains(g, "No end-to-end setup is listed") {
 		t.Fatalf("no-setup note:\n%s", g)
+	}
+}
+
+// A passing verification that ran end-to-end goals leaves a notice card with
+// each goal and the checker's last lines; before, only a failure was ever
+// recorded, so a pipeline could not show its goals had run (dogfooding,
+// 2026-11-15). A verification without goals, or a failed one, leaves none.
+func TestPassingEndToEndGoalsLeaveANotice(t *testing.T) {
+	p := goalBuilding(t, StagePlan, StageBuild)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)
+	pass := &Verification{Passed: true, Results: []VerificationResult{
+		{Command: "make test", Passed: true, Excerpt: "ok"},
+		{Command: "@Browser http://127.0.0.1:8080/ shows the chart", Passed: true, E2E: true,
+			Excerpt: "done\nopened the page\n\nthe chart is drawn with three bars\nVERDICT: PASS"},
+		{Command: "@Safari check it", Passed: true, Skipped: true, E2E: true, Excerpt: "unavailable: no driver"},
+	}}
+	before := len(p.Cards)
+	got, _, err := Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: pass}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var notice *Card
+	for i := range got.Cards[before:] {
+		if c := got.Cards[before+i]; c.Kind == CardNotice && c.Title == NoticeE2EPassed {
+			notice = &c
+		}
+	}
+	if notice == nil {
+		t.Fatalf("no %q card among %+v", NoticeE2EPassed, got.Cards[before:])
+	}
+	var payload struct {
+		Checks []E2ECheck `json:"checks"`
+	}
+	if err := json.Unmarshal(notice.Payload, &payload); err != nil || len(payload.Checks) != 2 {
+		t.Fatalf("payload = %s (%v)", notice.Payload, err)
+	}
+	if c := payload.Checks[0]; c.Goal != "@Browser http://127.0.0.1:8080/ shows the chart" || c.Skipped ||
+		c.Summary != "opened the page\nthe chart is drawn with three bars\nVERDICT: PASS" {
+		t.Fatalf("first check = %+v", c)
+	}
+	if !payload.Checks[1].Skipped {
+		t.Fatalf("second check = %+v", payload.Checks[1])
+	}
+
+	noE2E := &Verification{Passed: true, Results: []VerificationResult{{Command: "make test", Passed: true}}}
+	if got, _, _ := Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: noE2E}, t0); len(got.Cards) != before {
+		t.Fatalf("a verification without goals left cards: %+v", got.Cards[before:])
+	}
+	if checks := passedE2EChecks(Verification{Results: pass.Results}); checks != nil {
+		t.Fatalf("failed verification checks = %+v", checks)
+	}
+	long := strings.Repeat("x", e2eSummaryRunes+50)
+	if s := summaryTail(long); len([]rune(s)) != e2eSummaryRunes+1 || !strings.HasPrefix(s, "…") {
+		t.Fatalf("long summary = %d runes", len([]rune(s)))
 	}
 }
