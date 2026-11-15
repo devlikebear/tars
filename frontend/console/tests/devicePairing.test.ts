@@ -3,6 +3,11 @@ import assert from 'node:assert/strict'
 
 import {
   answerShare,
+  appHandoffLink,
+  focusAppLink,
+  onApplePhone,
+  parseFocusLink,
+  pipelineSessionOf,
   formatCountdown,
   newlyPaired,
   normalizeBaseURL,
@@ -102,4 +107,51 @@ test('the Phones card reads how much was answered on a phone', () => {
     }),
     { phone: 3, total: 11, pipelines: 2 },
   )
+})
+
+test('a pipeline link round-trips the address and the session', () => {
+  const link = focusAppLink('https://mac-mini.tail1.ts.net/console/focus/x', ' sess 1 ')
+  assert.equal(link, 'tars-mobile://focus?url=https%3A%2F%2Fmac-mini.tail1.ts.net&session=sess+1')
+  assert.deepEqual(parseFocusLink(link), { baseURL: 'https://mac-mini.tail1.ts.net', sessionID: 'sess 1' })
+  assert.equal(focusAppLink('http://mac.tail1.ts.net', 's'), '')
+  assert.equal(focusAppLink('https://mac.tail1.ts.net', ' '), '')
+  assert.equal(parseFocusLink('tars-mobile://focus?url=http%3A%2F%2Fmac.tail1.ts.net&session=s'), null)
+  assert.equal(parseFocusLink('tars-mobile://focus?url=https%3A%2F%2Fmac.tail1.ts.net'), null)
+  assert.equal(parseFocusLink('tars-mobile://pair?url=https%3A%2F%2Fmac.tail1.ts.net&code=1'), null)
+  assert.equal(parseFocusLink('https://mac.tail1.ts.net/console/focus/s'), null)
+  assert.deepEqual(
+    parseFocusLink('tars-mobile://focus?url=http%3A%2F%2F127.0.0.1%3A43180&session=s', { allowLoopbackHTTP: true }),
+    { baseURL: 'http://127.0.0.1:43180', sessionID: 's' },
+  )
+})
+
+const iPhone = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148', platform: 'iPhone', maxTouchPoints: 5 }
+const iPad = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 5 }
+const mac = { ...iPad, maxTouchPoints: 0 }
+const android = { userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140 Mobile Safari/537.36', platform: 'Linux armv8l', maxTouchPoints: 5 }
+
+test('the app is offered on an iPhone or iPad only', () => {
+  assert.equal(onApplePhone(iPhone), true)
+  assert.equal(onApplePhone(iPad), true)
+  assert.equal(onApplePhone(mac), false)
+  assert.equal(onApplePhone(android), false)
+})
+
+test('only a pipeline page has a pipeline to hand off', () => {
+  assert.equal(pipelineSessionOf('/console/focus/sess-1'), 'sess-1')
+  assert.equal(pipelineSessionOf('/console/focus/sess%201/'), 'sess 1')
+  assert.equal(pipelineSessionOf('/console/focus'), '')
+  assert.equal(pipelineSessionOf('/console/focus/release'), '')
+  assert.equal(pipelineSessionOf('/console/focus/templates'), '')
+  assert.equal(pipelineSessionOf('/console/chat/sess-1'), '')
+  assert.equal(pipelineSessionOf('/console/focus/%E0%A4%A'), '')
+})
+
+test('the hand-off link: an iPhone on a pipeline page at an https address', () => {
+  const origin = 'https://mac-mini.tail1.ts.net'
+  assert.equal(appHandoffLink(origin, '/console/focus/sess-1', iPhone), 'tars-mobile://focus?url=https%3A%2F%2Fmac-mini.tail1.ts.net&session=sess-1')
+  assert.equal(appHandoffLink(origin, '/console/focus/sess-1', mac), '')
+  assert.equal(appHandoffLink(origin, '/console/focus', iPhone), '')
+  // The app pairs only over https, so a loopback console offers nothing.
+  assert.equal(appHandoffLink('http://127.0.0.1:43180', '/console/focus/sess-1', iPhone), '')
 })

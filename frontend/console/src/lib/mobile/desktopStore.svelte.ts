@@ -2,7 +2,7 @@
 // pair with a new one (a scanned tars-mobile:// link fills the form), forget one, and check
 // which answer. Storage and the network come in through the constructor so
 // tests run it under Node.
-import { parsePairingLink, type PairingTarget } from '../devicePairing.ts'
+import { parseFocusLink, parsePairingLink, type FocusLinkTarget, type PairingTarget } from '../devicePairing.ts'
 import { APIRequestError } from '../api/client.ts'
 import type { DesktopAPI } from './desktopApi.ts'
 import {
@@ -54,6 +54,16 @@ export class DesktopStore {
   // null when it is not one.
   readLink(link: string): PairingTarget | null {
     return parsePairingLink(link, { allowLoopbackHTTP: this.#deps.allowLoopbackHTTP })
+  }
+
+  // readFocusLink reads a tars-mobile://focus link (where an alert's "open in
+  // app" leads) into the pipeline it names and the paired desktop at its
+  // address, null when that desktop is not paired; null for any other link.
+  // Read it after load().
+  readFocusLink(link: string): { target: FocusLinkTarget; desktop: PairedDesktop | null } | null {
+    const target = parseFocusLink(link, { allowLoopbackHTTP: this.#deps.allowLoopbackHTTP })
+    if (!target) return null
+    return { target, desktop: this.desktops.find((d) => d.baseURL === target.baseURL) ?? null }
   }
 
   // pair trades code at the desktop at address. A desktop already in the

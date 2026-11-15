@@ -4,7 +4,7 @@
   // until sent to a desktop as a task, and the desktops themselves with
   // whether each answers now. Scanning a desk's QR code with the camera
   // opens a tars-mobile://pair link, which lands here and opens the pairing
-  // sheet filled in.
+  // sheet filled in; a tars-mobile://focus link opens that pipeline.
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../i18n'
   import type { PairingTarget } from '../lib/devicePairing'
@@ -44,6 +44,7 @@
   function onSent(sent: SentIdea) {
     sending = null
     notice = $t.mobileApp.sentNotice(sent.desktopName)
+    noticeWarns = false
     void refresh()
   }
 
@@ -59,6 +60,7 @@
   let pairOpen = $state(false)
   let pairInitial = $state<PairingTarget | null>(null)
   let notice = $state('')
+  let noticeWarns = $state(false)
   const stops: Array<() => void> = []
 
   function openPair(target: PairingTarget | null = null) {
@@ -70,6 +72,7 @@
   function onPaired(name: string) {
     pairOpen = false
     notice = $t.mobileApp.pairedWith(name)
+    noticeWarns = false
     void refresh()
   }
 
@@ -118,26 +121,51 @@
     return stageLabel({ template: item.template, stages: [{ id: item.current, label: item.current_label ?? '' }] }, item.current, $t.focus)
   }
 
-  function host(desktop: PairedDesktop): string {
+  function hostOf(baseURL: string): string {
     try {
-      return new URL(desktop.baseURL).host
+      return new URL(baseURL).host
     } catch {
-      return desktop.baseURL
+      return baseURL
     }
   }
 
+  function host(desktop: PairedDesktop): string {
+    return hostOf(desktop.baseURL)
+  }
+
+  // openLink acts on a link the app was opened with: a desk's pairing code
+  // opens the pairing sheet; a pipeline (from a Telegram alert, through the
+  // console's "open in app") opens that pipeline on the desktop that owns it.
+  async function openLink(url: string, loading: Promise<void>) {
+    const pairing = store.readLink(url)
+    if (pairing) {
+      openPair(pairing)
+      return
+    }
+    await loading
+    const focus = store.readFocusLink(url)
+    if (!focus) return
+    if (focus.desktop) {
+      openPipeline(focus.desktop.id, focus.target.sessionID)
+      return
+    }
+    // A desk this phone is not paired with: say so where pairing is.
+    opened = null
+    tab = 'desktops'
+    notice = $t.mobileApp.notPairedWith(hostOf(focus.target.baseURL))
+    noticeWarns = true
+  }
+
   onMount(() => {
-    void store.load().then(() => refresh())
+    const loading = store.load()
+    void loading.then(() => refresh())
     void ideas.load()
     // A pipeline on screen reads its own state; the lists wait for back.
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible' && !opened) void refresh()
     }, pollMs)
     stops.push(
-      links.listen((url) => {
-        const target = store.readLink(url)
-        if (target) openPair(target)
-      }),
+      links.listen((url) => void openLink(url, loading)),
       links.onResume(() => {
         if (!opened) void refresh()
       }),
@@ -203,7 +231,7 @@
   </div>
 
   {#if notice}
-    <p class="notice" role="status">{notice}</p>
+    <p class="notice" class:warns={noticeWarns} role="status" data-testid="mobile-notice">{notice}</p>
   {/if}
 
   {#if tab === 'inbox'}
@@ -332,6 +360,10 @@
 
   .notice {
     color: var(--success);
+  }
+
+  .notice.warns {
+    color: var(--warning);
   }
 
   .desktop {

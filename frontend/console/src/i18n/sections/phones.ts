@@ -34,6 +34,12 @@ export const phonesEn = {
   missing: 'Not found',
 
   genericError: 'The request failed.',
+
+  // On an iPhone, a pipeline's page (where a Telegram alert leads) offers to
+  // open the same pipeline in the app (docs/decisions/mobile-remote.md §7).
+  handoffText: 'Open this task in the TARS app?',
+  handoffOpen: 'Open in app',
+  handoffDismissAria: 'Stay in the browser',
 }
 
 export type PhonesTranslations = typeof phonesEn
@@ -71,4 +77,8 @@ export const phonesKo: PhonesTranslations = {
   missing: '없음',
 
   genericError: '요청이 실패했습니다.',
+
+  handoffText: '이 작업을 TARS 앱에서 열까요?',
+  handoffOpen: '앱에서 열기',
+  handoffDismissAria: '브라우저에서 계속',
 }

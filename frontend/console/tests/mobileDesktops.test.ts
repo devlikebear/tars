@@ -216,6 +216,25 @@ test('a scanned link fills the pairing form', () => {
   assert.equal(store.readLink('https://example.com'), null)
 })
 
+test('a pipeline link names the paired desktop at its address, or none', async () => {
+  const b = backing()
+  const store = new DesktopStore({ storage: memoryStore(b), api: fakeAPI().api })
+  await store.load()
+  await store.pair('mac-mini.tail1.ts.net', '1', '')
+  const link = 'tars-mobile://focus?url=https%3A%2F%2Fmac-mini.tail1.ts.net&session=sess-1'
+  const found = store.readFocusLink(link)
+  assert.equal(found?.desktop?.id, 'https://mac-mini.tail1.ts.net')
+  assert.deepEqual(found?.target, { baseURL: 'https://mac-mini.tail1.ts.net', sessionID: 'sess-1' })
+
+  const elsewhere = store.readFocusLink('tars-mobile://focus?url=https%3A%2F%2Fwin.tail1.ts.net&session=s')
+  assert.equal(elsewhere?.desktop, null)
+  assert.equal(elsewhere?.target.baseURL, 'https://win.tail1.ts.net')
+
+  // A pairing link is not a pipeline link, and the reverse.
+  assert.equal(store.readFocusLink('tars-mobile://pair?url=https%3A%2F%2Fmac-mini.tail1.ts.net&code=1'), null)
+  assert.equal(store.readLink(link), null)
+})
+
 test('readiness: problems in plain words; only a missing model stops a task', () => {
   const text = {
     modelMissing: 'no model',

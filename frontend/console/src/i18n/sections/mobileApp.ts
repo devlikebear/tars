@@ -19,6 +19,7 @@ export const mobileAppEn = {
   pairing: 'Pairing...',
   cancel: 'Cancel',
   pairedWith: (name: string) => `Paired with ${name}.`,
+  notPairedWith: (host: string) => `This phone is not paired with ${host}. Pair with it to open its tasks here.`,
 
   failures: {
     invalid_address: "Enter the desktop's Tailscale address.",
@@ -141,6 +142,7 @@ export const mobileAppKo: MobileAppTranslations = {
   pairing: '연결 중...',
   cancel: '취소',
   pairedWith: (name) => `${name}에 연결했습니다.`,
+  notPairedWith: (host) => `이 휴대폰은 ${host}에 연결되어 있지 않습니다. 연결하면 그 작업을 여기서 열 수 있습니다.`,
 
   failures: {
     invalid_address: '데스크톱의 Tailscale 주소를 입력하세요.',
