@@ -574,6 +574,20 @@ tools:
     # Queries go to the upstream engines that server is configured to use.
     rustxng:
       base_url: http://127.0.0.1:29483
+    # provider: aside needs no API key and no model: it opens the results
+    # page in a background tab of the Aside browser (https://aside.ai) through
+    # its `aside` CLI, reads the results and closes the tab.
+    # PRIVACY: that browser is your own, signed in to your accounts — the
+    # engine sees the query as yours. Used only when it is the provider set
+    # here; a model cannot switch to it per call. A bot check is never
+    # answered for you: the search fails and asks you to open it in Aside.
+    aside:
+      engine: google            # google | naver | duckduckgo (per call: engine)
+  # The aside CLI, shared by web_search's aside provider and focus mode's
+  # "@Browser <local URL> <goal>" end-to-end checks. Empty: ASIDE_CLI_PATH,
+  # then PATH, then ~/.local/bin, /opt/homebrew/bin, /usr/local/bin.
+  aside:
+    path: ""
   web_fetch:
     enabled: false
     allow_private_hosts: false

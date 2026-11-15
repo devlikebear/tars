@@ -32,6 +32,7 @@ package architecture
 // rather than an accident.
 var CorePackages = []string{
 	"agent",
+	"aside",
 	"atomicwrite",
 	"auth",
 	"config",

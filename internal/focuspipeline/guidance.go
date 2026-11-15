@@ -47,7 +47,15 @@ const e2ePlanInstructions = "This pipeline also runs end-to-end goals after the 
 	"plain-language goals for TARS's own computer_use, not shell commands. Every goal must start with \"@AppName \" naming the " +
 	"app whose window it drives — a goal without one is not run, because it would act on whatever window happens to be in front. " +
 	"computer_use reads the window's accessibility tree: a goal can check text and controls, never what an image or a video " +
-	"shows, and should check one thing. " + e2eSetupInstructions
+	"shows, and should check one thing. " + e2eBrowserInstructions + e2eSetupInstructions
+
+// e2eBrowserInstructions describe the @Browser goal, which runs in the
+// developer's Aside browser instead of computer_use (tarsserver's
+// focus_e2e_browser.go).
+const e2eBrowserInstructions = "For a web app, a goal may instead be \"@Browser <URL> <goal>\": it runs in the developer's browser, " +
+	"where the checker sees the rendered page (images and layout included). The URL must be the app this work started in e2e_setup " +
+	"— localhost, 127.0.0.1, *.localhost or *.test; any other address is not run, because that browser is signed in to the " +
+	"developer's real accounts. "
 
 // e2eSetupInstructions say what computer_use does not do by itself: it
 // drives what is on screen, which without a setup is whatever copy of the

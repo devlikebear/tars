@@ -248,6 +248,9 @@ func applyToolDefaults(cfg *Config, defaults Config) {
 	if cfg.ToolsWebSearchRustXNGBaseURL == "" {
 		cfg.ToolsWebSearchRustXNGBaseURL = defaults.ToolsWebSearchRustXNGBaseURL
 	}
+	if cfg.ToolsWebSearchAsideEngine == "" {
+		cfg.ToolsWebSearchAsideEngine = defaults.ToolsWebSearchAsideEngine
+	}
 	if cfg.ToolsWebSearchCacheTTLSeconds <= 0 {
 		cfg.ToolsWebSearchCacheTTLSeconds = defaults.ToolsWebSearchCacheTTLSeconds
 	}

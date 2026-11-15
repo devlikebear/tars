@@ -255,6 +255,12 @@ var configFieldImpactHints = map[string][]string{
 	"tools_web_search_rustxng_base_url": {
 		"Changing RustXNG base URL affects which server receives search queries.",
 	},
+	"tools_web_search_aside_engine": {
+		"Changing the aside search engine changes which site your own signed-in browser sends search queries to.",
+	},
+	"tools_aside_path": {
+		"Changing the aside CLI path changes which binary runs searches and @Browser checks in your browser.",
+	},
 	"tools_web_search_cache_ttl_seconds": {
 		"Changing cache TTL affects search freshness and repeated request volume.",
 	},

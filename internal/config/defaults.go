@@ -76,6 +76,7 @@ const (
 	defaultPerplexityModel                     = "sonar"
 	defaultPerplexityBaseURL                   = "https://api.perplexity.ai/chat/completions"
 	defaultRustXNGBaseURL                      = "http://127.0.0.1:29483"
+	defaultAsideSearchEngine                   = "google"
 	defaultToolsWebSearchCacheTTLSeconds       = 60
 	defaultAgentRuntimeWatchDebounceMS         = 200
 	defaultAgentRuntimeRunsMaxRecords          = 2000
@@ -185,6 +186,7 @@ func defaultConfigValues() Config {
 			ToolsWebSearchPerplexityModel:       defaultPerplexityModel,
 			ToolsWebSearchPerplexityBaseURL:     defaultPerplexityBaseURL,
 			ToolsWebSearchRustXNGBaseURL:        defaultRustXNGBaseURL,
+			ToolsWebSearchAsideEngine:           defaultAsideSearchEngine,
 			ToolsWebSearchCacheTTLSeconds:       defaultToolsWebSearchCacheTTLSeconds,
 			ToolsExecMaxTimeoutMS:               defaultExecMaxTimeoutMS,
 			ToolsComputerUseEnabled:             true,

@@ -1633,6 +1633,8 @@ pkg/tools field WebFetchOptions.AllowPrivateHosts
 pkg/tools field WebFetchOptions.Enabled
 pkg/tools field WebFetchOptions.HTTPClient
 pkg/tools field WebFetchOptions.PrivateHostAllowlist
+pkg/tools field WebSearchOptions.AsideEngine
+pkg/tools field WebSearchOptions.AsidePath
 pkg/tools field WebSearchOptions.BraveAPIKey
 pkg/tools field WebSearchOptions.BraveBaseURL
 pkg/tools field WebSearchOptions.CacheTTL
