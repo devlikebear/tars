@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/devlikebear/tars/internal/aside"
 )
 
 type webSearchResponse struct {
@@ -35,8 +37,16 @@ type WebSearchOptions struct {
 	PerplexityModel   string
 	PerplexityBaseURL string
 	RustXNGBaseURL    string
-	CacheTTL          time.Duration
-	HTTPClient        *http.Client
+	// AsidePath is the aside CLI binary (empty: ASIDE_CLI_PATH, then PATH,
+	// then the installer's locations). AsideEngine is the search engine the
+	// aside provider reads by default: google (default), naver or
+	// duckduckgo. The aside provider searches in the developer's real,
+	// signed-in browser, so it is usable only when it is the configured
+	// Provider — a model cannot switch to it per call.
+	AsidePath   string
+	AsideEngine string
+	CacheTTL    time.Duration
+	HTTPClient  *http.Client
 }
 
 type webSearchCacheEntry struct {
@@ -80,6 +90,8 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 	if rustxngBase == "" {
 		rustxngBase = "http://127.0.0.1:29483"
 	}
+	asideClient := aside.Client{Path: opts.AsidePath}
+	asideEngineDefault, asideEngineErr := aside.NormalizeEngine(opts.AsideEngine)
 	cacheTTL := opts.CacheTTL
 	if cacheTTL < 0 {
 		cacheTTL = 0
@@ -246,15 +258,37 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 		return webSearchResponse{Provider: "rustxng", Query: query, Count: len(results), Results: results}, nil
 	}
 
+	searchAside := func(ctx context.Context, query, engine string, count int) (webSearchResponse, error) {
+		if providerDefault != "aside" {
+			return webSearchResponse{}, fmt.Errorf("the aside provider searches in the developer's own browser and is used only when it is the configured web_search provider")
+		}
+		if asideEngineErr != nil {
+			return webSearchResponse{}, fmt.Errorf("tools.web_search.aside.engine: %w", asideEngineErr)
+		}
+		if engine == "" {
+			engine = asideEngineDefault
+		}
+		found, err := asideClient.Search(ctx, engine, query, count)
+		if err != nil {
+			return webSearchResponse{}, err
+		}
+		results := make([]webSearchResult, 0, len(found))
+		for _, r := range found {
+			results = append(results, webSearchResult{Title: r.Title, URL: r.URL, Description: r.Description})
+		}
+		return webSearchResponse{Provider: "aside:" + engine, Query: query, Count: len(results), Results: results}, nil
+	}
+
 	return Tool{
 		Name:        "web_search",
-		Description: "Search the web (provider: brave/perplexity/rustxng) and return result snippets.",
+		Description: "Search the web (provider: brave/perplexity/rustxng/aside) and return result snippets.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
     "query":{"type":"string"},
     "count":{"type":"integer","minimum":1,"maximum":10,"default":5},
-    "provider":{"type":"string","enum":["brave","perplexity","rustxng"]}
+    "provider":{"type":"string","enum":["brave","perplexity","rustxng","aside"]},
+    "engine":{"type":"string","enum":["google","naver","duckduckgo"],"description":"aside provider only: which search engine to read"}
   },
   "required":["query"],
   "additionalProperties":false
@@ -267,6 +301,7 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 				Query    string `json:"query"`
 				Count    *int   `json:"count,omitempty"`
 				Provider string `json:"provider,omitempty"`
+				Engine   string `json:"engine,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(webSearchResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -289,7 +324,14 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 			if provider == "" {
 				provider = providerDefault
 			}
-			cacheKey := provider + "|" + strings.ToLower(query) + "|" + fmt.Sprintf("%d", count)
+			var err error
+			engine := ""
+			if provider == "aside" && strings.TrimSpace(input.Engine) != "" {
+				if engine, err = aside.NormalizeEngine(input.Engine); err != nil {
+					return JSONTextResult(webSearchResponse{Provider: provider, Query: query, Message: err.Error()}, true), nil
+				}
+			}
+			cacheKey := provider + "|" + engine + "|" + strings.ToLower(query) + "|" + fmt.Sprintf("%d", count)
 			if cacheTTL > 0 {
 				cacheMu.Lock()
 				cached, ok := cache[cacheKey]
@@ -303,7 +345,6 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 			}
 
 			var payload webSearchResponse
-			var err error
 			switch provider {
 			case "brave":
 				payload, err = searchBrave(ctx, query, count)
@@ -311,8 +352,10 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 				payload, err = searchPerplexity(ctx, query, count)
 			case "rustxng":
 				payload, err = searchRustXNG(ctx, query, count)
+			case "aside":
+				payload, err = searchAside(ctx, query, engine, count)
 			default:
-				err = fmt.Errorf("provider must be one of: brave|perplexity|rustxng")
+				err = fmt.Errorf("provider must be one of: brave|perplexity|rustxng|aside")
 			}
 			if err != nil {
 				return JSONTextResult(webSearchResponse{Provider: provider, Query: query, Message: err.Error()}, true), nil

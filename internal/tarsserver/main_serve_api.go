@@ -14,6 +14,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/apihandlers"
+	"github.com/devlikebear/tars/internal/aside"
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/consoleauth"
@@ -526,7 +527,10 @@ func buildAPIMux(
 	// tools.computer_use.enabled (that flag only gates the chat tool's
 	// registration): it never fails to construct, answering "unavailable"
 	// itself when no backend or driver is configured.
-	focusDriver.e2e = newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker))
+	focusDriver.e2e = withBrowserE2E(
+		aside.Client{Path: cfg.ToolsAsidePath}.Verify,
+		newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker)),
+	)
 	focusDriver.secondOpinionTiers = newFocusSecondOpinionTiers(cfg)
 	focusDriver.tierKind = newFocusTierKind(cfg)
 	focusDriver.execCosts = focusExecCosts(deps.usageTracker)

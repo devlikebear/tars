@@ -271,6 +271,11 @@ const fieldsKo: Record<string, ConfigFieldOverride> = {
   tools_web_search_perplexity_api_key: { label: 'Perplexity의 API 키', description: '검색 프로바이더가 Perplexity일 때 쓰는 API 키' },
   tools_web_search_perplexity_model: { label: 'Perplexity 모델', description: 'Perplexity 기반 검색에 쓰는 모델 이름' },
   tools_web_search_rustxng_base_url: { label: 'RustXNG 주소', description: '직접 띄운 RustXNG 서버의 주소' },
+  tools_web_search_aside_engine: { label: 'Aside 검색 엔진', description: 'aside 프로바이더가 내 로그인된 브라우저에서 읽을 검색 엔진' },
+  tools_aside_path: {
+    label: 'Aside 실행 파일 경로',
+    description: 'aside 실행 파일 경로(비우면 ASIDE_CLI_PATH, PATH, ~/.local/bin 순). aside 검색과 포커스 @Browser 검사가 씁니다',
+  },
   tools_web_search_perplexity_base_url: { label: 'Perplexity 기본 주소', description: 'Perplexity 호출에 사용할 주소를 재정의합니다' },
   tools_exec_max_timeout_ms: {
     label: 'exec 최대 타임아웃(ms)',

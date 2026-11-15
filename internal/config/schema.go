@@ -136,11 +136,13 @@ func Schema() []FieldMeta {
 		f("tools_default_set", "Tools", "string", "Default Tool Set", "Default tool policy/profile for chat sessions"),
 		f("tools_allow_high_risk_user", "Tools", "bool", "Allow High-Risk Tools", "Allow user-level access to high-risk tools"),
 		fs("tools_web_search_api_key", "Tools", "Search API Key", "API key for web search provider", true),
-		fsel("tools_web_search_provider", "Tools", "Search Provider", "Web search backend", []string{"brave", "perplexity", "rustxng"}),
+		fsel("tools_web_search_provider", "Tools", "Search Provider", "Web search backend", []string{"brave", "perplexity", "rustxng", "aside"}),
 		fs("tools_web_search_perplexity_api_key", "Tools", "Perplexity API Key", "API key when the web search provider is perplexity", true),
 		f("tools_web_search_perplexity_model", "Tools", "string", "Perplexity Model", "Model name used for Perplexity-backed search"),
 		f("tools_web_search_perplexity_base_url", "Tools", "string", "Perplexity Base URL", "Override URL for the Perplexity chat completions API"),
 		f("tools_web_search_rustxng_base_url", "Tools", "string", "RustXNG Base URL", "Address of a self-hosted RustXNG server"),
+		fsel("tools_web_search_aside_engine", "Tools", "Aside Search Engine", "Search engine the aside provider reads in your own signed-in browser", []string{"google", "naver", "duckduckgo"}),
+		f("tools_aside_path", "Tools", "string", "Aside CLI Path", "Path to the aside CLI (empty: ASIDE_CLI_PATH, then PATH, then ~/.local/bin). Used by the aside search provider and focus @Browser checks"),
 		f("tools_web_search_cache_ttl_seconds", "Tools", "int", "Search Cache TTL", "Cache duration for search results in seconds"),
 		f("tools_exec_max_timeout_ms", "Tools", "int", "Exec Max Timeout (ms)", "Upper bound on per-call exec tool timeout (ms). Long-running commands like builds and CI waits use this cap."),
 		f("tools_exec_sandbox_enabled", "Tools", "bool", "Exec Sandbox", "Run exec tool commands inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux): writes only to the session folders, temp dirs, git dirs and build caches; credential folders unreadable. When the host has no sandbox, commands are refused, not run unsandboxed"),
@@ -464,6 +466,10 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsWebSearchPerplexityBaseURL
 	case "tools_web_search_rustxng_base_url":
 		return cfg.ToolsWebSearchRustXNGBaseURL
+	case "tools_web_search_aside_engine":
+		return cfg.ToolsWebSearchAsideEngine
+	case "tools_aside_path":
+		return cfg.ToolsAsidePath
 	case "tools_web_search_cache_ttl_seconds":
 		return cfg.ToolsWebSearchCacheTTLSeconds
 	case "tools_exec_max_timeout_ms":

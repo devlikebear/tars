@@ -44,7 +44,7 @@ func TestOptedInPlanGuidanceRequiresAnApp(t *testing.T) {
 	p := New("s1", "goal", t0)
 	p.E2E = true
 	g := Guidance(p)
-	for _, want := range []string{`"e2e":[`, `"e2e_setup":[`, `must start with "@AppName "`, "never what an image or a video"} {
+	for _, want := range []string{`"e2e":[`, `"e2e_setup":[`, `must start with "@AppName "`, "never what an image or a video", `"@Browser <URL> <goal>"`, "signed in to the"} {
 		if !strings.Contains(g, want) {
 			t.Fatalf("opted-in plan guidance lacks %q:\n%s", want, g)
 		}

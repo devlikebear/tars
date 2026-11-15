@@ -253,6 +253,8 @@ type ToolConfig struct {
 	ToolsWebSearchPerplexityModel     string
 	ToolsWebSearchPerplexityBaseURL   string
 	ToolsWebSearchRustXNGBaseURL      string
+	ToolsWebSearchAsideEngine         string
+	ToolsAsidePath                    string
 	ToolsWebSearchCacheTTLSeconds     int
 	ToolsWebFetchPrivateHostAllowlist []string
 	ToolsWebFetchAllowPrivateHosts    bool
