@@ -18,7 +18,7 @@
     FocusPRDraft,
     FocusReport,
   } from '../../lib/types'
-  import { excerptLines, execTierNotice, findingReviewBadges, harnessNotice, promotionNotice, reportCardText, secondOpinionNotice, stageKindOf, stageLabel } from '../../lib/focus'
+  import { e2ePassedNotice, excerptLines, execTierNotice, findingReviewBadges, harnessNotice, promotionNotice, reportCardText, secondOpinionNotice, stageKindOf, stageLabel } from '../../lib/focus'
   import { mergeSummary, prDraftOf } from '../../lib/focusPR'
   import FocusChangeCard from './FocusChangeCard.svelte'
   import FocusMergeSummary from './FocusMergeSummary.svelte'
@@ -60,6 +60,8 @@
   // A verify promotion's notices (tars#1292), titled the same way.
   let pNotice = $derived(promotionNotice(card, $t.focus.notice))
   let etNotice = $derived(execTierNotice(card, $t.focus.notice))
+  // Passing end-to-end goals (each goal and the checker's last lines).
+  let e2eNotice = $derived(e2ePassedNotice(card, $t.focus.notice))
   let reportText = $derived(
     card.kind === 'report' && !isDraft(card.payload)
       ? reportCardText(card.title, (card.payload as FocusReport | undefined)?.summary)
@@ -86,7 +88,9 @@
                   ? pNotice.title
                   : etNotice
                     ? etNotice.title
-                    : card.title,
+                    : e2eNotice
+                      ? e2eNotice.title
+                      : card.title,
   )
   // The heading's hover text: the whole summary when the heading is the label.
   let hoverTitle = $derived(reportText && reportText.heading === null ? reportText.body : title)
@@ -354,6 +358,13 @@
       {@const errors = errorsOf(card.payload)}
       {#if soNotice}<p class="prose" data-testid="focus-second-opinion-notice">{soNotice.body}</p>{/if}
       {#if etNotice}<p class="prose" data-testid="focus-exec-tier-notice">{etNotice.body}</p>{/if}
+      {#if e2eNotice}
+        <ul class="risks" data-testid="focus-e2e-passed">
+          {#each e2eNotice.checks as check, i (i)}
+            <li><span class="mono" data-content>{check.goal}</span>{#if check.summary}<pre class="mono" data-content>{check.summary}</pre>{/if}</li>
+          {/each}
+        </ul>
+      {/if}
       {#if hNotice}
         <p class="prose" data-testid="focus-harness-notice">{hNotice.body}</p>
         {#if hNotice.sessionId}<a class="btn btn-ghost btn-sm" href={`/console/focus/${encodeURIComponent(hNotice.sessionId)}`} data-testid="focus-harness-open">{$t.focus.notice.harnessOpen}</a>{/if}

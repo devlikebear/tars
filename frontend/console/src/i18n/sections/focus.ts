@@ -263,6 +263,8 @@ export const focusEn = {
     harnessProposed: 'Harness improvement proposed',
     harnessProposedBody: (n: number) => (n === 1 ? 'A new focus task proposes 1 harness change drawn from this pipeline. It changes nothing until you merge its pull request.' : `A new focus task proposes ${n} harness changes drawn from this pipeline. They change nothing until you merge its pull request.`),
     harnessOpen: 'Open the proposal',
+    e2ePassed: 'End-to-end checks passed',
+    e2eSkipped: 'skipped: nothing could run it',
     execTierFallback: 'Execution tier not used',
     execTierFallbackReason: {
       resume_provider: (tier: string, session: string, exec: string) => `Build and fix turns stay on the session's tier: it runs ${session || 'one provider'} and ${tier || 'the execution tier'} runs ${exec || 'another'}, and switching would break a resumed CLI session.`,
@@ -720,6 +722,8 @@ export const focusKo: FocusTranslations = {
     harnessProposed: '하네스 개선 제안됨',
     harnessProposedBody: (n: number) => `이 파이프라인에서 얻은 하네스 변경 ${n}개를 새 포커스 작업이 제안합니다. 그 PR을 머지하기 전에는 아무것도 바뀌지 않습니다.`,
     harnessOpen: '제안 열기',
+    e2ePassed: '종단 검증 통과',
+    e2eSkipped: '건너뜀: 실행할 수단이 없음',
     execTierFallback: '실행 tier를 쓰지 않음',
     execTierFallbackReason: {
       resume_provider: (tier: string, session: string, exec: string) => `빌드·수정 턴을 세션 tier로 돌립니다. 세션은 ${session || '한 provider'}, ${tier || '실행 tier'}는 ${exec || '다른 provider'}라서, 바꾸면 이어 쓰던 CLI 세션이 끊깁니다.`,

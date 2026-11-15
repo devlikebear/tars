@@ -164,6 +164,11 @@ func applyVerification(p Pipeline, ev Event, now time.Time) (Pipeline, Action, e
 	next.AwaitingVerification = false
 	next.UpdatedAt = now
 	v := *ev.Verification
+	if checks := passedE2EChecks(v); len(checks) > 0 {
+		// A failed goal leaves its failure card; a passed one left nothing,
+		// so the pipeline could not show that its end-to-end goals ever ran.
+		next.addCard(CardNotice, ev.Turn, NoticeE2EPassed, map[string]any{"checks": checks}, now)
+	}
 	if next.CurrentKind() == StageReview {
 		if v.Passed {
 			return next.reviewVerificationPassed(ev.Turn, now)
@@ -446,4 +451,56 @@ func RecordQATurn(p Pipeline, qaSessionID, cardID string, turn int, now time.Tim
 	next.QATurns[cardID] = append(next.QATurns[cardID], turn)
 	next.UpdatedAt = now.UTC()
 	return next, nil
+}
+
+// NoticeE2EPassed is the title of the card a passing verification that ran
+// end-to-end goals leaves, with each goal in its payload ("checks").
+const NoticeE2EPassed = "end-to-end checks passed"
+
+// E2ECheck is one end-to-end goal of a passing verification as its notice
+// card shows it: the goal, whether it was skipped (no backend to run it),
+// and the last lines of what the checker said.
+type E2ECheck struct {
+	Goal    string `json:"goal"`
+	Skipped bool   `json:"skipped,omitempty"`
+	Summary string `json:"summary,omitempty"`
+}
+
+// e2eSummaryLines and e2eSummaryRunes bound a check's summary on its card.
+const (
+	e2eSummaryLines = 3
+	e2eSummaryRunes = 600
+)
+
+// passedE2EChecks lists the end-to-end goals of a passing verification; nil
+// when it failed or ran none.
+func passedE2EChecks(v Verification) []E2ECheck {
+	if !v.Passed {
+		return nil
+	}
+	var checks []E2ECheck
+	for _, r := range v.Results {
+		if r.E2E {
+			checks = append(checks, E2ECheck{Goal: r.Command, Skipped: r.Skipped, Summary: summaryTail(r.Excerpt)})
+		}
+	}
+	return checks
+}
+
+// summaryTail is the last non-empty lines of an excerpt, capped.
+func summaryTail(excerpt string) string {
+	var lines []string
+	for _, line := range strings.Split(excerpt, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) > e2eSummaryLines {
+		lines = lines[len(lines)-e2eSummaryLines:]
+	}
+	out := []rune(strings.Join(lines, "\n"))
+	if len(out) > e2eSummaryRunes {
+		out = append([]rune("…"), out[len(out)-e2eSummaryRunes:]...)
+	}
+	return string(out)
 }

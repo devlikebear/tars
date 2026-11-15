@@ -849,3 +849,18 @@ export function execTierNotice(card: Pick<FocusCard, 'kind' | 'title' | 'payload
   const reason = str(p.reason) === 'unresolved' ? 'unresolved' : 'resume_provider'
   return { title: text.execTierFallback, body: text.execTierFallbackReason[reason](str(p.tier), str(p.session_provider), str(p.exec_provider)) }
 }
+
+// The notice a passing verification that ran end-to-end goals leaves
+// (focuspipeline's NoticeE2EPassed): each goal with the checker's last lines,
+// or that it was skipped; null for any other card.
+export function e2ePassedNotice(card: Pick<FocusCard, 'kind' | 'title' | 'payload'>, text: FocusTranslations['notice'] = focusEn.notice): { title: string; checks: { goal: string; summary: string }[] } | null {
+  if (card.kind !== 'notice' || card.title !== 'end-to-end checks passed') return null
+  const raw = (card.payload as { checks?: unknown } | null)?.checks
+  const checks = (Array.isArray(raw) ? raw : []).flatMap((c) => {
+    const check = (c ?? {}) as { goal?: unknown; skipped?: unknown; summary?: unknown }
+    if (typeof check.goal !== 'string' || check.goal === '') return []
+    const summary = check.skipped === true ? text.e2eSkipped : typeof check.summary === 'string' ? check.summary : ''
+    return [{ goal: check.goal, summary }]
+  })
+  return { title: text.e2ePassed, checks }
+}

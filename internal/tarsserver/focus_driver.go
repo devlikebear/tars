@@ -603,6 +603,7 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	runOne := func(command string, call func() (focuspipeline.VerificationResult, error)) bool {
 		i++
 		stream.focusProgress("verifying", command, i, total, nil)
+		started := time.Now()
 		result, err := call()
 		if run.ctx.Err() != nil {
 			stream.cancelled()
@@ -617,6 +618,7 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 			v.Passed = false
 		}
 		v.Results = append(v.Results, result)
+		logE2EResult(log, result, time.Since(started))
 		stream.focusProgress("verified", command, i, total, &result)
 		return true
 	}
@@ -671,6 +673,26 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	stream.pipeline(updated, focusNextPrompt(act))
 	stream.focusDone()
 	return act, true
+}
+
+// logE2EResult leaves one server log line per end-to-end goal: a passing
+// goal was otherwise recorded nowhere but the turn feed, which a restart
+// clears. The goal is the plan's text; the checker's transcript is not
+// logged.
+func logE2EResult(log zerolog.Logger, r focuspipeline.VerificationResult, took time.Duration) {
+	if !r.E2E {
+		return
+	}
+	ev := log.Info()
+	if !r.Passed {
+		ev = log.Warn()
+	}
+	goal := []rune(r.Command)
+	if len(goal) > 200 {
+		goal = append(goal[:200], '…')
+	}
+	ev.Str("goal", string(goal)).Bool("passed", r.Passed).Bool("skipped", r.Skipped).
+		Dur("took", took).Msg("focus: end-to-end goal checked")
 }
 
 // focusVerifyCommands are a verification's shell commands (the plan's
