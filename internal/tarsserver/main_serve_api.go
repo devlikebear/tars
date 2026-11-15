@@ -81,6 +81,9 @@ type serveAPIRuntime struct {
 	// focusAlerts sends a paired phone a Telegram message when a focus
 	// pipeline starts waiting (focus_mobile_alert.go).
 	focusAlerts *focusMobileAlerts
+	// keepAwake keeps the desk awake on AC power while a phone is paired,
+	// when the owner turned it on (desk_keep_awake.go).
+	keepAwake *deskKeepAwake
 	// focusEvents tells GET /v1/focus/events clients which pipeline changed
 	// (focus_events.go).
 	focusEvents           *focusEventHub
@@ -726,7 +729,8 @@ func buildAPIMux(
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
-	devicesHandler := apihandlers.NewDevicesHandler(consoleauth.NewStore(cfg.WorkspaceDir), logger)
+	keepAwake := newDeskKeepAwake(cfg.WorkspaceDir, logger)
+	devicesHandler := apihandlers.NewDevicesHandler(consoleauth.NewStore(cfg.WorkspaceDir), logger, apihandlers.WithKeepAwake(keepAwake))
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	remoteAccessHandler := apihandlers.NewRemoteAccessHandler(apihandlers.RemoteAccessOptions{
 		Config:     cfg,
@@ -921,6 +925,7 @@ func buildAPIMux(
 		sessionRetention:            retention,
 		focusAlerts:                 newFocusMobileAlerts(cfg, sessionStore, unattended, telegramSender, telegramPairings, logger),
 		focusEvents:                 focusEvents,
+		keepAwake:                   keepAwake,
 	}, nil
 }
 
@@ -1154,6 +1159,7 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	runtime.sessionRetentionWait = runtime.sessionRetention.start(ctx)
 	startFocusAlerts(ctx, runtime)
 	runtime.focusEvents.start(ctx)
+	runtime.keepAwake.start(ctx)
 	startLocalEmbed(ctx, runtime, logger)
 
 	if err := runBackgroundStartupStep(logger, "remote_access_reconcile", func() error {

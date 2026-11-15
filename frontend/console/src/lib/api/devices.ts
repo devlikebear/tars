@@ -42,3 +42,24 @@ export async function setDeviceFolders(folders: string[]): Promise<DeviceFolder[
   })
   return res.folders ?? []
 }
+
+// Keeping this computer awake for a paired phone: the owner's choice, and
+// what holds now. reason says why it is not active while enabled.
+export type KeepAwakeStatus = {
+  enabled: boolean
+  supported: boolean
+  active: boolean
+  reason?: 'unsupported' | 'no_phone' | 'failed'
+}
+
+export function getKeepAwake(): Promise<KeepAwakeStatus> {
+  return requestJSON<KeepAwakeStatus>('/v1/admin/devices/keep-awake')
+}
+
+export function setKeepAwake(enabled: boolean): Promise<KeepAwakeStatus> {
+  return requestJSON<KeepAwakeStatus>('/v1/admin/devices/keep-awake', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+}

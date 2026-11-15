@@ -10,11 +10,14 @@
     createDevicePairingCode,
     getDeviceFolders,
     getFocusAnswerReport,
+    getKeepAwake,
     getRemoteAccessStatus,
     listPairedDevices,
     revokePairedDevice,
     setDeviceFolders,
+    setKeepAwake,
     type DeviceFolder,
+    type KeepAwakeStatus,
     type DevicePairingCode,
     type PairedDevice,
   } from '../lib/api'
@@ -44,6 +47,9 @@
   // How much was answered on a phone lately; null until there is any
   // answer that recorded where it came from (or on an older server).
   let share = $state<ReturnType<typeof answerShare>>(null)
+  // Keeping this computer awake; null on a server too old to say.
+  let keepAwake = $state<KeepAwakeStatus | null>(null)
+  let savingAwake = $state(false)
   let timer: ReturnType<typeof setInterval> | undefined
   let polls = 0
 
@@ -72,6 +78,7 @@
       // Apart from the card's own reads: a server without the report
       // leaves the line out, never the card.
       getFocusAnswerReport(30).then((r) => (share = answerShare(r.report)), () => (share = null))
+      getKeepAwake().then((s) => (keepAwake = s), () => (keepAwake = null))
     } catch (err) {
       error = messageFor(err)
     } finally {
@@ -157,6 +164,27 @@
 
   function removeFolder(path: string) {
     void saveFolders(withoutFolder(folders.map((f) => f.path), path))
+  }
+
+  async function toggleKeepAwake(enabled: boolean) {
+    if (savingAwake) return
+    savingAwake = true
+    error = ''
+    try {
+      keepAwake = await setKeepAwake(enabled)
+    } catch (err) {
+      error = messageFor(err)
+    } finally {
+      savingAwake = false
+    }
+  }
+
+  function keepAwakeNote(s: KeepAwakeStatus): string {
+    if (!s.supported) return $t.phones.keepAwakeUnsupported
+    if (!s.enabled) return ''
+    if (s.active) return $t.phones.keepAwakeActive
+    if (s.reason === 'no_phone') return $t.phones.keepAwakeNoPhone
+    return $t.phones.keepAwakeFailed
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -265,6 +293,26 @@
     {/each}
   </div>
 
+  {#if keepAwake}
+    {@const note = keepAwakeNote(keepAwake)}
+    <div class="phones-section" data-testid="phones-keep-awake">
+      <h4>{$t.phones.keepAwakeTitle}</h4>
+      <label class="phones-check">
+        <input
+          type="checkbox"
+          checked={keepAwake.enabled}
+          disabled={savingAwake || (!keepAwake.supported && !keepAwake.enabled)}
+          onchange={(e) => toggleKeepAwake(e.currentTarget.checked)}
+        />
+        <span>{$t.phones.keepAwakeLabel}</span>
+      </label>
+      <span class="phones-muted">{$t.phones.keepAwakeHint}</span>
+      {#if note}
+        <span class={keepAwake.reason === 'failed' ? 'phones-warn' : 'phones-muted'} data-testid="phones-keep-awake-note">{note}</span>
+      {/if}
+    </div>
+  {/if}
+
   {#if error}
     <div class="phones-error" role="alert">{error}</div>
   {/if}
@@ -322,6 +370,21 @@
     margin: 0;
     font-size: var(--text-sm);
     color: var(--text-primary);
+  }
+
+  .phones-check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .phones-check input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
   }
 
   .phones-muted {
