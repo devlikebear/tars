@@ -1,6 +1,7 @@
 package focuspipeline
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -445,17 +446,27 @@ func TestNextGoalStepChargesAnswerTurns(t *testing.T) {
 	}
 }
 
-// The loop of 2026-10-21: the agent asked the same questions after every
-// "decide yourself", and the transcript turn the server counted stayed the
-// same, so each answer turn re-sent every answer the stage ever got, and a
-// build turn that only asks never met the build turn cap. Goal mode now
-// stops within its budget, the cap blocks the stage on the way, and an
-// answer turn carries only the answers to the turn that asked.
+// askingNew is a turn that asks two questions worded for its round, so
+// goal mode never sees the same question twice.
+func askingNew(round int) *Report {
+	return &Report{Summary: "still asking", Decisions: []Decision{
+		{ID: "d1", Question: fmt.Sprintf("Checkout or worktree? (round %d)", round), Options: []string{"checkout", "worktree"}},
+		{ID: "d2", Question: fmt.Sprintf("Run the Swift build? (round %d)", round), Options: []string{"yes", "no"}},
+	}}
+}
+
+// The loop of 2026-10-21: the agent asked questions after every "decide
+// yourself", and the transcript turn the server counted stayed the same, so
+// each answer turn re-sent every answer the stage ever got, and a build
+// turn that only asks never met the build turn cap. Goal mode now stops
+// within its budget, the cap blocks the stage on the way, and an answer
+// turn carries only the answers to the turn that asked. (Questions asked
+// word for word again end it sooner: TestGoalModeEndsOnARepeatedQuestion.)
 func TestGoalModeEndsAnAgentThatKeepsAsking(t *testing.T) {
 	p := goalBuilding(t, StagePlan, StageBuild)
 	const stuckTurn = 11
 	turns, blocks := 1, 0
-	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: stuckTurn, Blocks: Blocks{Report: askingAgain()}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: stuckTurn, Blocks: Blocks{Report: askingNew(turns)}}, t0)
 	for p.GoalActive() && turns <= 10*DefaultGoalPushes {
 		step := NextGoalStep(p, t0)
 		var act Action
@@ -487,7 +498,7 @@ func TestGoalModeEndsAnAgentThatKeepsAsking(t *testing.T) {
 		p = GoalApplied(p, step, t0)
 		if act.Kind == ActionSendTurn {
 			turns++
-			p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: stuckTurn, Blocks: Blocks{Report: askingAgain()}}, t0)
+			p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: stuckTurn, Blocks: Blocks{Report: askingNew(turns)}}, t0)
 		}
 	}
 	if p.GoalActive() || turns > DefaultGoalPushes+1 || p.GoalMode.Pushes != DefaultGoalPushes {
@@ -495,6 +506,69 @@ func TestGoalModeEndsAnAgentThatKeepsAsking(t *testing.T) {
 	}
 	if blocks == 0 {
 		t.Fatal("the build turn cap never held a stage that only asks")
+	}
+}
+
+// The loop of 2026-11-15 (dogfooding with an end-to-end goal that
+// contradicted the task): the agent asked the same question after every
+// "decide yourself" and spent the whole budget, thirteen turns, without the
+// stage moving. Goal mode answers a question once; asked again in the same
+// stage, word for word but for case, spacing and the question mark, the
+// question goes to the developer and goal mode ends.
+func TestGoalModeEndsOnARepeatedQuestion(t *testing.T) {
+	ask := func(q string) *Report {
+		return &Report{Summary: "asking", Decisions: []Decision{{ID: "d1", Question: q, Options: []string{"keep", "change"}}}}
+	}
+	p := goalBuilding(t, StagePlan, StageBuild)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: ask("Which end-to-end goal should this run use?")}}, t0)
+	step := NextGoalStep(p, t0)
+	if step.Kind != GoalCard {
+		t.Fatalf("first time asked: step = %+v", step)
+	}
+	p, act, err := SetCardStateBy(p, step.CardID, CardDecided, step.Decision, AnswerGoal, t0)
+	if err != nil || act.Kind != ActionSendTurn {
+		t.Fatalf("answer: %v %+v", err, act)
+	}
+	p = GoalApplied(p, step, t0)
+
+	// A different question is answered as before.
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 3, Blocks: Blocks{Report: ask("Keep the SVG or use a photo?")}}, t0)
+	step = NextGoalStep(p, t0)
+	if step.Kind != GoalCard {
+		t.Fatalf("a new question: step = %+v", step)
+	}
+	p, _, _ = SetCardStateBy(p, step.CardID, CardDecided, step.Decision, AnswerGoal, t0)
+	p = GoalApplied(p, step, t0)
+
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 4, Blocks: Blocks{Report: ask("which end-to-end goal  should this run use")}}, t0)
+	step = NextGoalStep(p, t0)
+	if step.Kind != GoalEnd || step.Reason != GoalEndRepeatedQuestion {
+		t.Fatalf("asked again: step = %+v", step)
+	}
+	ended, _ := EndGoal(p, step.Reason, t0)
+	last := ended.Cards[len(ended.Cards)-1]
+	if last.Kind != CardNotice || last.Title != NoticeGoalEnded || !strings.Contains(string(last.Payload), GoalEndRepeatedQuestion) {
+		t.Fatalf("goal end notice = %+v", last)
+	}
+	open := 0
+	for _, c := range ended.Cards {
+		if c.Kind == CardDecision && c.State != CardDecided {
+			open++
+		}
+	}
+	if open != 1 {
+		t.Fatalf("the repeated question is not left open for the developer: %d open", open)
+	}
+
+	// The same words in another stage are a new question.
+	other := p.clone()
+	for i := range other.Cards {
+		if other.Cards[i].Kind == CardDecision && other.Cards[i].State == CardDecided {
+			other.Cards[i].Stage = StagePlan
+		}
+	}
+	if step := NextGoalStep(other, t0); step.Kind != GoalCard {
+		t.Fatalf("question answered in another stage: step = %+v", step)
 	}
 }
 

@@ -105,7 +105,7 @@
   let goalOn = $derived(!!goal?.enabled)
   let goalEnded = $derived.by(() => {
     const reason = goal && !goal.enabled && phase !== 'finished' ? goal.end_reason : undefined
-    return reason === 'exhausted' || reason === 'pr_closed' || reason === 'e2e_failed' || reason === 'usage_limit' || reason === 'cancelled' ? $t.focus.screen.goalEnded[reason] : ''
+    return reason === 'exhausted' || reason === 'pr_closed' || reason === 'e2e_failed' || reason === 'usage_limit' || reason === 'repeated_question' || reason === 'cancelled' ? $t.focus.screen.goalEnded[reason] : ''
   })
   let viewing = $derived(store.stage)
   let openGate = $derived(pipeline?.open_gate ?? '')
