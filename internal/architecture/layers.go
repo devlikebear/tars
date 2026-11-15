@@ -106,6 +106,9 @@ var SharedPackages = []string{
 	// httpapi is the JSON request/response helpers; standard library only.
 	"httpapi",
 	"jev",
+	// keepawake holds the OS's stay-awake assertion (macOS caffeinate);
+	// standard library only.
+	"keepawake",
 	"scheduleexpr",
 	"shellexec",
 	"sysprompt",

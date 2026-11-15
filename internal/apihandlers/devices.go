@@ -21,9 +21,10 @@ const (
 )
 
 type devicesAPIHandler struct {
-	store  *consoleauth.Store
-	logger zerolog.Logger
-	mux    *http.ServeMux
+	store     *consoleauth.Store
+	logger    zerolog.Logger
+	mux       *http.ServeMux
+	keepAwake KeepAwakeControl
 }
 
 type deviceView struct {
@@ -39,13 +40,18 @@ type deviceView struct {
 // devices, issue a one-time pairing code, revoke a device. Every route is
 // under /v1/admin/, so only the admin role reaches it. The device side of
 // pairing (exchanging the code for a token) is /v1/auth/device-pair.
-func NewDevicesHandler(store *consoleauth.Store, logger zerolog.Logger) http.Handler {
+func NewDevicesHandler(store *consoleauth.Store, logger zerolog.Logger, opts ...DevicesOption) http.Handler {
 	h := &devicesAPIHandler{store: store, logger: logger, mux: http.NewServeMux()}
+	for _, opt := range opts {
+		opt(h)
+	}
 	h.mux.HandleFunc("GET /v1/admin/devices", h.list)
 	h.mux.HandleFunc("POST /v1/admin/devices/pairing-code", h.pairingCode)
 	h.mux.HandleFunc("DELETE /v1/admin/devices/{id}", h.revoke)
 	h.mux.HandleFunc("GET /v1/admin/devices/folders", h.folders)
 	h.mux.HandleFunc("PUT /v1/admin/devices/folders", h.setFolders)
+	h.mux.HandleFunc("GET /v1/admin/devices/keep-awake", h.getKeepAwake)
+	h.mux.HandleFunc("PUT /v1/admin/devices/keep-awake", h.setKeepAwake)
 	return h
 }
 

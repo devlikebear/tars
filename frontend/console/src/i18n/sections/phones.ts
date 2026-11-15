@@ -33,6 +33,15 @@ export const phonesEn = {
   remove: 'Remove',
   missing: 'Not found',
 
+  // Keeping this computer awake for a paired phone (desk_keep_awake.go).
+  keepAwakeTitle: 'Keep this computer awake',
+  keepAwakeLabel: 'Stay awake while plugged in and a phone is paired',
+  keepAwakeHint: 'A phone reaches this desktop only while it is awake. On battery it sleeps as usual, and the display still turns off.',
+  keepAwakeActive: 'Kept awake now.',
+  keepAwakeNoPhone: 'On, but no phone is paired, so it may sleep.',
+  keepAwakeFailed: 'On, but it could not be kept awake. It tries again within a minute.',
+  keepAwakeUnsupported: 'Not available on this system yet: macOS only.',
+
   genericError: 'The request failed.',
 
   // On an iPhone, a pipeline's page (where a Telegram alert leads) offers to
@@ -75,6 +84,14 @@ export const phonesKo: PhonesTranslations = {
   addFolder: '폴더 추가',
   remove: '빼기',
   missing: '없음',
+
+  keepAwakeTitle: '이 컴퓨터 깨워 두기',
+  keepAwakeLabel: '전원이 연결돼 있고 휴대폰이 연결된 동안 잠자지 않기',
+  keepAwakeHint: '휴대폰은 이 데스크톱이 깨어 있을 때만 접속할 수 있습니다. 배터리로 동작할 때는 평소처럼 잠자고, 화면은 그대로 꺼집니다.',
+  keepAwakeActive: '지금 깨워 두는 중입니다.',
+  keepAwakeNoPhone: '켜져 있지만 연결된 휴대폰이 없어 잠잘 수 있습니다.',
+  keepAwakeFailed: '켜져 있지만 깨워 두지 못했습니다. 1분 안에 다시 시도합니다.',
+  keepAwakeUnsupported: '이 시스템에서는 아직 쓸 수 없습니다(macOS만 지원).',
 
   genericError: '요청이 실패했습니다.',
 

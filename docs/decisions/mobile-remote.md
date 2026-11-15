@@ -79,7 +79,7 @@ The link is the device's own Tailscale HTTPS address and the console's focus pat
 
 - One repository worked on from two desktops splits the release train. The release train runs on one home device per repository; the others merge but do not release.
 - Windows is the least verified host for focus mode. Phase 1 runs the focus driver on the Windows desktop for real before the app is offered for it.
-- A device that sleeps is unreachable. The phone says so plainly; keeping a desktop awake on power is the desktop shell's job and a separate decision.
+- A device that sleeps is unreachable. The phone says so plainly. Decided 2026-11-15: the server, not the desktop shell, keeps the desktop awake — the server is what must answer, and it runs under launchd without the shell. It is the owner's choice in the Phones card (off unless set) and holds only while a phone is paired and the computer is on AC power (macOS `caffeinate -s`, tied to the server's process). The display still sleeps; other systems are not supported yet.
 - New server code that needs no chat internals (pairing, device tokens, the registered folder list, CORS) goes in a new `internal/` package, classified in `internal/architecture/layers.go`, not in `internal/tarsserver`.
 - `pkg/` is untouched unless the token role has to cross it; if it does, `make api-snapshot` in the same change.
 
