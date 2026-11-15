@@ -3,6 +3,7 @@ package checkpoint
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -111,7 +112,11 @@ func (s *Store) dropSessionRefs(ctx context.Context, key, sessionID string) erro
 // SweepOrphans drops checkpoints of sessions that no longer exist, removes
 // shadows no session refers to, and compacts the rest. alive reports whether
 // a session still exists. Run it in the background at startup.
+//
+// One session or shadow that fails does not stop the sweep: the rest are
+// still swept and the failures come back joined.
 func (s *Store) SweepOrphans(ctx context.Context, alive func(sessionID string) bool) error {
+	var errs []error
 	indexes, err := os.ReadDir(filepath.Join(s.dir, "sessions"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -123,16 +128,13 @@ func (s *Store) SweepOrphans(ctx context.Context, alive func(sessionID string) b
 		}
 		if !alive(sessionID) {
 			if err := s.DropSession(ctx, sessionID); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("session %s: %w", sessionID, err))
 			}
 		}
 	}
 	shadows, err := os.ReadDir(filepath.Join(s.dir, "shadow"))
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		return err
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		errs = append(errs, err)
 	}
 	for _, d := range shadows {
 		key, ok := strings.CutSuffix(d.Name(), ".git")
@@ -140,10 +142,10 @@ func (s *Store) SweepOrphans(ctx context.Context, alive func(sessionID string) b
 			continue
 		}
 		if err := s.sweepShadow(ctx, key, alive); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("shadow %s: %w", key, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // looseObjectsBeforeGC is how many loose objects a shadow may collect before
