@@ -194,9 +194,14 @@ func TestWriteAssistantTokenErrors(t *testing.T) {
 	if err := writeAssistantToken(filepath.Join(blocker, "token"), "t"); err == nil || !strings.Contains(err.Error(), "directory") {
 		t.Fatalf("want directory error, got %v", err)
 	}
-	// A directory where the token file should be.
+	// A directory where the token file should be. It holds a file: on
+	// Windows atomicwrite falls back to removing the destination and
+	// renaming again, which succeeds over an empty directory.
 	target := filepath.Join(dir, "asdir")
 	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "keep"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeAssistantToken(target, "t"); err == nil {
