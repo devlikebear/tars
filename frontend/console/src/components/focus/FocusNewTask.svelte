@@ -39,7 +39,7 @@
   let templatesSkipped = $state(0)
   let templateId = $state('dev')
   let goalMode = $state(false)
-  // End-to-end goals (computer_use) are opt-in per task.
+  // End-to-end goals (computer_use or @Browser) are opt-in per task.
   let e2e = $state(false)
   // The second opinion review is opt-in per task, on a tier picked here.
   let secondOpinion = $state(false)

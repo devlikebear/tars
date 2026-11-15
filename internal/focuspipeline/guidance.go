@@ -218,7 +218,8 @@ func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
 	}
 	if p.E2E && len(plan.E2E) > 0 {
 		writeCommands(b, "End-to-end setup (shell, run by the server in this folder before the goals):\n", plan.E2ESetup)
-		b.WriteString("End-to-end goals (computer_use, run by the server after verification):\n")
+		b.WriteString("End-to-end goals (run by the server after verification: a @Browser goal in the developer's browser, " +
+			"an @App goal through computer_use):\n")
 		for _, cmd := range plan.E2E {
 			fmt.Fprintf(b, "- %s\n", cmd)
 		}
@@ -226,6 +227,7 @@ func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
 		if len(plan.E2ESetup) == 0 {
 			b.WriteString(e2eNoSetupNote)
 		}
+		b.WriteString(e2eChecksNote)
 	}
 }
 
@@ -233,7 +235,19 @@ func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
 // on screen.
 const e2eNoSetupNote = "No end-to-end setup is listed: the goals run against whatever is on screen, which is an installed or " +
 	"already running copy unless something launched this folder's build. A goal failing because the screen shows a copy " +
-	"without the changes is not a defect in the code — report it and ask the developer to change the plan.\n"
+	"without the changes is not a defect in the code — say so under risks; the developer changes the plan.\n"
+
+// e2eChecksNote tells the build and review turns that end-to-end goals are
+// the server's checks, not their tasks. Shown the goals as part of the plan,
+// agents in dogfooding (2026-11-15) treated a goal they judged wrong as an
+// open question: they asked the same decision every turn instead of
+// finishing, so the verification that runs the goal was never reached, and
+// one copied the page into the folder the setup served to make an edited
+// goal pass.
+const e2eChecksNote = "The end-to-end goals are checks the server runs after you finish, not tasks for you and not questions " +
+	"to ask: do the approved tasks and report. Never change the setup's served folder, copy or link files into it, or change " +
+	"anything else only to make a goal pass. If a goal looks wrong or cannot pass, say so once under risks and finish — " +
+	"do not ask a decision about it: a failing goal reaches the developer as its own failure card.\n"
 
 func writeCommands(b *strings.Builder, title string, commands []string) {
 	if len(commands) == 0 {
