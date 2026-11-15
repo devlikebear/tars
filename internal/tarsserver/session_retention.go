@@ -139,7 +139,15 @@ func (r *sessionRetention) pipelineInUse(sess session.Session) bool {
 	if err != nil || !ok || focuspipeline.Finished(p) {
 		return false
 	}
-	return p.GoalActive() || p.PRWait != ""
+	return pipelineDrivenWithoutPerson(p)
+}
+
+// pipelineDrivenWithoutPerson is pipelineInUse's rule. PRWait alone is not
+// enough: stopping a pipeline (or its blocked gate) leaves PRWait as it was,
+// and a stopped pipeline kept its session out of retention for good. The
+// server waits on the PR only while the stage is active.
+func pipelineDrivenWithoutPerson(p focuspipeline.Pipeline) bool {
+	return p.GoalActive() || (p.PRWait != "" && p.Active())
 }
 
 func (r *sessionRetention) sweep(ctx context.Context) sessionRetentionResult {
