@@ -73,6 +73,7 @@ func TestFocusDeviceCreateRefusesAdminOptions(t *testing.T) {
 		`"e2e":true`,
 		`"harness_proposal":true`,
 		`"verify_promotion":true`,
+		`"checks":{"verify":["make test"]}`,
 		`"extra_dirs":[` + jsonString(t.TempDir()) + `]`,
 	} {
 		body := `{"goal":"g",` + cwd + `,` + extra + `}`
