@@ -75,3 +75,27 @@ func TestGoalModeStopsAtABlockedEndToEndGoal(t *testing.T) {
 		t.Fatalf("step = %+v, want goal mode to end with %s", step, GoalEndE2EFailed)
 	}
 }
+
+// The build and review turns see the goals as the server's checks, not as
+// tasks or questions (dogfooding, 2026-11-15: agents asked about a goal they
+// judged wrong every turn and never finished), and the list is labeled by
+// where each kind of goal runs, not as computer_use alone.
+func TestWorkGuidanceTreatsEndToEndGoalsAsChecks(t *testing.T) {
+	p := inReview(t)
+	p.E2E = true
+	p.Plan.E2E = []string{"@Browser http://127.0.0.1:8080/ shows the chart"}
+	p.Plan.E2ESetup = []string{"serve 8080"}
+	g := Guidance(p)
+	for _, want := range []string{"a @Browser goal in the developer's browser", "not tasks for you and not questions", "say so once under risks", "copy or link files into it"} {
+		if !strings.Contains(g, want) {
+			t.Fatalf("review guidance lacks %q:\n%s", want, g)
+		}
+	}
+	if strings.Contains(g, "End-to-end goals (computer_use") {
+		t.Fatalf("goals still labeled as computer_use only:\n%s", g)
+	}
+	p.Plan.E2ESetup = nil
+	if g := Guidance(p); strings.Contains(g, "ask the developer to change the plan") || !strings.Contains(g, "No end-to-end setup is listed") {
+		t.Fatalf("no-setup note:\n%s", g)
+	}
+}
