@@ -107,6 +107,20 @@ func TestFocusCreate(t *testing.T) {
 	if withE2E.Code != http.StatusCreated || !opted.Pipeline.E2E {
 		t.Fatalf("create with e2e: %d %+v", withE2E.Code, opted.Pipeline)
 	}
+	pinned := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"pinned","cwd":`+jsonString(f.repo)+
+		`,"e2e":true,"checks":{"verify":[" make test "],"e2e":["@Browser http://127.0.0.1:1/ x"],"e2e_setup":["serve"]}}`, true)
+	var pinnedOut struct {
+		Pipeline focuspipeline.Pipeline `json:"pipeline"`
+	}
+	decodeInto(t, pinned, &pinnedOut)
+	if c := pinnedOut.Pipeline.Checks; pinned.Code != http.StatusCreated || c == nil ||
+		strings.Join(c.Verify, ",") != "make test" || len(c.E2E) != 1 || len(c.E2ESetup) != 1 {
+		t.Fatalf("create with pinned checks: %d %+v", pinned.Code, pinnedOut.Pipeline.Checks)
+	}
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"pinned","cwd":`+jsonString(f.repo)+
+		`,"checks":{"e2e":["@Browser http://127.0.0.1:1/ x"]}}`, true); rec.Code != http.StatusBadRequest {
+		t.Fatalf("pinned e2e without e2e: %d %s", rec.Code, rec.Body.String())
+	}
 	sess, err := f.store.Get(out.SessionID)
 	if err != nil {
 		t.Fatal(err)

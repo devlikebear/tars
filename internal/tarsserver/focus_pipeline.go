@@ -433,6 +433,10 @@ type focusCreateRequest struct {
 	// (focus_e2e.go). Off unless asked for: the plan's verify commands are
 	// the checks.
 	E2E bool `json:"e2e,omitempty"`
+	// Checks pins verify commands and (with E2E) end-to-end goals, setup
+	// and teardown: every plan carries them and no edit removes them
+	// (focuspipeline/pinned.go). Absent pins nothing.
+	Checks *focuspipeline.PinnedChecks `json:"checks,omitempty"`
 	// SecondOpinion opts the pipeline in to the second opinion review
 	// (focus_second_opinion.go): {tier: heavy|standard|light}. Absent is off.
 	SecondOpinion *focusSecondOpinionRequest `json:"second_opinion,omitempty"`
@@ -508,6 +512,10 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	if kind == focuspipeline.KindRelease && tpl.ID != focuspipeline.DevTemplateID {
 		return http.StatusBadRequest, map[string]any{"error": "a release runs the development template"}
 	}
+	checks, err := focuspipeline.CleanPinnedChecks(req.Checks, req.E2E)
+	if err != nil {
+		return http.StatusBadRequest, map[string]any{"error": err.Error()}
+	}
 	secondOpinion, secondOpinionWarning, status, err := a.driver.checkSecondOpinion(req.SecondOpinion)
 	if err != nil {
 		return status, map[string]any{"error": err.Error()}
@@ -566,6 +574,7 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	// The repository's default verify list, from the folder the pipeline
 	// works in (its worktree when isolated): every plan carries it.
 	p.RepoVerify = focusprobe.ReadRepoVerify(ctx, sess.CurrentDir)
+	p.Checks = checks
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
 	}

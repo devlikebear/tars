@@ -120,6 +120,9 @@ func stageInstruction(p Pipeline) string {
 	if p.E2E && stage.KindOf() == StagePlan {
 		text += " " + e2ePlanInstructions
 	}
+	if stage.KindOf() == StagePlan {
+		text += p.pinnedPlanInstructions()
+	}
 	if (stage.KindOf() == StagePlan || stage.KindOf() == StageBuild) && p.hasStageKind(StagePR) {
 		text += pushPRInWrongStageWarning
 	}

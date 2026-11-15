@@ -33,6 +33,7 @@ package focuspipeline
 import (
 	"encoding/json"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -323,6 +324,10 @@ type Pipeline struct {
 	// (MergeRepoVerify). Empty — a repository without the file — changes
 	// nothing.
 	RepoVerify []string `json:"repo_verify,omitempty"`
+	// Checks are the checks the pipeline's creator pinned (pinned.go):
+	// every plan carries them and no edit removes them. Nil — every
+	// pipeline started without them — changes nothing.
+	Checks *PinnedChecks `json:"pinned_checks,omitempty"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -545,6 +550,13 @@ func (p Pipeline) clone() Pipeline {
 	}
 	if p.RepoVerify != nil {
 		out.RepoVerify = append([]string(nil), p.RepoVerify...)
+	}
+	if p.Checks != nil {
+		c := PinnedChecks{
+			Verify: slices.Clone(p.Checks.Verify), E2E: slices.Clone(p.Checks.E2E),
+			E2ESetup: slices.Clone(p.Checks.E2ESetup), E2ETeardown: slices.Clone(p.Checks.E2ETeardown),
+		}
+		out.Checks = &c
 	}
 	if p.QATurns != nil {
 		out.QATurns = make(map[string][]int, len(p.QATurns))

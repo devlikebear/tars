@@ -35,7 +35,7 @@ func checkDeviceCreate(store *consoleauth.Store, req focusCreateRequest) (int, s
 		return http.StatusForbidden, "a phone cannot start a release"
 	case req.GoalMode:
 		return http.StatusForbidden, "goal mode needs the admin token"
-	case req.E2E, req.HarnessProposal, req.VerifyPromotion:
+	case req.E2E, req.HarnessProposal, req.VerifyPromotion, req.Checks != nil:
 		return http.StatusForbidden, errDeviceCreateOption.Error()
 	}
 	if store == nil {
