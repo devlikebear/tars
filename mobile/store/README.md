@@ -35,7 +35,7 @@ To take them again: build the release bundle (`cd mobile && npm run sync`), run 
 | Keywords (100) | `ai,agent,coding,developer,remote,approve,review,pull request,tailscale,self-hosted` | `AI,에이전트,코딩,개발자,원격,승인,리뷰,풀리퀘스트,셀프호스팅` |
 | Support URL | `https://github.com/devlikebear/tars/issues` | |
 | Marketing URL | `https://tars.marvin-42.com/` | |
-| Privacy policy URL | where `privacy-policy.md` is published (not published yet) | |
+| Privacy policy URL | `https://github.com/devlikebear/tars/blob/main/mobile/store/privacy-policy.md` | |
 
 "TARS" alone is likely taken as an app name; the name must be unique on the store, so check it when creating the record. The name on the home screen stays TARS.
 
