@@ -8,6 +8,8 @@
   import SessionBoard from './components/SessionBoard.svelte'
   import Onboarding from './components/Onboarding.svelte'
   import Login from './components/Login.svelte'
+  import AppHandoff from './components/AppHandoff.svelte'
+  import { appHandoffLink } from './lib/devicePairing'
   import { resolveRoute, type Route } from './lib/router'
   import { loadRouteComponent } from './lib/routeComponents'
   import { canSignOut, loginRequiredFor } from './lib/authGate'
@@ -51,6 +53,14 @@
   let authLoading = $state(true)
   let authInfo = $state<AuthWhoamiResponse | null>(null)
   let loginRequired = $state(false)
+  // On an iPhone, a pipeline's page offers to open it in the TARS app (where
+  // a Telegram alert's link leads); closing the offer keeps it closed.
+  let appHandoffClosed = $state(false)
+  const appHandoff = $derived(
+    appHandoffClosed || typeof navigator === 'undefined'
+      ? ''
+      : appHandoffLink(window.location.origin, currentPath.split('?')[0], navigator),
+  )
   let companionEnabled = $state(false)
   // True until the user navigates: only the landing on /console follows
   // console_default_mode, so the board stays reachable from the nav.
@@ -553,6 +563,9 @@
 {#if authLoading && !needsSetup}
   <div class="app-loading">Connecting to TARS...</div>
 {:else if loginRequired && !(needsSetup && route.view === 'onboarding')}
+  {#if appHandoff}
+    <AppHandoff link={appHandoff} top onDismiss={() => (appHandoffClosed = true)} />
+  {/if}
   <Login onLogin={handleLogin} />
 {:else}
   <Shell
@@ -569,6 +582,8 @@
     consoleUpdateAvailable={consoleUpdateBuild !== null}
     onReloadConsole={handleReloadConsole}
     onDismissConsoleUpdate={handleDismissConsoleUpdate}
+    {appHandoff}
+    onDismissAppHandoff={() => (appHandoffClosed = true)}
   >
     {#if route.view === 'onboarding'}
       <Onboarding onComplete={handleOnboardingComplete} reentry={route.reentry === true} />

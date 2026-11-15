@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import Nav from './Nav.svelte'
   import Header from './Header.svelte'
+  import AppHandoff from './AppHandoff.svelte'
   import { t } from '../i18n'
 
   interface Props {
@@ -22,6 +23,9 @@
     consoleUpdateAvailable?: boolean
     onReloadConsole?: () => void
     onDismissConsoleUpdate?: () => void
+    // On an iPhone, a link that opens this pipeline in the TARS app.
+    appHandoff?: string
+    onDismissAppHandoff?: () => void
     children: Snippet
   }
 
@@ -39,6 +43,8 @@
     consoleUpdateAvailable = false,
     onReloadConsole,
     onDismissConsoleUpdate,
+    appHandoff = '',
+    onDismissAppHandoff = () => {},
     children,
   }: Props = $props()
 
@@ -88,6 +94,9 @@
           ×
         </button>
       </div>
+    {/if}
+    {#if appHandoff}
+      <AppHandoff link={appHandoff} onDismiss={onDismissAppHandoff} />
     {/if}
     <main class="shell-content" class:zen={zenActive}>
       {@render children()}
