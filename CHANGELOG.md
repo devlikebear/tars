@@ -6,6 +6,34 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-11-15
+
+### Security
+
+- **`tars --help` no longer prints API tokens.** The `--api-token` and `--admin-api-token` flags took `TARS_API_TOKEN` / `TARS_ADMIN_API_TOKEN` as their default, which help and usage errors printed. Help now names the variable instead. ([#1362](https://github.com/devlikebear/tars/pull/1362))
+- **The assistant LaunchAgent no longer carries the API token as an argument**, where `ps` and the world-readable plist showed it. `tars assistant install-launchagent` now stores it in `<user config dir>/tars-assistant/api-token` (0600) and passes `--api-token-file`. Run it again to move an existing install's token. ([#1363](https://github.com/devlikebear/tars/pull/1363))
+
+### Added
+
+- **Mobile remote for focus mode (iOS app, phase 1–3).** A phone pairs with a desktop for a focus-only bearer token and can do only focus work there ([#1340](https://github.com/devlikebear/tars/pull/1340), [#1344](https://github.com/devlikebear/tars/pull/1344)):
+  - Pairing is set up from Settings → Channels & Remote → Phones, with a QR code, a list of paired phones, and the folders phones may start pipelines in ([#1346](https://github.com/devlikebear/tars/pull/1346)).
+  - The phone can start pipelines only in those folders. It cannot turn on goal mode, releases, e2e, harness proposals or verify promotion ([#1342](https://github.com/devlikebear/tars/pull/1342)).
+  - The app (`mobile/`, Capacitor) has one waiting-on-you inbox across every paired desktop and the console's own focus screen for each pipeline ([#1347](https://github.com/devlikebear/tars/pull/1347), [#1348](https://github.com/devlikebear/tars/pull/1348), [#1349](https://github.com/devlikebear/tars/pull/1349)).
+  - Ideas are kept on the phone and can be sent to a desktop as a focus task ([#1350](https://github.com/devlikebear/tars/pull/1350)).
+  - Each desktop shows whether it can run a focus task end to end (`GET /v1/focus/readiness`) ([#1351](https://github.com/devlikebear/tars/pull/1351)).
+  - The app updates from a session-only focus event stream (`GET /v1/focus/events`) ([#1359](https://github.com/devlikebear/tars/pull/1359), [#1361](https://github.com/devlikebear/tars/pull/1361)).
+  - The app has the TARS icon and launch screen ([#1352](https://github.com/devlikebear/tars/pull/1352), [#1353](https://github.com/devlikebear/tars/pull/1353)).
+- **Focus: Telegram alert when a pipeline starts waiting**, once per new gate or card, linking to the pipeline. On an iPhone the page offers **Open in app** ([#1345](https://github.com/devlikebear/tars/pull/1345), [#1357](https://github.com/devlikebear/tars/pull/1357)).
+- **Focus: each gate and card answer records whether it came from a phone, the desk or goal mode** (`decided_by`, `decided_at`), set by the server, never by the request ([#1355](https://github.com/devlikebear/tars/pull/1355)).
+- **`web_search`: Aside provider.** `tools.web_search.provider: aside` searches Google (default), Naver or DuckDuckGo in your own signed-in Aside browser through the `aside` CLI. There is no API key and no model call. It runs only when it is the configured provider, and a bot check fails the search instead of being answered ([#1358](https://github.com/devlikebear/tars/pull/1358)).
+- **Focus: `@Browser <local URL> <goal>` end-to-end checks.** In a pipeline with e2e opted in, these run through Aside's browser agent, which sees the rendered page, images included. The URL must be loopback, `*.localhost` or `*.test`. Without the CLI the check is skipped. `tools.aside.path` sets the binary ([#1358](https://github.com/devlikebear/tars/pull/1358)).
+- **`pkg/llm`: `ChatOptions.OnToolCallStart`** reports a streamed tool call by name as soon as it starts, before its arguments finish ([#1356](https://github.com/devlikebear/tars/pull/1356)).
+
+### Fixed
+
+- **`claude-haiku-5-5` works on the `anthropic` provider.** It was sent `thinking: enabled` and every call returned a 400. `claude-opus-5-5` and `claude-sonnet-5-5` no longer try to disable thinking, which both refuse. Usage costs use the published prices for Haiku 5.5, Sonnet 5/5.5, Opus 5.5 and Fable/Mythos 5.1/5.2. Before, Haiku 5.5 was counted at 10x and Fable 5.2 far too low ([#1360](https://github.com/devlikebear/tars/pull/1360)).
+- **Focus keeps the early PR notice when verification finishes first** ([#1341](https://github.com/devlikebear/tars/pull/1341)), and a flaky second-opinion test no longer fails under load ([#1343](https://github.com/devlikebear/tars/pull/1343)).
+
 ## [0.68.0] - 2026-11-11
 
 ### Added
