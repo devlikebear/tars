@@ -19,7 +19,7 @@ is_doc() {
   case "$1" in
     docs/public-api-surface.txt) return 1 ;;
     docs/*) return 0 ;;
-    LICENSE | .github/pull_request_template.md) return 0 ;;
+    LICENSE | .github/pull_request_template.md | .github/FUNDING.yml) return 0 ;;
     */*) return 1 ;;
     *.md) return 0 ;;
   esac
