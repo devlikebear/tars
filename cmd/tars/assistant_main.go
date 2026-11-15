@@ -259,7 +259,7 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 				return err
 			}
 			args = append(args, "--api-token-file", tokenPath)
-			fmt.Fprintf(stdout, "api token saved: %s (owner read/write only)\n", tokenPath)
+			_, _ = fmt.Fprintf(stdout, "api token saved: %s (owner read/write only)\n", tokenPath)
 		}
 		content := assistant.BuildLaunchAgentPlist(assistant.LaunchAgentConfig{
 			Label:            strings.TrimSpace(opts.label),
