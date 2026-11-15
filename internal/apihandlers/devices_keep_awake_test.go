@@ -85,9 +85,14 @@ func TestDevicesAPIKeepAwakeWithoutTheLoop(t *testing.T) {
 	}
 
 	// The choice can be neither saved nor read: a folder stands where the
-	// file goes.
+	// file goes. Not an empty one: Windows renames a file over an empty
+	// folder.
 	blocked := consoleauth.NewStore(filepath.Join(dir, "blocked"))
-	if err := os.MkdirAll(filepath.Join(dir, "blocked", "auth", "keep-awake.json"), 0o700); err != nil {
+	inTheWay := filepath.Join(dir, "blocked", "auth", "keep-awake.json")
+	if err := os.MkdirAll(inTheWay, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inTheWay, "keep"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	h = NewDevicesHandler(blocked, zerolog.Nop())
