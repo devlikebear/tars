@@ -19,6 +19,7 @@ type assistantOptions struct {
 	serverURL       string
 	sessionID       string
 	apiToken        string
+	apiTokenFile    string
 	workspace       string
 	hotkey          string
 	audioInput      string
@@ -100,6 +101,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	startCmd.Flags().StringVar(&opts.serverURL, "server-url", opts.serverURL, "tars server url")
 	startCmd.Flags().StringVar(&opts.sessionID, "session", opts.sessionID, "session id")
 	secretStringVar(startCmd.Flags(), &opts.apiToken, "api-token", "TARS_API_TOKEN", "api token")
+	startCmd.Flags().StringVar(&opts.apiTokenFile, "api-token-file", opts.apiTokenFile, "read the api token from this file when --api-token and TARS_API_TOKEN are empty")
 	startCmd.Flags().StringVar(&opts.workspace, "workspace-dir", opts.workspace, "workspace directory")
 	startCmd.Flags().StringVar(&opts.hotkey, "hotkey", opts.hotkey, "global hotkey (display only in fallback mode)")
 	startCmd.Flags().StringVar(&opts.audioInput, "audio-input", opts.audioInput, "avfoundation audio input (default|index|name)")
@@ -136,6 +138,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	installCmd.Flags().StringVar(&opts.serverURL, "server-url", opts.serverURL, "tars server url")
 	installCmd.Flags().StringVar(&opts.sessionID, "session", opts.sessionID, "session id")
 	secretStringVar(installCmd.Flags(), &opts.apiToken, "api-token", "TARS_API_TOKEN", "api token")
+	installCmd.Flags().StringVar(&opts.apiTokenFile, "api-token-file", opts.apiTokenFile, "where to store the api token for the launchagent (default: <user config dir>/tars-assistant/api-token)")
 	installCmd.Flags().StringVar(&opts.workspace, "workspace-dir", opts.workspace, "workspace directory")
 	installCmd.Flags().StringVar(&opts.hotkey, "hotkey", opts.hotkey, "global hotkey")
 	installCmd.Flags().StringVar(&opts.audioInput, "audio-input", opts.audioInput, "avfoundation audio input (default|index|name)")
@@ -159,10 +162,14 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, stderr io.Writer) error {
 	switch strings.TrimSpace(opts.action) {
 	case "start":
+		apiToken, err := resolveAssistantAPIToken(opts)
+		if err != nil {
+			return err
+		}
 		return assistant.Start(ctx, assistant.StartOptions{
 			ServerURL:       strings.TrimSpace(opts.serverURL),
 			SessionID:       strings.TrimSpace(opts.sessionID),
-			APIToken:        strings.TrimSpace(opts.apiToken),
+			APIToken:        apiToken,
 			WorkspaceDir:    strings.TrimSpace(opts.workspace),
 			Hotkey:          strings.TrimSpace(opts.hotkey),
 			AudioInput:      strings.TrimSpace(opts.audioInput),
@@ -238,8 +245,21 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 		if strings.TrimSpace(opts.sessionID) != "" {
 			args = append(args, "--session", strings.TrimSpace(opts.sessionID))
 		}
-		if strings.TrimSpace(opts.apiToken) != "" {
-			args = append(args, "--api-token", strings.TrimSpace(opts.apiToken))
+		if token := strings.TrimSpace(opts.apiToken); token != "" {
+			// Never the token itself: program arguments show in ps and the
+			// plist is world-readable. Only its 0600 file's path goes in.
+			tokenPath := strings.TrimSpace(opts.apiTokenFile)
+			if tokenPath == "" {
+				tokenPath, err = defaultAssistantTokenPath()
+				if err != nil {
+					return err
+				}
+			}
+			if err := writeAssistantToken(tokenPath, token); err != nil {
+				return err
+			}
+			args = append(args, "--api-token-file", tokenPath)
+			fmt.Fprintf(stdout, "api token saved: %s (owner read/write only)\n", tokenPath)
 		}
 		content := assistant.BuildLaunchAgentPlist(assistant.LaunchAgentConfig{
 			Label:            strings.TrimSpace(opts.label),
