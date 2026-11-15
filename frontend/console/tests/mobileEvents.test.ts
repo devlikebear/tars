@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { APIRequestError, type APITarget } from '../src/lib/api/client.ts'
-import { DesktopEvents, type EventsAPI, type FocusStreamEvent } from '../src/lib/mobile/desktopEvents.ts'
+import { DesktopEvents, pipelineChanges, touches, type DesktopChange, type EventsAPI, type FocusStreamEvent } from '../src/lib/mobile/desktopEvents.ts'
 import type { PairedDesktop } from '../src/lib/mobile/desktops.ts'
 
 // A stream the test drives: send events, end it, or break it.
@@ -36,8 +36,12 @@ function setup() {
   const { api, streams } = fakeAPI()
   const events = new DesktopEvents({ api, retryMs: [5], settleMs: 5 })
   const heard: string[] = []
-  events.listen((id) => heard.push(id))
-  return { events, streams, heard }
+  const changes: DesktopChange[] = []
+  events.listen((change) => {
+    heard.push(change.desktopID)
+    changes.push(change)
+  })
+  return { events, streams, heard, changes }
 }
 
 test('a pipeline event reads that desktop again, once per burst', async () => {
@@ -137,5 +141,70 @@ test('events from a stream that was replaced or closed are dropped', async () =>
   streams[1].send({ type: 'pipeline', session_id: 's1' })
   await tick(15)
   assert.deepEqual(heard, ['https://a.ts.net'])
+  events.close()
+})
+
+test('a call back names the pipelines that changed, or all of them after a drop', async () => {
+  const { events, streams, changes } = setup()
+  events.watch([desk('https://a.ts.net')])
+  streams[0].send({ type: 'connected' })
+  streams[0].send({ type: 'pipeline', session_id: 's2' })
+  streams[0].send({ type: 'pipeline', session_id: 's1' })
+  streams[0].send({ type: 'pipeline', session_id: 's2' })
+  await tick(15)
+  assert.deepEqual(changes, [{ desktopID: 'https://a.ts.net', sessions: ['s1', 's2'], all: false }])
+
+  streams[0].fail(new TypeError('lost'))
+  await tick(15)
+  streams[1].send({ type: 'connected' })
+  streams[1].send({ type: 'pipeline', session_id: 's3' })
+  await tick(15)
+  assert.deepEqual(changes[1], { desktopID: 'https://a.ts.net', sessions: ['s3'], all: true })
+  events.close()
+})
+
+test('a stream is live from "connected" until it ends', async () => {
+  const { events, streams } = setup()
+  events.watch([desk('https://a.ts.net')])
+  assert.equal(events.isLive('https://a.ts.net'), false, 'opening is not yet live')
+  streams[0].send({ type: 'connected' })
+  assert.equal(events.isLive('https://a.ts.net'), true)
+  streams[0].fail(new TypeError('lost'))
+  await tick(0)
+  assert.equal(events.isLive('https://a.ts.net'), false, 'a dropped stream is not live while it retries')
+  await tick(15)
+  streams[1].send({ type: 'connected' })
+  assert.equal(events.isLive('https://a.ts.net'), true)
+  events.reconnect()
+  assert.equal(events.isLive('https://a.ts.net'), false)
+  events.close()
+  assert.equal(events.isLive('https://b.ts.net'), false, 'a desktop not watched')
+})
+
+test('a pipeline screen hears only its own pipeline, and everything after a drop', async () => {
+  const change = (sessions: string[], all = false): DesktopChange => ({ desktopID: 'https://a.ts.net', sessions, all })
+  assert.equal(touches(change(['s1']), 'https://a.ts.net', 's1'), true)
+  assert.equal(touches(change(['s2']), 'https://a.ts.net', 's1'), false)
+  assert.equal(touches(change([], true), 'https://a.ts.net', 's1'), true)
+  assert.equal(touches(change(['s1']), 'https://b.ts.net', 's1'), false)
+
+  const { events, streams } = setup()
+  events.watch([desk('https://a.ts.net'), desk('https://b.ts.net')])
+  const screen = pipelineChanges(events, 'https://a.ts.net', 's1')
+  let polls = 0
+  const stop = screen.listen(() => polls++)
+  streams[0].send({ type: 'connected' })
+  assert.equal(screen.live(), true)
+  streams[0].send({ type: 'pipeline', session_id: 's2' })
+  streams[1].send({ type: 'pipeline', session_id: 's1' })
+  await tick(15)
+  assert.equal(polls, 0, 'another pipeline, or the same id on another desktop')
+  streams[0].send({ type: 'pipeline', session_id: 's1' })
+  await tick(15)
+  assert.equal(polls, 1)
+  stop()
+  streams[0].send({ type: 'pipeline', session_id: 's1' })
+  await tick(15)
+  assert.equal(polls, 1, 'stopped')
   events.close()
 })

@@ -7,19 +7,25 @@
   import FocusPipeline from '../components/focus/FocusPipeline.svelte'
   import { remoteFocusApi } from '../lib/mobile/focusRemote'
   import { targetOf, type PairedDesktop } from '../lib/mobile/desktops'
+  import { pipelineChanges, type DesktopEvents } from '../lib/mobile/desktopEvents'
 
   interface Props {
     desktop: PairedDesktop
     sessionId: string
+    // The desktops' event streams; without them the screen reads every 3
+    // seconds.
+    events?: DesktopEvents
     onOpen: (sessionId: string) => void
     onClose: () => void
   }
 
-  let { desktop, sessionId, onOpen, onClose }: Props = $props()
+  let { desktop, sessionId, events, onOpen, onClose }: Props = $props()
 
   // MobileApp remounts this screen ({#key}) for another pipeline or desktop.
   // svelte-ignore state_referenced_locally
   const api = remoteFocusApi(targetOf(desktop), sessionId)
+  // svelte-ignore state_referenced_locally
+  const changes = events ? pipelineChanges(events, desktop.id, sessionId) : undefined
 
   function navigate(path: string) {
     if (path === '/console/focus') return onClose()
@@ -41,7 +47,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="mobile-pipeline" onclick={onClick} data-testid="mobile-pipeline" data-desktop={desktop.name}>
   <div class="desk-bar"><span class="desk">{desktop.name}</span></div>
-  <FocusPipeline {sessionId} onNavigate={navigate} remoteApi={api} remote />
+  <FocusPipeline {sessionId} onNavigate={navigate} remoteApi={api} remote {changes} />
 </div>
 
 <style>

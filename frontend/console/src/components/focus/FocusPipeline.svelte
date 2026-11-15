@@ -11,6 +11,7 @@
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { FocusStore, type FocusStoreApi } from '../../lib/stores/focusStore.svelte'
   import { focusViewedSession } from '../../lib/stores/focusViewedSession.svelte'
+  import type { PipelineChanges } from '../../lib/mobile/desktopEvents'
   import type { FocusCard, FocusGateAction, FocusPlan, FocusPRDraft, FocusStageId } from '../../lib/types'
   import FocusAddFinding from './FocusAddFinding.svelte'
   import FocusDeck from './FocusDeck.svelte'
@@ -26,9 +27,13 @@
     // The mobile app: no workbench to open, and goal mode can only be
     // turned off (turning it on needs the desk's admin token).
     remote?: boolean
+    // The mobile app: the desktop's focus event stream for this pipeline.
+    // A change reads at once; while the stream is open the timer reads
+    // only every pollLiveEvery-th tick.
+    changes?: PipelineChanges
   }
 
-  let { sessionId, onNavigate, remoteApi, remote = false }: Props = $props()
+  let { sessionId, onNavigate, remoteApi, remote = false, changes }: Props = $props()
 
   // One API for the screen's life: the mobile app remounts the screen
   // ({#key}) to open another pipeline or desktop.
@@ -52,8 +57,20 @@
   }, typeof localStorage === 'undefined' ? null : localStorage)
 
   // A turn started elsewhere (another tab, Advanced) is picked up within a
-  // few seconds, and a prompt that waited for one goes out after it.
-  const pollTimer = setInterval(() => void store.poll(), 3000)
+  // few seconds, and a prompt that waited for one goes out after it. With
+  // the event stream open (the mobile app), the stream says so at once and
+  // the timer is only a fallback: every 15 seconds instead of 3, and back
+  // to 3 the moment the stream drops.
+  const pollMs = 3000
+  const pollLiveEvery = 5
+  let pollTicks = 0
+  const pollTimer = setInterval(() => {
+    pollTicks++
+    if (changes?.live() && pollTicks % pollLiveEvery !== 0) return
+    void store.poll()
+  }, pollMs)
+  // svelte-ignore state_referenced_locally
+  const stopChanges = changes?.listen(() => void store.poll())
 
   $effect(() => {
     const id = sessionId
@@ -69,6 +86,7 @@
 
   onDestroy(() => {
     clearInterval(pollTimer)
+    stopChanges?.()
     store.dispose()
     focusViewedSession.clear()
   })

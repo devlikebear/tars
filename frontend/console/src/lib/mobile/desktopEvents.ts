@@ -37,6 +37,38 @@ type Watched = {
   // The desktop refused the stream (too old, or the token is gone); it is
   // not asked again until it is watched afresh.
   refused: boolean
+  // The stream said "connected" and has not ended since.
+  live: boolean
+  // What changed since the last call back: pipeline sessions, or every
+  // pipeline (a reconnect after a drop, when changes may have been missed).
+  changedSessions: Set<string>
+  changedAll: boolean
+}
+
+// What a call back says changed on a desktop: the pipeline sessions the
+// stream named, or all of them ("all": changes may have been missed).
+export type DesktopChange = { desktopID: string; sessions: string[]; all: boolean }
+
+// touches reports whether change may concern the pipeline sessionID.
+export function touches(change: DesktopChange, desktopID: string, sessionID: string): boolean {
+  return change.desktopID === desktopID && (change.all || change.sessions.includes(sessionID))
+}
+
+// What a screen showing one pipeline needs from the stream: a call back
+// when that pipeline may have changed, and whether the stream is open now.
+export type PipelineChanges = {
+  listen(onChange: () => void): () => void
+  live(): boolean
+}
+
+// pipelineChanges narrows events to one pipeline on one desktop.
+export function pipelineChanges(events: Pick<DesktopEvents, 'listen' | 'isLive'>, desktopID: string, sessionID: string): PipelineChanges {
+  return {
+    listen: (onChange) => events.listen((change) => {
+      if (touches(change, desktopID, sessionID)) onChange()
+    }),
+    live: () => events.isLive(desktopID),
+  }
 }
 
 export class DesktopEvents {
@@ -44,7 +76,7 @@ export class DesktopEvents {
   #retryMs: number[]
   #settleMs: number
   #watched = new Map<string, Watched>()
-  #listeners = new Set<(desktopID: string) => void>()
+  #listeners = new Set<(change: DesktopChange) => void>()
 
   constructor(deps: { api: EventsAPI; retryMs?: number[]; settleMs?: number }) {
     this.#api = deps.api
@@ -52,11 +84,17 @@ export class DesktopEvents {
     this.#settleMs = deps.settleMs ?? defaultSettleMs
   }
 
-  // listen calls back with a desktop's id when its pipelines may have
-  // changed; returns a function that stops listening.
-  listen(onChange: (desktopID: string) => void): () => void {
+  // listen calls back when a desktop's pipelines may have changed; returns
+  // a function that stops listening.
+  listen(onChange: (change: DesktopChange) => void): () => void {
     this.#listeners.add(onChange)
     return () => this.#listeners.delete(onChange)
+  }
+
+  // isLive reports whether the desktop's stream is open now, so a screen
+  // can rely on it and read on its timer less often.
+  isLive(desktopID: string): boolean {
+    return this.#watched.get(desktopID)?.live ?? false
   }
 
   // watch keeps a stream open to each desktop given and closes the rest. A
@@ -72,7 +110,10 @@ export class DesktopEvents {
         continue
       }
       if (current) this.#stop(current)
-      const w: Watched = { desktop, key, controller: null, retry: null, settle: null, attempt: 0, dropped: false, refused: false }
+      const w: Watched = {
+        desktop, key, controller: null, retry: null, settle: null, attempt: 0, dropped: false, refused: false,
+        live: false, changedSessions: new Set(), changedAll: false,
+      }
       this.#watched.set(desktop.id, w)
       this.#open(w)
     }
@@ -110,12 +151,13 @@ export class DesktopEvents {
       if (w.controller !== controller) return
       if (event.type === 'connected') {
         w.attempt = 0
+        w.live = true
         if (w.dropped) {
           w.dropped = false
-          this.#changed(w)
+          this.#changed(w, null)
         }
       } else if (event.type === 'pipeline') {
-        this.#changed(w)
+        this.#changed(w, event.session_id ?? null)
       }
     }
     this.#api.open(targetOf(w.desktop), onEvent, controller.signal).then(
@@ -127,6 +169,7 @@ export class DesktopEvents {
   #ended(w: Watched, controller: AbortController, err: unknown): void {
     if (w.controller !== controller || controller.signal.aborted) return
     w.controller = null
+    w.live = false
     if (err instanceof APIRequestError && err.status >= 400 && err.status < 500) {
       // 404: a desk too old for the stream; 401/403: the phone is no longer
       // paired there. The 30-second read shows the desk as it is.
@@ -142,18 +185,28 @@ export class DesktopEvents {
     }, delay)
   }
 
-  #changed(w: Watched): void {
+  // #changed notes what changed — a session, or null for everything — and
+  // calls back once the burst settles.
+  #changed(w: Watched, sessionID: string | null): void {
+    if (sessionID) w.changedSessions.add(sessionID)
+    else w.changedAll = true
     if (w.settle) return
     w.settle = setTimeout(() => {
       w.settle = null
       if (this.#watched.get(w.desktop.id) !== w) return
-      for (const listener of this.#listeners) listener(w.desktop.id)
+      const change: DesktopChange = { desktopID: w.desktop.id, sessions: [...w.changedSessions].sort(), all: w.changedAll }
+      w.changedSessions.clear()
+      w.changedAll = false
+      for (const listener of this.#listeners) listener(change)
     }, this.#settleMs)
   }
 
   #stop(w: Watched): void {
     w.controller?.abort()
     w.controller = null
+    w.live = false
+    w.changedSessions.clear()
+    w.changedAll = false
     if (w.retry) clearTimeout(w.retry)
     if (w.settle) clearTimeout(w.settle)
     w.retry = null

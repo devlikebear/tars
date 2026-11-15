@@ -12,7 +12,7 @@
   import type { InboxStore } from '../lib/mobile/inboxStore.svelte'
   import { readinessLine, readinessProblems, type PairedDesktop } from '../lib/mobile/desktops'
   import type { AppLinks } from '../lib/mobile/appLinks'
-  import type { DesktopEvents } from '../lib/mobile/desktopEvents'
+  import type { DesktopChange, DesktopEvents } from '../lib/mobile/desktopEvents'
   import { stageLabel } from '../lib/focus'
   import { runningPipelines, waitingOf } from '../lib/mobile/inbox'
   import type { FocusListItem } from '../lib/types'
@@ -120,9 +120,9 @@
 
   // A desktop's stream said one of its pipelines changed: read that desktop
   // again. A pipeline on screen reads its own state; the lists wait for back.
-  function onDesktopChanged(desktopID: string) {
+  function onDesktopChanged(change: DesktopChange) {
     if (opened) return
-    const desktop = store.desktops.find((d) => d.id === desktopID)
+    const desktop = store.desktops.find((d) => d.id === change.desktopID)
     if (desktop) void inbox.refreshDesktop(desktop)
   }
 
@@ -198,6 +198,7 @@
     <MobilePipeline
       desktop={openedDesktop}
       sessionId={opened.sessionID}
+      {events}
       onOpen={(sessionID) => openPipeline(openedDesktop.id, sessionID)}
       onClose={closePipeline}
     />
