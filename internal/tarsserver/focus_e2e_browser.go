@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -27,12 +28,23 @@ import (
 // No aside CLI is "unavailable" and skipped, as computer_use without a
 // driver is: the stage is never blocked on a capability this machine does
 // not have.
+//
+// A run that ends with no verdict because Aside's own model failed (a 429
+// rate limit, an overload) says nothing about the app either. It used to
+// count as "no verdict = fail", which ended goal mode with e2e_failed on a
+// working page. It is retried after a wait, and if the checker still cannot
+// finish, the check is skipped like a missing CLI, with the reason in the
+// excerpt.
 
 // browserE2EApp is the @App name that selects the Aside browser.
 const browserE2EApp = "Browser"
 
 // browserE2ETimeout bounds one Aside agent run.
 const browserE2ETimeout = 10 * time.Minute
+
+// browserE2ERetryWaits are the pauses before each retry of a run the
+// checker could not finish. Two retries; a var so tests need not sleep.
+var browserE2ERetryWaits = []time.Duration{20 * time.Second, 60 * time.Second}
 
 // browserE2EExcerptLines is how much of the agent's transcript a failure
 // card keeps.
@@ -61,9 +73,19 @@ func runBrowserE2E(ctx context.Context, verify browserCheckFunc, goal, text stri
 	if _, err := aside.LocalStartURL(startURL); err != nil || rest == "" {
 		return failed(browserE2EPlanExcerpt)
 	}
-	runCtx, cancel := context.WithTimeout(ctx, browserE2ETimeout)
-	defer cancel()
-	res, err := verify(runCtx, aside.Check{StartURL: startURL, Goal: rest})
+	check := aside.Check{StartURL: startURL, Goal: rest}
+	res, err := verifyOnce(ctx, verify, check)
+	for _, wait := range browserE2ERetryWaits {
+		if err != nil || !res.Incomplete {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return failed("error: " + ctx.Err().Error() + transcriptTail(res.Transcript))
+		case <-time.After(wait):
+		}
+		res, err = verifyOnce(ctx, verify, check)
+	}
 	switch {
 	case errors.Is(err, aside.ErrNotFound):
 		return focuspipeline.VerificationResult{
@@ -74,9 +96,22 @@ func runBrowserE2E(ctx context.Context, verify browserCheckFunc, goal, text stri
 		return failed("error: " + err.Error() + transcriptTail(res.Transcript))
 	case res.Passed:
 		return focuspipeline.VerificationResult{Command: goal, Passed: true, E2E: true, Excerpt: "done" + transcriptTail(res.Transcript)}
+	case res.Incomplete:
+		return focuspipeline.VerificationResult{
+			Command: goal, Passed: true, Skipped: true, E2E: true,
+			Excerpt: fmt.Sprintf("unavailable: %s, %d times — not a verdict on the app", res.Reason, 1+len(browserE2ERetryWaits)) +
+				"\nHint: wait for Aside's limit to reset, then run the check again." + transcriptTail(res.Transcript),
+		}
 	default:
 		return failed("failed: " + res.Reason + transcriptTail(res.Transcript))
 	}
+}
+
+// verifyOnce runs one check under its own browserE2ETimeout.
+func verifyOnce(ctx context.Context, verify browserCheckFunc, check aside.Check) (aside.CheckResult, error) {
+	runCtx, cancel := context.WithTimeout(ctx, browserE2ETimeout)
+	defer cancel()
+	return verify(runCtx, check)
 }
 
 // browserE2EPlanExcerpt is the failure of a @Browser goal with no local

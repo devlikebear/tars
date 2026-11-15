@@ -56,6 +56,39 @@ func TestParseVerdict(t *testing.T) {
 	}
 }
 
+// The output of a dogfood run whose Aside model hit its rate limit mid-check:
+// the last line is the checker's error and there is no verdict.
+const rateLimitedRun = ` > [[true],[true,true],[true],[true,true]]
+
+ • Error 429 {"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account's rate limit. Please try again later."},"request_id":"req_x"}`
+
+func TestParseVerdictCheckerErrors(t *testing.T) {
+	cases := []struct {
+		name       string
+		out        string
+		incomplete bool
+		reason     string
+	}{
+		{"rate limit", rateLimitedRun, true, "the checker stopped on an error: Error 429 rate_limit_error"},
+		{"overloaded, no bullet", "looking\nError 529 {\"type\":\"overloaded_error\"}", true, "the checker stopped on an error: Error 529 overloaded_error"},
+		{"bare status", "* Error 500 something broke\n\n", true, "the checker stopped on an error: Error 500"},
+		// An error the agent got past is followed by more output, and no
+		// verdict after that is still the app's failure to show the goal.
+		{"recovered error", "• Error 429 {}\nretrying\nI could not tell.", false, "the agent gave no verdict"},
+		// A verdict always wins, even after an error line.
+		{"verdict after error", "• Error 429 {}\nVERDICT: FAIL: no image", false, "no image"},
+		{"not an http status", "Error 42 nope", false, "the agent gave no verdict"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := ParseVerdict(c.out)
+			if got.Passed || got.Incomplete != c.incomplete || got.Reason != c.reason {
+				t.Fatalf("got %+v", got)
+			}
+		})
+	}
+}
+
 func TestVerify(t *testing.T) {
 	bin := fakeBinary(t)
 	f := &fakeRun{stdout: "\x1b[2mrepl(...)\x1b[0m\nAll good.\nVERDICT: PASS\x1b[0m\n"}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/aside"
 	"github.com/devlikebear/tars/internal/focuspipeline"
@@ -84,6 +85,74 @@ func TestRunBrowserE2EOutcomes(t *testing.T) {
 				t.Fatalf("failed check needs exit code -1, got %d", got.ExitCode)
 			}
 		})
+	}
+}
+
+func noRetryWait(t *testing.T) {
+	t.Helper()
+	original := browserE2ERetryWaits
+	t.Cleanup(func() { browserE2ERetryWaits = original })
+	browserE2ERetryWaits = []time.Duration{0, 0}
+}
+
+// A rate-limited checker used to fail the check ("no verdict"), which ended
+// goal mode with e2e_failed on a working page.
+func TestRunBrowserE2ERetriesAnIncompleteRun(t *testing.T) {
+	noRetryWait(t)
+	calls := 0
+	verify := func(context.Context, aside.Check) (aside.CheckResult, error) {
+		calls++
+		if calls < 3 {
+			return aside.CheckResult{Incomplete: true, Reason: "the checker stopped on an error: Error 429 rate_limit_error"}, nil
+		}
+		return aside.CheckResult{Passed: true}, nil
+	}
+	const goal = "@Browser http://127.0.0.1:3000 home loads"
+	_, text := splitE2EGoal(goal)
+	got := runBrowserE2E(context.Background(), verify, goal, text)
+	if calls != 3 || !got.Passed || got.Skipped {
+		t.Fatalf("calls=%d got %+v", calls, got)
+	}
+}
+
+func TestRunBrowserE2ESkipsWhenTheCheckerNeverFinishes(t *testing.T) {
+	noRetryWait(t)
+	calls := 0
+	verify := func(context.Context, aside.Check) (aside.CheckResult, error) {
+		calls++
+		return aside.CheckResult{Incomplete: true, Reason: "the checker stopped on an error: Error 429 rate_limit_error", Transcript: "• Error 429 {}"}, nil
+	}
+	const goal = "@Browser http://127.0.0.1:3000 home loads"
+	_, text := splitE2EGoal(goal)
+	got := runBrowserE2E(context.Background(), verify, goal, text)
+	if calls != 3 {
+		t.Fatalf("calls = %d, want 1 + 2 retries", calls)
+	}
+	if !got.Passed || !got.Skipped || !got.E2E || got.ExitCode != 0 {
+		t.Fatalf("an unfinished check must be skipped, not failed: %+v", got)
+	}
+	for _, want := range []string{"unavailable:", "Error 429 rate_limit_error", "3 times", "not a verdict on the app", "Error 429 {}"} {
+		if !strings.Contains(got.Excerpt, want) {
+			t.Errorf("excerpt lacks %q:\n%s", want, got.Excerpt)
+		}
+	}
+}
+
+func TestRunBrowserE2EStopsWaitingWhenCancelled(t *testing.T) {
+	original := browserE2ERetryWaits
+	t.Cleanup(func() { browserE2ERetryWaits = original })
+	browserE2ERetryWaits = []time.Duration{time.Hour}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	verify := func(context.Context, aside.Check) (aside.CheckResult, error) {
+		cancel()
+		return aside.CheckResult{Incomplete: true, Reason: "x"}, nil
+	}
+	const goal = "@Browser http://127.0.0.1:3000 home loads"
+	_, text := splitE2EGoal(goal)
+	got := runBrowserE2E(ctx, verify, goal, text)
+	if got.Passed || got.Skipped || !strings.HasPrefix(got.Excerpt, "error: context canceled") {
+		t.Fatalf("got %+v", got)
 	}
 }
 
