@@ -39,8 +39,8 @@ func bindClientFlags(cmd *cobra.Command, opts *clientOptions) {
 	}
 	cmd.Flags().StringVar(&opts.serverURL, "server-url", opts.serverURL, "tars server url")
 	cmd.Flags().StringVar(&opts.sessionID, "session", opts.sessionID, "session id")
-	cmd.Flags().StringVar(&opts.apiToken, "api-token", opts.apiToken, "api token")
-	cmd.Flags().StringVar(&opts.adminToken, "admin-api-token", opts.adminToken, "admin api token")
+	secretStringVar(cmd.Flags(), &opts.apiToken, "api-token", "TARS_API_TOKEN", "api token")
+	secretStringVar(cmd.Flags(), &opts.adminToken, "admin-api-token", "TARS_ADMIN_API_TOKEN", "admin api token")
 	cmd.Flags().StringVar(&opts.message, "message", opts.message, "send one message and exit")
 	cmd.Flags().BoolVar(&opts.verbose, "verbose", opts.verbose, "verbose status output")
 }

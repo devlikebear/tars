@@ -46,7 +46,7 @@ func bindReadOnlyRuntimeFlags(cmd *cobra.Command, opts *clientOptions) {
 		return
 	}
 	cmd.Flags().StringVar(&opts.serverURL, "server-url", opts.serverURL, "tars server url")
-	cmd.Flags().StringVar(&opts.apiToken, "api-token", opts.apiToken, "api token")
+	secretStringVar(cmd.Flags(), &opts.apiToken, "api-token", "TARS_API_TOKEN", "api token")
 }
 
 func runStatusCommand(ctx context.Context, stdout, _ io.Writer, opts clientOptions) error {
