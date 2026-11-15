@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -23,6 +24,11 @@ type Check struct {
 type CheckResult struct {
 	// Passed is true only for a final "VERDICT: PASS" line.
 	Passed bool
+	// Incomplete reports a run that ended with no verdict because the
+	// checker itself stopped on an error (Aside prints "• Error 429 {…}"
+	// when its model is rate limited). That says nothing about the app, so
+	// callers must not count it as a failed check.
+	Incomplete bool
 	// Reason is the text after "VERDICT: FAIL:", or why no verdict was
 	// read.
 	Reason string
@@ -104,6 +110,40 @@ func ParseVerdict(out string) CheckResult {
 		}
 		return res
 	}
+	if checkerErr := lastCheckerError(lines); checkerErr != "" {
+		res.Incomplete = true
+		res.Reason = "the checker stopped on an error: " + checkerErr
+		return res
+	}
 	res.Reason = "the agent gave no verdict"
 	return res
+}
+
+// checkerErrorPattern matches the line Aside prints when its own model call
+// fails ("• Error 429 {…rate_limit_error…}", "Error 529 …overloaded…").
+var checkerErrorPattern = regexp.MustCompile(`^(?:[•*\-]\s*)?Error\s+([45]\d\d)\b`)
+
+// lastCheckerError returns the status and a short form of the last non-empty
+// line when it is such an error, or "". Only the last line counts: an error
+// the agent recovered from earlier in the run is followed by more output.
+func lastCheckerError(lines []string) string {
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		m := checkerErrorPattern.FindStringSubmatch(line)
+		if m == nil {
+			return ""
+		}
+		kind := ""
+		for _, k := range []string{"rate_limit_error", "overloaded_error", "api_error", "usage_limit_exceeded", "too_many_requests"} {
+			if strings.Contains(line, k) {
+				kind = " " + k
+				break
+			}
+		}
+		return "Error " + m[1] + kind
+	}
+	return ""
 }
