@@ -182,9 +182,13 @@ type ModelBehavior struct {
 // safe state — the zero ModelBehavior means "unknown ceiling, budget-mode
 // thinking", which is exactly what this client did before the table existed.
 //
-// Prefix matching is only safe because keys that differ in behavior do not
-// prefix each other: "claude-sonnet-4-6" does not match "claude-sonnet-4-5",
-// so Sonnet 4.5 correctly misses rather than inheriting 128K.
+// Prefix matching is only safe because the longest key wins: a point release
+// that behaves differently from its family gets a row of its own
+// ("claude-opus-5-5" over "claude-opus-5"), and sibling keys do not match
+// each other ("claude-sonnet-4-6" does not match "claude-sonnet-4-5", so
+// Sonnet 4.5 correctly misses rather than inheriting 128K). A new family
+// with no row falls back to budget mode, which the newest models reject with
+// a 400 — add its row when it ships.
 //
 // On the Adaptive/Budget split: the Adaptive set is exactly the families
 // where budget_tokens is a hard 400. Opus 4.6 and Sonnet 4.6 accept adaptive
@@ -194,9 +198,17 @@ type ModelBehavior struct {
 // broken today", which is what lets callers turn a thinking_budget on an
 // adaptive model into a loud error without breaking a working deployment.
 var modelBehaviors = map[string]ModelBehavior{
-	"claude-fable-5":    {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
-	"claude-mythos-5":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
-	"claude-opus-5":     {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-fable-5":  {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
+	"claude-mythos-5": {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
+	"claude-opus-5":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	// Opus 5.5 and Sonnet 5.5 refuse an explicit disable at every effort
+	// level (Sonnet 5.5's only off switch, "between_tools", is not something
+	// this client sends), so they need rows of their own over their
+	// families'.
+	"claude-opus-5-5":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
+	"claude-sonnet-5-5": {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
+	// Haiku 5.5 accepts a disable only at effort high or below, like Opus 5.
+	"claude-haiku-5":    {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
 	"claude-opus-4-8":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
 	"claude-opus-4-7":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
 	"claude-sonnet-5":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},

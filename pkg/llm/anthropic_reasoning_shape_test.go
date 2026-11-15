@@ -98,6 +98,12 @@ func TestAnthropicRequest_AdaptiveModelSendsEffortNotBudget(t *testing.T) {
 		{"claude-opus-5", "low", "low"},
 		{"claude-sonnet-5", "minimal", "low"},
 		{"claude-fable-5", "high", "high"},
+		// The 5.5 releases. claude-haiku-5-5 missed the table and was sent
+		// thinking: enabled, which the API answers with a 400.
+		{"claude-haiku-5-5", "high", "high"},
+		{"claude-sonnet-5-5", "medium", "medium"},
+		{"claude-opus-5-5", "low", "low"},
+		{"claude-fable-5-2", "high", "high"},
 		// A dated snapshot must inherit its family's row.
 		{"claude-opus-4-7-20260115", "medium", "medium"},
 	}
@@ -157,10 +163,12 @@ func TestAnthropicRequest_EffortNoneDisablesThinkingWhereSupported(t *testing.T)
 }
 
 func TestAnthropicRequest_EffortNoneOmittedWhereThinkingCannotBeDisabled(t *testing.T) {
-	// Fable and Mythos think unconditionally and reject an explicit disable.
-	// Sending it anyway would be a 400; the setting is reported as unhonored
-	// and the field left off.
-	for _, model := range []string{"claude-fable-5", "claude-mythos-5"} {
+	// Fable and Mythos think unconditionally and reject an explicit disable,
+	// as do Opus 5.5 and Sonnet 5.5 (which inherited Opus 5's and Sonnet 5's
+	// "can disable" before they had rows of their own). Sending it anyway
+	// would be a 400; the setting is reported as unhonored and the field left
+	// off.
+	for _, model := range []string{"claude-fable-5", "claude-mythos-5", "claude-opus-5-5", "claude-sonnet-5-5"} {
 		body := captureAnthropicBody(t, model, ClientConfig{ReasoningEffort: "none"}, ChatOptions{})
 		if _, present := body["thinking"]; present {
 			t.Errorf("%s: thinking present though the model rejects an explicit disable", model)
