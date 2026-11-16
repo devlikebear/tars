@@ -67,6 +67,8 @@ type Demo = {
   history: SessionMessage[]
   qaHistory: SessionMessage[]
   running: Running | null
+  // stopped is the turn a stop cut off, for resume to run again.
+  stopped?: { turn: Turn; prompt: string; lines: string[] }
   seq: number
 }
 
@@ -272,10 +274,33 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
   function stop(d: Demo) {
     const open = gateCard(d)
     if (open) decide(open, 'stop')
+    const cut = d.running
+    d.stopped = cut ? { turn: cut.turn, prompt: d.pipeline.pending_turn ?? '', lines: cut.lines } : undefined
     d.running = null
     delete d.pipeline.pending_turn
     delete d.pipeline.open_gate
     stage(d, d.pipeline.current).status = 'blocked'
+    touch(d)
+  }
+
+  // resume follows the desk's rule (focuspipeline/resume.go): the gate the
+  // stop closed opens again as a new card, or the stage goes on — the
+  // turn the stop cut off runs again.
+  function resume(d: Demo) {
+    const p = d.pipeline
+    const s = stage(d, p.current)
+    if (s.status !== 'blocked' || p.open_gate || d.running) throw new Refused(409, 'pipeline is not stopped', p)
+    s.status = 'active'
+    const last = [...p.cards].reverse().find((c) => c.kind === 'gate')
+    const gates: Partial<Record<FocusStageId, FocusGate>> = { plan: 'plan', pr: 'pr', merge: 'merge' }
+    const reopen = last?.decision === 'stop' && last.stage === p.current ? gates[p.current] : undefined
+    if (last && reopen) {
+      card(d, 'gate', last.stage, last.title, structuredClone(last.payload))
+      openGate(d, reopen)
+    } else if (d.stopped) {
+      start(d, d.stopped.turn, `The developer resumed this pipeline. Continue the ${p.current} stage. ${d.stopped.prompt}`.trim(), d.stopped.lines)
+    }
+    d.stopped = undefined
     touch(d)
   }
 
@@ -533,6 +558,7 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
         if (rest[0] === 'cards' && rest.length === 2) return act(() => decideCard(d, rest[1], body))
         if (rest[0] === 'findings') return act(() => addFinding(d, body))
         if (rest[0] === 'stop') return act(() => stop(d))
+        if (rest[0] === 'resume') return act(() => resume(d))
         if (rest[0] === 'goal') {
           if (body.enabled) throw new Refused(403, 'goal mode is turned on at the desk')
           return act(() => {})

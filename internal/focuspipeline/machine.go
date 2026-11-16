@@ -48,6 +48,9 @@ const (
 // block raises.
 const NoticeFormatMissing = "report format missing"
 
+// PlanGateTitle is the title of G1's card.
+const PlanGateTitle = "Approve plan"
+
 // PRDraftTitle is the title of the card a <focus-pr> draft becomes.
 const PRDraftTitle = "PR draft"
 
@@ -197,6 +200,8 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		return applyProbe(p, ev, now.UTC())
 	case EventSecondOpinion:
 		return applySecondOpinionEvent(p, ev, now.UTC())
+	case EventResume:
+		return applyResume(p, now.UTC())
 	case EventStop:
 		if !p.Active() && p.OpenGate != GateBlocked {
 			return p, noAction, ErrNotActive
@@ -253,7 +258,7 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		plan := clonePlan(*b.Plan)
 		plan = p.fitPlan(plan)
 		p.Plan = &plan
-		p.addCard(CardGate, ev.Turn, "Approve plan", plan, now)
+		p.addCard(CardGate, ev.Turn, PlanGateTitle, plan, now)
 		p.OpenGate = GatePlan
 		if p.hasStageKind(StagePR) {
 			if titles := tasksPushingOrOpeningPR(plan.Tasks); len(titles) > 0 {

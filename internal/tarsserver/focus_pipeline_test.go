@@ -591,14 +591,15 @@ func TestAppendFocusGuidance(t *testing.T) {
 	if got, mark := appendFocusGuidance("/review now", store, sess.ID, log); got != "/review now" || mark != nil {
 		t.Fatalf("slash command: %q %+v", got, mark)
 	}
-	// A stopped pipeline gives no guidance.
+	// A stopped pipeline gives only the stopped note, and no turn mark:
+	// nothing the turn says moves the pipeline.
 	if _, _, err := focusStoreFor(store).Update(sess.ID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		p.Stages[0].Status = focuspipeline.StatusBlocked
 		return p, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got, mark := appendFocusGuidance("hello", store, sess.ID, log); got != "hello" || mark != nil {
+	if got, mark := appendFocusGuidance("hello", store, sess.ID, log); !strings.HasPrefix(got, "hello\n\n<focus-stage>") || !strings.Contains(got, "pipeline is stopped") || mark != nil {
 		t.Fatalf("stopped: %q %+v", got, mark)
 	}
 }
@@ -781,6 +782,50 @@ func TestFocusStop(t *testing.T) {
 		t.Fatal("a refused stop changed the pipeline")
 	}
 	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/nope/stop", "", false); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing: %d", rec.Code)
+	}
+}
+
+func TestFocusResume(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+	sess := plannedFocusSession(t, f.store)
+	base := "/v1/focus/pipelines/" + sess.ID
+
+	// Not stopped yet: G1 is open.
+	if rec := focusRequest(t, h, http.MethodPost, base+"/resume", "", false); rec.Code != http.StatusConflict {
+		t.Fatalf("resume before stop: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := focusRequest(t, h, http.MethodPost, base+"/stop", "", false); rec.Code != http.StatusOK {
+		t.Fatalf("stop: %d %s", rec.Code, rec.Body.String())
+	}
+	// A chat turn in the stopped session carries the stopped note, not a
+	// stage's instructions.
+	if msg, _ := appendFocusGuidance("let's resume", f.store, sess.ID, zerolog.Nop()); !strings.Contains(msg, "pipeline is stopped") || strings.Contains(msg, "<focus-plan>") {
+		t.Fatalf("stopped guidance = %q", msg)
+	}
+
+	rec := focusRequest(t, h, http.MethodPost, base+"/resume", "", false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("resume: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Pipeline   focuspipeline.Pipeline `json:"pipeline"`
+		NextPrompt string                 `json:"next_prompt"`
+	}
+	decodeInto(t, rec, &out)
+	st, _ := out.Pipeline.Stage(focuspipeline.StagePlan)
+	if st.Status != focuspipeline.StatusActive || out.Pipeline.OpenGate != focuspipeline.GatePlan || out.NextPrompt != "" {
+		t.Fatalf("out = %+v", out)
+	}
+	if n := len(out.Pipeline.Cards); n != 2 || out.Pipeline.Cards[1].State != focuspipeline.CardUnseen {
+		t.Fatalf("cards = %+v", out.Pipeline.Cards)
+	}
+
+	if rec := focusRequest(t, h, http.MethodPost, base+"/resume", "", false); rec.Code != http.StatusConflict {
+		t.Fatalf("second resume: %d", rec.Code)
+	}
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/nope/resume", "", false); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing: %d", rec.Code)
 	}
 }

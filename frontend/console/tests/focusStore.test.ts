@@ -150,6 +150,31 @@ test('load reads the pipeline, the session and its transcript', async () => {
   assert.equal(store.running, false)
 })
 
+test('resume posts the resume action and shows the reopened gate', async () => {
+  const stoppedCard = { ...gateCard(), state: 'decided' as const, decision: 'stop' }
+  const stopped = pipeline('2026-10-01T00:00:02Z', [stoppedCard])
+  stopped.stages[0].status = 'blocked'
+  const fake = fakeApi(stopped)
+  const reopened = pipeline('2026-10-01T00:00:03Z', [stoppedCard, { ...gateCard(), id: 'c2' }], { open_gate: 'plan' })
+  const calls: string[] = []
+  const api = { ...fake.api, resume: async (id: string) => { calls.push(id); return { pipeline: reopened, next_prompt: '' } } }
+  const store = new FocusStore(api as never, memoryStorage())
+  await store.load('s1')
+  await settle(store)
+  assert.equal(await store.resume(), true)
+  assert.deepEqual(calls, ['s1'])
+  assert.equal(store.pipeline?.open_gate, 'plan')
+  // The reopened gate leads the deck; the stopped card stays behind it.
+  assert.deepEqual(store.deck.map((c) => [c.id, c.state]), [['c2', 'unseen'], ['c1', 'decided']])
+})
+
+test('resume does nothing when the API has no resume', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z'))
+  const store = newStore(fake)
+  await store.load('s1')
+  assert.equal(await store.resume(), false)
+})
+
 test('a 404 pipeline reads as not found', async () => {
   const fake = fakeApi(pipeline('t'))
   fake.api.getPipeline = async () => { throw Object.assign(new Error('pipeline not found'), { status: 404 }) }

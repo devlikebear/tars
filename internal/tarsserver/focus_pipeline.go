@@ -31,6 +31,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/findings        {title, scenario?, file?, line?, severity?, decision?} → 201 {pipeline, next_prompt, card_id}; the developer's own finding joins the review triage or the pr_review fix round (decision "fix" = decided from the start); 400 without a title, 409 {error, pipeline} outside those stages or behind a blocked/merge gate; allowed while a turn runs (focus_finding.go)
 //	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
+//	POST /v1/focus/pipelines/{id}/resume          → {pipeline, next_prompt}; reopens the gate the stop closed, or sends a turn that continues the stage (focuspipeline/resume.go); 409 when not stopped or a turn is running
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
 //	POST /v1/focus/pipelines/{id}/plan            {goal?, verify?, e2e?, e2e_setup?, e2e_teardown?} → {pipeline, changed}; edits the approved plan, 409 before G1 or once finished (focus_plan_edit.go)
@@ -133,6 +134,11 @@ func appendFocusGuidanceAt(message string, sessions *session.Store, sessionID, q
 	guidance := strings.TrimSpace(strings.ReplaceAll(focuspipeline.QuestionGuidance(p, questionGate), focusStageClose, ""))
 	if guidance == "" {
 		return message, nil
+	}
+	if p.Stopped() {
+		// Only the note that it is stopped: no turn mark, since nothing
+		// the turn says moves a stopped pipeline.
+		return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose, nil
 	}
 	stage, _ := p.Stage(p.Current)
 	mark := &focusTurnMark{Stage: stage.ID, Iteration: stage.Iteration, Gate: p.OpenGate}
@@ -391,6 +397,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/findings", api.addFinding)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/advance", api.advance)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/stop", api.stop)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/resume", api.resume)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/qa", api.qa)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/goal", api.goal)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/plan", api.planEdit)
@@ -1060,6 +1067,25 @@ func (a *focusAPI) stop(w http.ResponseWriter, r *http.Request) {
 	// with it a turn it started) first.
 	a.driver.cancel(id)
 	a.applyEvent(w, r, id, focuspipeline.Event{Kind: focuspipeline.EventStop}, focuspipeline.ErrNotActive)
+}
+
+// resume picks a stopped pipeline up where it stopped. Refused while a
+// turn runs: a chat turn typed into the stopped session must end first, or
+// the turn resume sends would collide with it.
+func (a *focusAPI) resume(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, ok := a.load(w, id); !ok {
+		return
+	}
+	if a.driver.turnRunning(id) {
+		resp := map[string]any{"error": "a turn is running on the session"}
+		if p, ok, err := a.store().Get(id); err == nil && ok {
+			resp["pipeline"] = p
+		}
+		writeJSON(w, http.StatusConflict, resp)
+		return
+	}
+	a.applyEvent(w, r, id, focuspipeline.Event{Kind: focuspipeline.EventResume}, focuspipeline.ErrNotStopped)
 }
 
 // applyEvent applies ev to a session's pipeline and writes the result; the

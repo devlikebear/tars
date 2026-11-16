@@ -39,6 +39,7 @@ export function remoteFocusApi(target: APITarget, pipelineID: string): FocusStor
     advance: (id, stage) => postFocusAction(at, `${path(id)}/advance`, { stage }),
     addFinding: (id, finding) => postFocusAction(at, `${path(id)}/findings`, finding),
     stop: (id) => postFocusAction(at, `${path(id)}/stop`, {}),
+    resume: (id) => postFocusAction(at, `${path(id)}/resume`, {}),
     goal: (id, enabled) => postFocusAction(at, `${path(id)}/goal`, { enabled }),
     ask: (id, cardId, question) => at<FocusQAResult>(`${path(id)}/qa`, json({ card_id: cardId, question })),
     activity: () => at<ActivitySnapshot>('/v1/chat/activity'),

@@ -404,8 +404,8 @@ func TestApplyStop(t *testing.T) {
 	if statuses(p)[StagePlan] != StatusBlocked || p.OpenGate != GateNone || act.Kind != ActionNone {
 		t.Fatalf("pipeline = %+v action = %+v", p, act)
 	}
-	if Guidance(p) != "" {
-		t.Fatal("a stopped pipeline gives no guidance")
+	if Guidance(p) != stoppedGuidance {
+		t.Fatal("a stopped pipeline gives only the stopped note")
 	}
 	if p.Active() {
 		t.Fatal("stopped pipeline is not active")
@@ -730,8 +730,8 @@ func TestApplyStopEvent(t *testing.T) {
 			if p.Current != tt.wantStage || statuses(p)[tt.wantStage] != StatusBlocked || p.OpenGate != GateNone || act.Kind != ActionNone {
 				t.Fatalf("pipeline = %+v act = %+v", p, act)
 			}
-			if p.Active() || Guidance(p) != "" {
-				t.Fatal("a stopped pipeline is inactive and gives no guidance")
+			if p.Active() || !p.Stopped() || Guidance(p) != stoppedGuidance {
+				t.Fatal("a stopped pipeline is inactive, stopped, and gives only the stopped note")
 			}
 			for i, c := range p.Cards {
 				wasOpen := start.OpenGate != GateNone && start.Cards[i].Kind == CardGate && start.Cards[i].State != CardDecided

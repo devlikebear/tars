@@ -146,11 +146,22 @@ func QuestionGuidance(p Pipeline, gate string) string {
 	return Guidance(q)
 }
 
+// stoppedGuidance is what a chat turn in a stopped pipeline's session
+// carries instead of a stage's instructions. Without it the turn went out
+// bare, and a "let's resume" typed there had the agent build the whole plan
+// on its own — no stages, no verification, no gates (2026-11-16).
+const stoppedGuidance = "Focus mode — this session's pipeline is stopped. No stage is running and nothing in this turn moves the pipeline. " +
+	"Do not pick up its plan or continue its work on your own. If the developer wants to continue in focus mode, tell them to press Resume on the pipeline screen; otherwise do what they ask."
+
 // Guidance is the hidden instruction appended to a focus turn's user
 // message: the current stage, its instructions, the plan's done criteria and
-// verification commands, and the exact block the reply must end with. It is
-// empty when the pipeline has no active stage (complete or stopped).
+// verification commands, and the exact block the reply must end with. A
+// stopped pipeline gets a short note that it is stopped (stoppedGuidance);
+// it is empty when the pipeline is complete or waits at a blocked gate.
 func Guidance(p Pipeline) string {
+	if p.Stopped() {
+		return stoppedGuidance
+	}
 	if !p.Active() {
 		return ""
 	}
