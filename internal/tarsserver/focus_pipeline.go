@@ -32,6 +32,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
 //	POST /v1/focus/pipelines/{id}/resume          → {pipeline, next_prompt}; reopens the gate the stop closed, or sends a turn that continues the stage (focuspipeline/resume.go); 409 when not stopped or a turn is running
+//	POST /v1/focus/pipelines/{id}/cleanup         {action?: "keep"|"discard"} → {pipeline, worktree_end}; finishes the session worktree a stopped or finished pipeline leaves behind (action defaults to "keep"); 409 while the pipeline is still active or a gate is open (focus_pr_poll.go's cleanupWorktree)
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
 //	POST /v1/focus/pipelines/{id}/plan            {goal?, verify?, e2e?, e2e_setup?, e2e_teardown?} → {pipeline, changed}; edits the approved plan, 409 before G1 or once finished (focus_plan_edit.go)
@@ -398,6 +399,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/advance", api.advance)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/stop", api.stop)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/resume", api.resume)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/cleanup", api.cleanup)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/qa", api.qa)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/goal", api.goal)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/plan", api.planEdit)
@@ -1086,6 +1088,52 @@ func (a *focusAPI) resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.applyEvent(w, r, id, focuspipeline.Event{Kind: focuspipeline.EventResume}, focuspipeline.ErrNotStopped)
+}
+
+// focusCleanupRequest is POST .../cleanup's body. Action is "keep" (commit
+// what the worktree gathered to its branch, then remove it — the default)
+// or "discard" (remove the folder and its branch outright).
+type focusCleanupRequest struct {
+	Action string `json:"action"`
+}
+
+// cleanup finishes a stopped or finished pipeline's session worktree by
+// hand: stop only blocks the pipeline, it never touches the files a
+// session's worktree gathered (focus_pr_poll.go's endWorktree only runs
+// past a merge stage). A developer who stops a task still wants the
+// worktree gone. 409 while the pipeline is still active or a gate is open
+// — cleanup follows a stop or a finish, it never replaces one.
+func (a *focusAPI) cleanup(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	p, ok := a.load(w, id)
+	if !ok {
+		return
+	}
+	if phase := focusListPhase(p); phase != "stopped" && phase != "finished" {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "the pipeline is still active", "pipeline": p})
+		return
+	}
+	var req focusCleanupRequest
+	if !decodeOptionalJSONBody(w, r, &req) {
+		return
+	}
+	action := strings.TrimSpace(req.Action)
+	if action == "" {
+		action = worktreeEndKeep
+	}
+	if action != worktreeEndKeep && action != worktreeEndDiscard {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": `action must be "keep" or "discard"`})
+		return
+	}
+	end := a.driver.cleanupWorktree(id, action)
+	next, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		return focuspipeline.RecordWorktreeEnd(p, end, a.now()), nil
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"pipeline": next, "worktree_end": end})
 }
 
 // applyEvent applies ev to a session's pipeline and writes the result; the

@@ -123,6 +123,7 @@ func TestEndpointAllowsRole_FocusPipelines(t *testing.T) {
 		{http.MethodPost, "/v1/focus/pipelines/abc123/advance", true},
 		{http.MethodPost, "/v1/focus/pipelines/abc123/stop", true},
 		{http.MethodPost, "/v1/focus/pipelines/abc123/resume", true},
+		{http.MethodPost, "/v1/focus/pipelines/abc123/cleanup", true},
 		{http.MethodPost, "/v1/focus/pipelines/abc123/goal", true},
 		{http.MethodGet, "/v1/focus/templates", true},
 		{http.MethodPost, "/v1/focus/templates", false},
