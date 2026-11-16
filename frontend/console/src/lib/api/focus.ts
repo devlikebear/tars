@@ -165,6 +165,14 @@ export function focusResume(sessionId: string): Promise<FocusActionResult> {
   return postAction(`${pipelinePath(sessionId)}/resume`, {})
 }
 
+// focusCleanup finishes a stopped or finished pipeline's session worktree
+// by hand: "keep" (the default) commits what it gathered to its branch and
+// removes the folder, "discard" removes the folder and its branch. 409
+// (conflict result) while the pipeline is still active or a gate is open.
+export function focusCleanup(sessionId: string, action: 'keep' | 'discard' = 'keep'): Promise<FocusActionResult> {
+  return postAction(`${pipelinePath(sessionId)}/cleanup`, { action })
+}
+
 export function listFocusTemplates(): Promise<FocusTemplateList> {
   return requestJSON<FocusTemplateList>('/v1/focus/templates')
 }

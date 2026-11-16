@@ -1133,7 +1133,10 @@ func (a *focusAPI) cleanup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"pipeline": next, "worktree_end": end})
+	// Shaped like every other mutating route (next_prompt: "", no turn):
+	// the console reads the result the same way, and next.WorktreeEnd
+	// already carries end for anyone who only looks at the pipeline.
+	writeJSON(w, http.StatusOK, map[string]any{"pipeline": next, "next_prompt": "", "worktree_end": end})
 }
 
 // applyEvent applies ev to a session's pipeline and writes the result; the

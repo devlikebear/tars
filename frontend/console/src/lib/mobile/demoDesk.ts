@@ -306,6 +306,15 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     touch(d)
   }
 
+  // cleanup mimics the real cleanup route: 409 while the pipeline is still
+  // active or a gate is open, else it records a worktree_end for the
+  // action asked (default "keep") like the real server's cleanupWorktree.
+  function cleanup(d: Demo, action: string) {
+    const ph = phase(d.pipeline)
+    if (ph !== 'stopped' && ph !== 'finished') throw new Refused(409, 'the pipeline is still active', d.pipeline)
+    d.pipeline.worktree_end = { action: action === 'discard' ? 'discard' : 'keep' }
+  }
+
   function gate(d: Demo, gate: string, body: { action?: string; note?: string; edits?: FocusPlan; pr?: FocusPRDraft }) {
     const p = d.pipeline
     const open = gateCard(d)
@@ -644,6 +653,7 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
         if (rest[0] === 'findings') return act(() => addFinding(d, body))
         if (rest[0] === 'stop') return act(() => stop(d))
         if (rest[0] === 'resume') return act(() => resume(d))
+        if (rest[0] === 'cleanup') return act(() => cleanup(d, String(body.action ?? 'keep')))
         if (rest[0] === 'goal') {
           if (body.enabled) throw new Refused(403, 'goal mode is turned on at the desk')
           return act(() => {})
