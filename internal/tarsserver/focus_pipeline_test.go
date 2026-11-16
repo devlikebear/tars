@@ -591,14 +591,15 @@ func TestAppendFocusGuidance(t *testing.T) {
 	if got, mark := appendFocusGuidance("/review now", store, sess.ID, log); got != "/review now" || mark != nil {
 		t.Fatalf("slash command: %q %+v", got, mark)
 	}
-	// A stopped pipeline gives no guidance.
+	// A stopped pipeline gives only the stopped note, and no turn mark:
+	// nothing the turn says moves the pipeline.
 	if _, _, err := focusStoreFor(store).Update(sess.ID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		p.Stages[0].Status = focuspipeline.StatusBlocked
 		return p, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got, mark := appendFocusGuidance("hello", store, sess.ID, log); got != "hello" || mark != nil {
+	if got, mark := appendFocusGuidance("hello", store, sess.ID, log); !strings.HasPrefix(got, "hello\n\n<focus-stage>") || !strings.Contains(got, "pipeline is stopped") || mark != nil {
 		t.Fatalf("stopped: %q %+v", got, mark)
 	}
 }

@@ -135,6 +135,11 @@ func appendFocusGuidanceAt(message string, sessions *session.Store, sessionID, q
 	if guidance == "" {
 		return message, nil
 	}
+	if p.Stopped() {
+		// Only the note that it is stopped: no turn mark, since nothing
+		// the turn says moves a stopped pipeline.
+		return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose, nil
+	}
 	stage, _ := p.Stage(p.Current)
 	mark := &focusTurnMark{Stage: stage.ID, Iteration: stage.Iteration, Gate: p.OpenGate}
 	if questionGate != "" {
