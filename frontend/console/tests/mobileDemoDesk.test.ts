@@ -135,6 +135,15 @@ test('findings all dismissed go straight to the PR gate; a stop ends the pipelin
   assert.equal(pipelinePhase(p), 'stopped')
   const item = (await inboxAPI.pipelines(d.target)).find((i) => i.session_id === id)!
   assert.deepEqual([item.phase, item.waiting], ['stopped', { cards: 0 }])
+
+  // Resume opens the stopped PR gate again as a new card.
+  const cards = p.cards.length
+  p = (await api.resume!(id)).pipeline
+  assert.equal(pipelinePhase(p), 'active')
+  assert.equal(p.open_gate, 'pr')
+  assert.equal(p.cards.length, cards + 1)
+  assert.equal(p.cards.at(-1)!.state, 'unseen')
+  assert.equal((await api.resume!(id)).conflict, true)
 })
 
 test('an idea sent as a task drafts a plan and waits at its gate', async () => {

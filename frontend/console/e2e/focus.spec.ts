@@ -329,6 +329,31 @@ test('the focus home lists the task and a stale gate action shows the current st
   await expect(page.getByTestId('focus-task').filter({ hasText: 'Add a greeting' }).first()).toBeVisible()
 })
 
+test('a pipeline stopped at the plan gate resumes there: the gate opens again and approving it builds', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-resume-')
+  const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal, cwd: repo } })).json()
+  const id = created.session_id as string
+  await autoMode(page, id)
+  await page.goto(`/console/focus/${id}`)
+  await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
+
+  // Stopped elsewhere (a phone): this screen catches up and offers Resume.
+  expect((await page.request.post(`/v1/focus/pipelines/${id}/gates/plan`, { data: { action: 'stop' } })).ok()).toBe(true)
+  await page.reload()
+  await expect(page.getByTestId('focus-stopped')).toBeVisible()
+  await page.getByTestId('focus-resume').click()
+  await expect(page.getByTestId('focus-stopped')).toBeHidden()
+
+  const resumed = await pipelineOf(page, id)
+  expect(resumed.open_gate).toBe('plan')
+  const gates = resumed.cards.filter((c) => c.kind === 'gate')
+  expect(gates.map((c) => c.decision ?? '')).toEqual(['stop', ''])
+  expect(gates[1].state).not.toBe('decided')
+
+  await page.getByTestId('focus-gate-approve').click()
+  await expect(page.getByTestId('focus-step-build')).toHaveAttribute('data-status', 'active')
+})
+
 test('plan gate edits survive a question turn that re-reads the pipeline', async ({ page }) => {
   const repo = newRepo('tars-e2e-focus-edit-')
   const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal, cwd: repo } })).json()

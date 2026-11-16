@@ -60,6 +60,8 @@ export type FocusStoreApi = {
   // The developer's own finding (POST …/findings).
   addFinding?(sessionId: string, finding: FocusFindingInput): Promise<FocusActionResult>
   stop(sessionId: string): Promise<FocusActionResult>
+  // Picks a stopped pipeline up again (POST …/resume).
+  resume?(sessionId: string): Promise<FocusActionResult>
   // Goal mode on or off (POST …/goal).
   goal?(sessionId: string, enabled: boolean): Promise<FocusActionResult>
   ask?(sessionId: string, cardId: string, question: string): Promise<FocusQAResult>
@@ -714,6 +716,16 @@ export class FocusStore {
     const sessionId = this.sessionId
     if (!sessionId) return false
     return this.act(() => this.api.stop(sessionId))
+  }
+
+  async resume(): Promise<boolean> {
+    const sessionId = this.sessionId
+    const resume = this.api.resume
+    if (!sessionId || !resume) return false
+    const ok = await this.act(() => resume(sessionId))
+    if (ok) this.viewStage = null
+    await this.flush()
+    return ok
   }
 
   // setGoal turns the pipeline's goal mode on or off.

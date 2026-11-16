@@ -51,6 +51,7 @@
     advance: api.focusAdvance,
     addFinding: api.focusAddFinding,
     stop: api.focusStop,
+    resume: api.focusResume,
     goal: api.setFocusGoal,
     ask: api.askFocusQuestion,
     activity: api.getChatActivity,
@@ -289,7 +290,10 @@
     {#if phase === 'finished'}
       <p class="banner done" data-testid="focus-finished">{outcome ? finishedText(outcome, { ...$t.focus.pr, finished: $t.focus.screen.finished }) : $t.focus.screen.finished}</p>
     {:else if phase === 'stopped'}
-      <p class="banner">{$t.focus.screen.stopped}</p>
+      <div class="banner stopped-banner" data-testid="focus-stopped">
+        <span>{$t.focus.screen.stopped}</span>
+        <button type="button" class="btn btn-secondary btn-sm" title={$t.focus.screen.resumeTitle} disabled={store.busy || store.running} onclick={() => void store.resume()} data-testid="focus-resume">{$t.focus.screen.resume}</button>
+      </div>
     {/if}
     {#if noticeText}<p class="banner">{noticeText}</p>{/if}
     {#if ghError}
@@ -510,6 +514,14 @@
     gap: var(--space-2);
     background: var(--warning-muted);
     color: var(--text-primary);
+  }
+
+  .stopped-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
 
   .banner.done {

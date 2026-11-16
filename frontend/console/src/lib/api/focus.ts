@@ -158,6 +158,13 @@ export function focusStop(sessionId: string): Promise<FocusActionResult> {
   return postAction(`${pipelinePath(sessionId)}/stop`, {})
 }
 
+// Picks a stopped pipeline up where it stopped: the gate the stop closed
+// opens again, or a turn continues the stage. 409 when it is not stopped
+// or a turn is running.
+export function focusResume(sessionId: string): Promise<FocusActionResult> {
+  return postAction(`${pipelinePath(sessionId)}/resume`, {})
+}
+
 export function listFocusTemplates(): Promise<FocusTemplateList> {
   return requestJSON<FocusTemplateList>('/v1/focus/templates')
 }
