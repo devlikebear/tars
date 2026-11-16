@@ -89,16 +89,19 @@ export class IdeaStore {
     }
   }
 
-  // send starts a focus task from an idea on desktop, in folder cwd, with
-  // template ('' for the desk's default). goal is the idea's text as the
-  // developer left it in the send sheet.
-  async send(desktop: PairedDesktop, ideaID: string, goal: string, cwd: string, template: string): Promise<SentIdea | null> {
+  // send starts a focus task from an idea on desktop, in dirs (the first
+  // picked folder is the active cwd, the rest ride as extra_dirs — reachable,
+  // never isolated), with template ('' for the desk's default). goal is the
+  // idea's text as the developer left it in the send sheet.
+  async send(desktop: PairedDesktop, ideaID: string, goal: string, dirs: string[], template: string): Promise<SentIdea | null> {
     const idea = this.ideas.find((i) => i.id === ideaID)
+    const [cwd, ...extraDirs] = dirs
     if (!idea || idea.sent || !goal.trim() || !cwd) return null
     this.sendFailure = null
     this.sending = true
     try {
-      const request: { goal: string; cwd: string; template?: string } = { goal: goal.trim(), cwd }
+      const request: { goal: string; cwd: string; extra_dirs?: string[]; template?: string } = { goal: goal.trim(), cwd }
+      if (extraDirs.length > 0) request.extra_dirs = extraDirs
       if (template) request.template = template
       const created = await this.#deps.api.createPipeline(targetOf(desktop), request)
       const sent: SentIdea = { desktopID: desktop.id, desktopName: desktop.name, sessionID: created.session_id, at: this.#now().toISOString() }

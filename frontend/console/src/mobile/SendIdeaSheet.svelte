@@ -22,10 +22,16 @@
 
   let { ideas, idea, desktops, readiness, onSent, onCancel }: Props = $props()
 
+  // The repository's own cap on a session's folders (cwd + extra_dirs,
+  // tars's maxSessionFolders); the server refuses anything past it.
+  const maxFolders = 8
+
   // svelte-ignore state_referenced_locally
   let goal = $state(idea.text)
   let desktopID = $state('')
-  let cwd = $state('')
+  // Picked folders, in click order: the first is the task's active cwd,
+  // the rest ride as extra_dirs (reachable, never isolated).
+  let dirs = $state<string[]>([])
   let template = $state('')
 
   const desktop = $derived(desktops.find((d) => d.id === desktopID) ?? null)
@@ -37,10 +43,19 @@
 
   function pick(id: string) {
     desktopID = id
-    cwd = ''
+    dirs = []
     template = ''
     const d = desktops.find((x) => x.id === id)
     if (d) void ideas.prepare(d)
+  }
+
+  function toggleDir(path: string, checked: boolean) {
+    if (checked) {
+      if (dirs.includes(path) || dirs.length >= maxFolders) return
+      dirs = [...dirs, path]
+    } else {
+      dirs = dirs.filter((d) => d !== path)
+    }
   }
 
   // One desktop: nothing to choose.
@@ -50,7 +65,7 @@
 
   // One folder: nothing to choose either.
   $effect(() => {
-    if (options && !cwd && options.folders.length === 1) cwd = options.folders[0].path
+    if (options && dirs.length === 0 && options.folders.length === 1) dirs = [options.folders[0].path]
   })
 
   function templateName(tpl: FocusTemplate): string {
@@ -60,7 +75,7 @@
   async function submit(e: SubmitEvent) {
     e.preventDefault()
     if (!desktop) return
-    const sent = await ideas.send(desktop, idea.id, goal, cwd, template)
+    const sent = await ideas.send(desktop, idea.id, goal, dirs, template)
     if (sent) onSent(sent)
   }
 </script>
@@ -105,18 +120,29 @@
       {:else if options}
         <fieldset>
           <legend>{$t.mobileApp.folderLabel}</legend>
+          <p class="hint">{$t.mobileApp.folderHint}</p>
           {#if options.folders.length === 0}
             <p class="hint" data-testid="mobile-send-no-folder">{$t.mobileApp.noFolders}</p>
           {/if}
           {#each options.folders as folder (folder.path)}
+            {@const at = dirs.indexOf(folder.path)}
             <label class="choice">
-              <input type="radio" name="folder" value={folder.path} bind:group={cwd} data-testid="mobile-send-folder" />
+              <input
+                type="checkbox"
+                checked={at >= 0}
+                disabled={at < 0 && dirs.length >= maxFolders}
+                onchange={(e) => toggleDir(folder.path, (e.currentTarget as HTMLInputElement).checked)}
+                data-testid="mobile-send-folder"
+              />
               <span class="folder">
-                <strong>{folder.name}</strong>
+                <strong>{folder.name}{#if at === 0} · {$t.mobileApp.folderPrimary}{/if}</strong>
                 <small class="mono">{folder.path}</small>
               </span>
             </label>
           {/each}
+          {#if dirs.length >= maxFolders}
+            <p class="hint">{$t.mobileApp.tooManyFolders(maxFolders)}</p>
+          {/if}
         </fieldset>
 
         {#if options.templates.length > 1}
@@ -138,7 +164,7 @@
     {/if}
 
     <div class="actions">
-      <button type="submit" class="btn btn-primary" disabled={ideas.sending || !desktop || !cwd || !goal.trim() || blocked} data-testid="mobile-send-submit">
+      <button type="submit" class="btn btn-primary" disabled={ideas.sending || !desktop || dirs.length === 0 || !goal.trim() || blocked} data-testid="mobile-send-submit">
         {ideas.sending ? $t.mobileApp.sending : $t.mobileApp.send}
       </button>
       <button type="button" class="btn btn-ghost" onclick={onCancel}>{$t.mobileApp.cancel}</button>
