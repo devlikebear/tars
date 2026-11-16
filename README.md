@@ -232,6 +232,7 @@ Multi-channel I/O beyond the web console:
 - **Webhooks** — Inbound HTTP triggers for external integrations
 - **Assistant** — macOS popup and voice helpers that share the core `~/.tars/workspace` default unless overridden
 - **Local** — Direct API calls for scripts and automation
+- **iPhone app** — [TARS Remote](https://apps.apple.com/app/id6835098160) answers focus pipelines from your phone: approve a plan, decide review findings, merge a pull request, send an idea as a task. It reaches only desktops you pair, over Tailscale ([`mobile/README.md`](mobile/README.md))
 - **Remote Access** — Tailscale Serve can publish the loopback-only console over tailnet HTTPS with a TARS-owned target, while browser sessions use admin/user password auth and remote/mobile logins stay user-scoped.
 
 ### Embodiment

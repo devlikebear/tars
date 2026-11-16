@@ -44,24 +44,31 @@ npm --prefix ../frontend/console run dev:mobile
 
 The server answers CORS only for the app's own origin (`capacitor://localhost`). A desktop browser therefore reaches a TARS server only with web security turned off, which is how the pairing flow was checked.
 
-## Run it on your iPhone
+## Get it on your iPhone
 
-The phone reaches each desktop at its Tailscale serve address, over https. Until the App Store version is out (`store/README.md` has the submission: build and upload script, listing, review notes), you install it from Xcode with your own Apple ID.
+The app is on the App Store as **TARS Remote**: https://apps.apple.com/app/id6835098160 (iPhone; an iPad runs it in iPhone mode). With nothing paired, **Try the demo desk** on the Desktops tab shows how it works. The phone reaches each desktop at its Tailscale serve address, over https.
 
 **At the desk (each desktop you want on the phone):**
 
-1. Run a TARS server that has the phone routes. They are on `main` after 0.68.0: a server that answers 404 to `GET /v1/focus/readiness` is too old. Until the next release that means a build of `main` (`make build`), not the app bundle's server.
+1. Run TARS 0.69.0 or later: that release has the phone's routes. A server that answers 404 to `GET /v1/focus/readiness` is too old.
 2. Settings → Channels & Remote → **Tailscale** → **Enable**. That points Tailscale serve at TARS and gives the desk its `https://<machine>.<tailnet>.ts.net` address. The Phones card stays disabled until this is on.
 3. Settings → Channels & Remote → **Phones** → **Add folder** for each folder a phone may start tasks in. Without one, a phone can continue tasks but not start them.
 
 **On the iPhone:**
 
 4. Install Tailscale and sign in to the same tailnet as the desk.
-5. Turn on Developer Mode: Settings → Privacy & Security → Developer Mode, then restart when asked. It appears once the phone has been connected to Xcode.
+5. Install TARS Remote from the App Store.
 
-**On the Mac with Xcode:**
+**Pair and try it:**
 
-6. Build the release bundle and open the project:
+6. At the desk, Phones → **Pair a phone**. Point the iPhone's Camera at the QR code and tap **Open in TARS**; the form fills in. Tap **Pair**.
+7. Waiting lists what waits on you; Ideas → **Send as task** starts a pipeline in a registered folder; open a pipeline to approve the plan and watch the turn run.
+
+If pairing says the desktop cannot be reached: check that Tailscale is connected on the phone, that the address in the form is the `https://…ts.net` one, and that `curl https://<machine>.<tailnet>.ts.net/v1/healthz` answers from another tailnet device.
+
+## Run your own build on an iPhone
+
+To try a change before it ships, install a build from Xcode with your own Apple ID. Turn on Developer Mode on the phone first (Settings → Privacy & Security → Developer Mode; it appears once the phone has been connected to Xcode), then build the release bundle and open the project:
 
    ```bash
    cd mobile
@@ -70,9 +77,9 @@ The phone reaches each desktop at its Tailscale serve address, over https. Until
    npm run open
    ```
 
-7. In Xcode, select the **App** target → Signing & Capabilities → **Team**: your Apple ID (a free Personal Team works). If Xcode says the bundle identifier is taken, change it to something of your own (e.g. `com.<you>.tars.mobile`); nothing on the desk depends on it.
-8. Connect the iPhone by cable (or the same Wi-Fi once paired), pick it as the run destination, and **Run** (⌘R).
-9. The first time, iOS refuses to open an app from an unknown developer: Settings → General → VPN & Device Management → your Apple ID → **Trust**. A Personal Team's install expires after 7 days; run from Xcode again to renew it.
+1. In Xcode, select the **App** target → Signing & Capabilities → **Team**: your Apple ID (a free Personal Team works). If Xcode says the bundle identifier is taken, change it to something of your own (e.g. `com.<you>.tars.mobile`); nothing on the desk depends on it.
+2. Connect the iPhone by cable (or the same Wi-Fi once paired), pick it as the run destination, and **Run** (⌘R).
+3. The first time, iOS refuses to open an app from an unknown developer: Settings → General → VPN & Device Management → your Apple ID → **Trust**. A Personal Team's install expires after 7 days; run from Xcode again to renew it.
 
 Without clicking through Xcode, the same build, signing and install run from `mobile/` once the phone is connected and trusted. `TEAMID` is your team (`defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier`), `UDID` the phone (`xcrun xctrace list devices`); the team is passed on the command line, so the project file stays unchanged:
 
@@ -84,16 +91,9 @@ xcrun devicectl device process launch --device UDID com.devlikebear.tars.mobile
 
 The first build fails with "Your team has no devices" while the phone is not connected: connect it, unlock it and trust the Mac, then run it again.
 
-**Pair and try it:**
+## Where it stands
 
-10. At the desk, Phones → **Pair a phone**. Point the iPhone's Camera at the QR code and tap **Open in TARS**; the form fills in. Tap **Pair**.
-11. Waiting lists what waits on you; Ideas → **Send as task** starts a pipeline in a registered folder; open a pipeline to approve the plan and watch the turn run.
-
-If pairing says the desktop cannot be reached: check that Tailscale is connected on the phone, that the address in the form is the `https://…ts.net` one, and that `curl https://<machine>.<tailnet>.ts.net/v1/healthz` answers from another tailnet device.
-
-## Not yet
-
-Phase 2's pieces are all here, and the development build has been run in the iOS Simulator end to end: pairing from a link, the Keychain across a relaunch, deciding a plan and a card, and a running turn streaming into the pipeline screen. Still open: a run on a real phone over Tailscale (steps above). Nothing here is distributed; a device build is signed with your own Apple ID in Xcode.
+Version 1.0.0 was released on the App Store on 2026-11-16, after a run on a real phone over Tailscale: pairing from the desk's QR code, a decision card, and an idea sent as a task. `store/README.md` has what a release needs: the build and upload script, the listing, the notes for App Review.
 
 The icon and launch image come from the desktop shell's icon code; to redraw them, from `desktop/`:
 
