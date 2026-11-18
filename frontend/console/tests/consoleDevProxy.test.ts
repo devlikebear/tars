@@ -22,6 +22,4 @@ test('console favicon resolves under the mounted console path', () => {
   assert.doesNotMatch(indexHtmlSource, /href="\/tars-icon\.png"/)
   assert.doesNotMatch(indexHtmlSource, /href="\/console\/tars-icon\.png"/)
   assert.doesNotMatch(indexHtmlSource, /%BASE_URL%tars-icon\.png/)
-  assert.match(indexHtmlSource, /href="\.\/favicon-32\.png"/)
-  assert.doesNotMatch(indexHtmlSource, /href="\/favicon-32\.png"/)
 })

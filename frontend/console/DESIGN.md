@@ -448,18 +448,6 @@ The palette is rooted in cool graphite neutrals, a single signal-green accent, a
 - `text-ghost` on `surface-base` — readable only as decoration; do not use for any meaningful copy.
 - Solid `success`/`warning`/`error`/`info` as a backgroundColor for body text — saturated; always reach for the muted variant.
 
-### Brand mark
-
-The mark is a T on graphite: a pale bar (`#dfe3e8`) across the top and, under a gap, a stem in signal green (`#3ee07f`). The T is the name; the stem is a terminal's block cursor, the place where the agent is working. It replaced an earlier photorealistic robot icon, which looked out of step with the rest of the console and lost all detail below ~32px. Two flat marks were tried and dropped on the way: a four-point spark (the generic "AI" glyph, it said nothing about TARS) and four upright slabs (they read as an equaliser or a bar chart).
-
-- **Source of truth**: `desktop/internal/icon/icon.go` (`mark`, called by `App`/`Mobile`/`Launch`/`Tray`/`Template`/`Maskable`). Every shipped icon file is a rendering of this one Go function — there is no hand-edited raster source. `desktop/tools/appicon`'s header comment has the full list of `go run ./tools/appicon -kind … -size … -out …` commands that regenerate every committed file (console public assets, `docs/brand/`, `mobile/ios/` app icon and launch image, the desktop app icon). The README header PNGs are `docs/brand/tars-readme-header*.svg` (which embed `tars-icon.png`) rendered at 760×220 on a transparent background. The iOS launch cover (`LaunchMarkView` in `mobile/ios/App/App/SceneDelegate.swift`) draws the same proportions natively and must change with `markRects`.
-- **Shape**: two rounded rectangles only (`markRects`): the bar 53% of the mark's box wide, the stem 17% wide and about two and a half times the bar's height, a gap of under 5% between them. Only the stem is green — a green bar as well reads as a plain letter, and the cursor is lost.
-- **Size rule**: at 48px and below every edge snaps to a whole pixel, both widths are even (so the stem sits exactly under the middle of the bar), corners are square, and the stem thickens to a fifth of the box. Re-tune by rendering 16, 32, 64 and 512px side by side, not by eye on one size.
-- **Tray state**: the Windows/Linux tray icon shows its state as a badge in the bottom-right corner (`Tray`, colour from `DotColour`), cut out of the mark so the two never merge; idle has no badge, offline greys the whole mark. The macOS menu bar icon (`Template`) is the black mark alone; the state is the text beside it.
-- **Maskable PWA icon**: `Maskable` shrinks the mark so its farthest point stays inside the W3C maskable-icon safe zone (a circle of radius 40% of the icon size from centre) — a host may crop anything outside that circle.
-- **One mark everywhere**: the former robot mascot is retired from every surface that used it, including the chat avatar (`tars-avatar.png`) and the README header — `tars-icon.png` and `tars-avatar.png` are now the same rendering, since a single flat glyph has no separate "avatar angle" the way a 3D mascot render did. The `Nav`/`ChatMessageItem` avatar frames dropped the warm peach gradient and brightness/contrast/saturate filter that existed to make the photorealistic robot pop — a flat vector mark needs neither.
-- **Out of scope**: CASE, the floating companion's animated sprite body (`src/assets/case/case-bot.webp`, see the Motion section below), is a separate, hand-animated character on its own art pipeline (`scripts/case_sprites.py`, `docs/plans/case-companion/design/v2/`) and was not redrawn as part of this mark change.
-
 ## Typography
 
 Three families, each with one job:
