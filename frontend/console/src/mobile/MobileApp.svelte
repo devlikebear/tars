@@ -22,20 +22,23 @@
   import PairSheet from './PairSheet.svelte'
   import IdeasView from './IdeasView.svelte'
   import SendIdeaSheet from './SendIdeaSheet.svelte'
+  import ChatView from './ChatView.svelte'
   import type { IdeaStore } from '../lib/mobile/ideaStore.svelte'
   import type { Idea, SentIdea } from '../lib/mobile/ideas'
+  import type { RemoteChatStore } from '../lib/mobile/remoteChatStore.svelte'
 
   interface Props {
     store: DesktopStore
     inbox: InboxStore
     ideas: IdeaStore
+    chat: RemoteChatStore
     // The desktops' focus event streams; optional so a screen built
     // without them still reads on its timer.
     events?: DesktopEvents
     links: AppLinks
   }
 
-  let { store, inbox, ideas, events, links }: Props = $props()
+  let { store, inbox, ideas, chat, events, links }: Props = $props()
 
   // The idea being sent, while the send sheet is open.
   let sending = $state<Idea | null>(null)
@@ -58,7 +61,7 @@
   // whose stream is open says at once when a pipeline changes.
   const pollMs = 30_000
 
-  let tab = $state<'inbox' | 'ideas' | 'desktops'>('inbox')
+  let tab = $state<'inbox' | 'ideas' | 'chat' | 'desktops'>('inbox')
   // The pipeline open on screen, on the desktop that owns it.
   let opened = $state<{ desktopID: string; sessionID: string } | null>(null)
   const openedDesktop = $derived(opened ? store.desktops.find((d) => d.id === opened!.desktopID) ?? null : null)
@@ -252,6 +255,16 @@
     <button
       type="button"
       role="tab"
+      aria-selected={tab === 'chat'}
+      class:active={tab === 'chat'}
+      onclick={() => (tab = 'chat')}
+      data-testid="mobile-tab-chat"
+    >
+      {$t.mobileApp.tabs.chat}
+    </button>
+    <button
+      type="button"
+      role="tab"
       aria-selected={tab === 'desktops'}
       class:active={tab === 'desktops'}
       onclick={() => (tab = 'desktops')}
@@ -269,6 +282,8 @@
     <InboxView {inbox} desktops={store.desktops} {missing} {checking} onOpen={openPipeline} />
   {:else if tab === 'ideas'}
     <IdeasView {ideas} onSend={openSend} onOpen={openPipeline} paired={(id) => store.desktops.some((d) => d.id === id)} />
+  {:else if tab === 'chat'}
+    <ChatView {chat} desktops={onlineDesktops} />
   {:else}
   <section aria-label={$t.mobileApp.desktopsTitle}>
     {#if store.loaded && store.desktops.length === 0}

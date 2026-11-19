@@ -243,9 +243,11 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     openGate(d, 'pr')
   }
 
-  // settle ends every turn whose time has passed.
+  // settle ends every turn whose time has passed, the device chat session's
+  // included.
   function settle() {
     for (const d of demos.values()) if (d.running && now() >= d.running.until) finish(d)
+    chatSettle()
   }
 
   // --- Actions --------------------------------------------------------------
@@ -483,6 +485,72 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
   }
 
+  // --- The device's own chat session (§8) -----------------------------------
+  //
+  // Not a pipeline: it never appears in /v1/focus/pipelines and its turn
+  // never touches a stage, a card or a gate. There is exactly one — the
+  // phone never names a session id for it, so neither does the demo.
+
+  const chatSessionID = 'demo-chat'
+  let chatHistory: SessionMessage[] = []
+  let chatRunning: Running | null = null
+  let chatSeq = 0
+
+  function chatSay(role: 'user' | 'assistant', content: string) {
+    chatSeq++
+    chatHistory.push({ id: `${chatSessionID}-m${chatSeq}`, role, content, timestamp: iso() })
+  }
+
+  function startChatTurn(message: string) {
+    chatSay('user', message)
+    chatRunning = { turn: 'typed', startedAt: now(), until: now() + turnMs, lines: ['Reading the message'] }
+  }
+
+  function finishChatTurn() {
+    if (!chatRunning) return
+    chatRunning = null
+    chatSay(
+      'assistant',
+      'This is the demo desk, so no real model answered — nothing typed here leaves this phone. Pair a real desktop to chat with TARS for real.',
+    )
+  }
+
+  function chatSettle() {
+    if (chatRunning && now() >= chatRunning.until) finishChatTurn()
+  }
+
+  function chatFeed(): Response {
+    const running = chatRunning!
+    const encoder = new TextEncoder()
+    const event = (data: unknown) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
+    const step = (running.until - running.startedAt) / (running.lines.length + 1)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(event({ type: 'turn_started', session_id: chatSessionID }))
+        let sent = 0
+        const pump = () => {
+          while (sent < running.lines.length && now() >= running.startedAt + step * (sent + 1)) {
+            controller.enqueue(event({ type: 'delta', session_id: chatSessionID, text: `${running.lines[sent]}.\n` }))
+            sent++
+          }
+          if (now() >= running.until || chatRunning !== running) {
+            chatSettle()
+            controller.enqueue(event({ type: 'done', session_id: chatSessionID }))
+            controller.close()
+            return
+          }
+          timer = setTimeout(pump, Math.max(50, Math.min(step, running.until - now())))
+        }
+        pump()
+      },
+      cancel() {
+        if (timer) clearTimeout(timer)
+      },
+    })
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }
+
   // --- Routes ---------------------------------------------------------------
 
   const json = (value: unknown, status = 200) =>
@@ -516,6 +584,9 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     if (is('GET', 'v1', 'focus', 'pipelines')) return json([...demos.values()].map(listItem))
     if (is('POST', 'v1', 'focus', 'pipelines')) return json(create(body))
 
+    if (is('POST', 'v1', 'remote', 'chat', 'session')) return json({ session_id: chatSessionID })
+    if (is('GET', 'v1', 'remote', 'chat', 'history')) return json({ session_id: chatSessionID, messages: chatHistory })
+
     if (is('POST', 'v1', 'ops', 'approvals', '*', '*')) {
       if (!approvals.some((a) => a.approval_id === parts[3])) throw new Refused(409, 'already answered')
       approvals = approvals.filter((a) => a.approval_id !== parts[3])
@@ -523,18 +594,32 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     }
 
     if (is('GET', 'v1', 'chat', 'stream')) {
-      const d = demos.get(url.searchParams.get('session_id') ?? '')
+      const sessionID = url.searchParams.get('session_id') ?? ''
+      if (sessionID === chatSessionID) return chatRunning ? chatFeed() : new Response(null, { status: 204 })
+      const d = demos.get(sessionID)
       return d?.running ? feed(d) : new Response(null, { status: 204 })
     }
     if (is('POST', 'v1', 'chat')) {
-      const d = demos.get(String(body.session_id ?? ''))
+      const sessionID = String(body.session_id ?? '')
+      if (sessionID === chatSessionID) {
+        if (chatRunning) throw new Refused(409, 'a turn is already running')
+        startChatTurn(String(body.message ?? ''))
+        return chatFeed()
+      }
+      const d = demos.get(sessionID)
       if (!d) throw new Refused(404, 'no such session')
       if (d.running) throw new Refused(409, 'a turn is already running')
       start(d, 'typed', String(body.message ?? ''), ['Reading the instruction'])
       return feed(d)
     }
     if (is('POST', 'v1', 'chat', 'cancel')) {
-      const d = demos.get(url.searchParams.get('session_id') ?? '')
+      const sessionID = url.searchParams.get('session_id') ?? ''
+      if (sessionID === chatSessionID) {
+        const had = !!chatRunning
+        chatRunning = null
+        return json({ cancelled: had, ended: true })
+      }
+      const d = demos.get(sessionID)
       if (d?.running) stop(d)
       return json({ cancelled: !!d, ended: true })
     }

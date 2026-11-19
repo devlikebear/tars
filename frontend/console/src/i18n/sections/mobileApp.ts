@@ -50,7 +50,7 @@ export const mobileAppEn = {
   confirmForget: (name: string) => `Forget ${name} on this phone? The desktop keeps listing this phone until you revoke it there.`,
 
   refreshing: 'Checking...',
-  tabs: { inbox: 'Waiting', ideas: 'Ideas', desktops: 'Desktops' },
+  tabs: { inbox: 'Waiting', ideas: 'Ideas', desktops: 'Desktops', chat: 'Chat' },
   inboxNoDesktops: 'Pair a desktop to see what waits on you there.',
   inboxChecking: 'Asking your desktops...',
   inboxEmpty: 'Nothing waits on you.',
@@ -123,6 +123,34 @@ export const mobileAppEn = {
     unreachable: "Can't reach this desktop. Is it awake, and is this phone on Tailscale?",
     failed: "The desktop didn't start the task.",
   },
+
+  // The Chat tab (docs/decisions/mobile-remote.md §8): one plain chat
+  // session per paired device, not the chat workbench — no session list,
+  // no history beyond this one session.
+  chat: {
+    pickDesktop: 'Desktop',
+    noDesktop: 'Pair a desktop to chat with it.',
+    connecting: 'Connecting...',
+    placeholder: 'Message',
+    send: 'Send',
+    stop: 'Stop',
+    running: 'Thinking...',
+    empty: 'Ask anything. This chat stays separate from your focus tasks.',
+    failures: {
+      unpaired: 'This desktop no longer accepts this phone. Pair again.',
+      failed: "Couldn't reach this desktop.",
+    } as Record<string, string>,
+    permission: {
+      allowOnce: 'Allow once',
+      allowSession: 'Allow for this chat',
+      deny: 'Deny',
+      sending: 'Sending...',
+      allowed: 'Allowed.',
+      allowedSession: 'Allowed for this chat.',
+      denied: 'Denied.',
+      failed: "Couldn't send the answer. Try again.",
+    },
+  },
 }
 
 export type MobileAppTranslations = typeof mobileAppEn
@@ -177,7 +205,7 @@ export const mobileAppKo: MobileAppTranslations = {
   confirmForget: (name) => `이 휴대폰에서 ${name}을(를) 지울까요? 데스크톱에서 연결을 해제하기 전까지는 그쪽 목록에 이 휴대폰이 남아 있습니다.`,
 
   refreshing: '확인 중...',
-  tabs: { inbox: '대기 중', ideas: '아이디어', desktops: '데스크톱' },
+  tabs: { inbox: '대기 중', ideas: '아이디어', desktops: '데스크톱', chat: '채팅' },
   inboxNoDesktops: '데스크톱을 연결하면 그곳에서 기다리는 일이 여기에 보입니다.',
   inboxChecking: '데스크톱에 묻는 중...',
   inboxEmpty: '기다리는 일이 없습니다.',
@@ -249,5 +277,30 @@ export const mobileAppKo: MobileAppTranslations = {
     unpaired: '데스크톱이 이 휴대폰을 더 이상 받지 않습니다. 다시 연결하세요.',
     unreachable: '이 데스크톱에 접속할 수 없습니다. 켜져 있고 이 휴대폰이 Tailscale에 연결되어 있나요?',
     failed: '데스크톱이 작업을 시작하지 않았습니다.',
+  },
+
+  chat: {
+    pickDesktop: '데스크톱',
+    noDesktop: '데스크톱을 연결하면 채팅할 수 있습니다.',
+    connecting: '연결하는 중...',
+    placeholder: '메시지',
+    send: '보내기',
+    stop: '중지',
+    running: '생각하는 중...',
+    empty: '무엇이든 물어보세요. 이 채팅은 포커스 작업과 별도로 보관됩니다.',
+    failures: {
+      unpaired: '데스크톱이 이 휴대폰을 더 이상 받지 않습니다. 다시 연결하세요.',
+      failed: '이 데스크톱에 접속할 수 없습니다.',
+    },
+    permission: {
+      allowOnce: '한 번 허용',
+      allowSession: '이 채팅에서 허용',
+      deny: '거부',
+      sending: '보내는 중...',
+      allowed: '허용했습니다.',
+      allowedSession: '이 채팅에서 허용했습니다.',
+      denied: '거부했습니다.',
+      failed: '답을 보내지 못했습니다. 다시 시도하세요.',
+    },
   },
 }

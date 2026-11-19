@@ -112,6 +112,7 @@ type apiRouteHandlers struct {
 	focusReads        http.Handler
 	focusReadiness    http.Handler
 	focusEvents       http.Handler
+	remoteChat        http.Handler
 	permissionMode    http.Handler
 	work              http.Handler
 	memory            http.Handler
@@ -730,7 +731,9 @@ func buildAPIMux(
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
 	keepAwake := newDeskKeepAwake(cfg.WorkspaceDir, logger)
-	devicesHandler := apihandlers.NewDevicesHandler(consoleauth.NewStore(cfg.WorkspaceDir), logger, apihandlers.WithKeepAwake(keepAwake))
+	consoleAuthStore := consoleauth.NewStore(cfg.WorkspaceDir)
+	devicesHandler := apihandlers.NewDevicesHandler(consoleAuthStore, logger, apihandlers.WithKeepAwake(keepAwake))
+	remoteChatHandler := apihandlers.NewRemoteChatHandler(sessionStore, consoleAuthStore, logger)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	remoteAccessHandler := apihandlers.NewRemoteAccessHandler(apihandlers.RemoteAccessOptions{
 		Config:     cfg,
@@ -835,6 +838,7 @@ func buildAPIMux(
 		focusReads:        apihandlers.NewFocusReadsHandler(sessionStore, checkpointStore, logger),
 		focusReadiness:    newFocusReadinessHandler(cfg),
 		focusEvents:       newFocusEventsHandler(focusEvents),
+		remoteChat:        remoteChatHandler,
 		checkpoints:       newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
 			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
@@ -1004,6 +1008,12 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	if handlers.focusEvents != nil {
 		mux.Handle("/v1/focus/events", handlers.focusEvents)
+	}
+	// A paired phone's one chat session for a plain question outside a
+	// focus task (docs/decisions/mobile-remote.md §8).
+	if handlers.remoteChat != nil {
+		mux.Handle("/v1/remote/chat/session", handlers.remoteChat)
+		mux.Handle("/v1/remote/chat/history", handlers.remoteChat)
 	}
 	if handlers.permissionMode != nil {
 		mux.Handle("/v1/admin/sessions/{id}/permission-mode", handlers.permissionMode)

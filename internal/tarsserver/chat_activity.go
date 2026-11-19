@@ -328,7 +328,7 @@ func handleChatActivity(w http.ResponseWriter, r *http.Request, activity *chatAc
 		if activity != nil {
 			sessions = activity.sessions
 		}
-		filtered, err := newFocusDeviceScope(sessions).filterActivity(snap)
+		filtered, err := newFocusDeviceScope(sessions).filterActivity(r, snap)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "", "failed to read focus pipelines")
 			return

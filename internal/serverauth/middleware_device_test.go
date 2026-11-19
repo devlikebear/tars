@@ -7,19 +7,44 @@ import (
 	"testing"
 )
 
-func deviceResolver(tokens map[string]string) func(string) (string, bool) {
-	return func(token string) (string, bool) {
-		role, ok := tokens[token]
-		return role, ok
+// deviceRecord is a resolver fixture entry: a role, and the device id to
+// report alongside it. A record with ok false (the zero value, used by
+// deviceResolverRevoking) stands in for a revoked or unknown device.
+type deviceRecord struct {
+	role     string
+	deviceID string
+}
+
+func deviceResolver(tokens map[string]string) func(string) (string, string, bool) {
+	records := map[string]deviceRecord{}
+	for token, role := range tokens {
+		records[token] = deviceRecord{role: role, deviceID: "dev-" + token}
+	}
+	return deviceResolverFromRecords(records)
+}
+
+func deviceResolverFromRecords(records map[string]deviceRecord) func(string) (string, string, bool) {
+	return func(token string) (string, string, bool) {
+		rec, ok := records[token]
+		if !ok {
+			return "", "", false
+		}
+		return rec.role, rec.deviceID, true
 	}
 }
 
 type seenRequest struct {
-	role   string
-	source string
+	role     string
+	source   string
+	deviceID string
 }
 
 func newDeviceTestHandler(t *testing.T, mode string, tokens map[string]string) (http.Handler, *seenRequest) {
+	t.Helper()
+	return newDeviceTestHandlerFromResolver(t, mode, deviceResolver(tokens))
+}
+
+func newDeviceTestHandlerFromResolver(t *testing.T, mode string, resolver func(string) (string, string, bool)) (http.Handler, *seenRequest) {
 	t.Helper()
 	seen := &seenRequest{}
 	mw := NewMiddleware(Options{
@@ -27,11 +52,12 @@ func newDeviceTestHandler(t *testing.T, mode string, tokens map[string]string) (
 		UserToken:           "user-token",
 		AdminToken:          "admin-token",
 		AdminPaths:          []string{"/v1/admin/*"},
-		DeviceTokenResolver: deviceResolver(tokens),
+		DeviceTokenResolver: resolver,
 	}, io.Discard)
 	return mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen.role = RoleFromRequest(r)
 		seen.source = AuthSourceFromRequest(r)
+		seen.deviceID = DeviceIDFromRequest(r)
 		w.WriteHeader(http.StatusNoContent)
 	})), seen
 }
@@ -65,6 +91,8 @@ func TestDeviceTokenReachesOnlyFocusRoutes(t *testing.T) {
 		{http.MethodPost, "/v1/focus/pipelines/abc/gates/plan"},
 		{http.MethodGet, "/v1/focus/pipelines/abc"},
 		{http.MethodGet, "/v1/auth/whoami"},
+		{http.MethodPost, "/v1/remote/chat/session"},
+		{http.MethodGet, "/v1/remote/chat/history"},
 		{http.MethodPost, "/v1/chat"},
 		{http.MethodGet, "/v1/chat/stream"},
 		{http.MethodPost, "/v1/chat/cancel"},
@@ -152,6 +180,8 @@ func TestFocusEndpointTable(t *testing.T) {
 		{http.MethodPost, "/v1/focus/pipelines/s1/plan?x=1"},
 		{http.MethodGet, "/v1/focus/templates"},
 		{http.MethodGet, "/v1/focus/readiness"},
+		{http.MethodPost, "/v1/remote/chat/session"},
+		{http.MethodGet, "/v1/remote/chat/history"},
 		{http.MethodGet, "/v1/focus/events"},
 		{http.MethodGet, "/v1/focus/pipelines/s1/session"},
 		{http.MethodGet, "/v1/focus/pipelines/s1/history?session=qa"},
@@ -190,6 +220,33 @@ func TestFocusEndpointTable(t *testing.T) {
 		if rule.Access != EndpointAccessFocus && rule.Access != EndpointAccessPublic {
 			t.Errorf("rule %s has access %q", rule.Pattern, rule.Access)
 		}
+	}
+}
+
+func TestDeviceTokenCarriesDeviceID(t *testing.T) {
+	h, seen := newDeviceTestHandler(t, ModeRequired, map[string]string{"phone-token": RoleFocus})
+	rec := serveWithBearer(h, http.MethodGet, "/v1/focus/pipelines", "100.64.0.9:5555", "phone-token")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if seen.deviceID != "dev-phone-token" {
+		t.Fatalf("handler saw device id %q, want %q", seen.deviceID, "dev-phone-token")
+	}
+}
+
+func TestRevokedDeviceTokenIsRejected(t *testing.T) {
+	// A revoked (or otherwise unknown) device token resolves with ok=false,
+	// same as any other credential the resolver does not recognize: the
+	// request is unauthorized, and no role or device id reaches the handler.
+	h, seen := newDeviceTestHandlerFromResolver(t, ModeRequired, deviceResolverFromRecords(map[string]deviceRecord{
+		"phone-token": {role: RoleFocus, deviceID: "dev-1"},
+	}))
+	rec := serveWithBearer(h, http.MethodGet, "/v1/focus/pipelines", "100.64.0.9:5555", "revoked-token")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked device token: got %d, want 401", rec.Code)
+	}
+	if seen.role != "" || seen.deviceID != "" {
+		t.Fatalf("handler must not run for a rejected request: role=%q deviceID=%q", seen.role, seen.deviceID)
 	}
 }
 

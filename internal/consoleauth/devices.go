@@ -106,6 +106,26 @@ func (s *Store) ListDevices() ([]Device, error) {
 	return s.loadDevices()
 }
 
+// DeviceByID returns the device with id, revoked ones included (a revoked
+// device's name is still worth showing, e.g. on a chat session title made
+// before it was revoked).
+func (s *Store) DeviceByID(id string) (Device, bool, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Device{}, false, nil
+	}
+	devices, err := s.loadDevices()
+	if err != nil {
+		return Device{}, false, err
+	}
+	for _, device := range devices {
+		if device.ID == id {
+			return device, true, nil
+		}
+	}
+	return Device{}, false, nil
+}
+
 // RevokeDevice stops the device's token from authenticating. Revoking a
 // device that is already revoked is not an error.
 func (s *Store) RevokeDevice(id string) error {

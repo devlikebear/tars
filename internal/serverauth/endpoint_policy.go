@@ -160,9 +160,16 @@ var focusEndpointRules = []EndpointPolicyRule{
 	// Session ids only, of pipelines the phone can list anyway
 	// (internal/tarsserver/focus_events.go) — not /v1/events/stream.
 	focusRule([]string{http.MethodGet}, "/v1/focus/events", "which focus pipeline changed, as it changes"),
+	// The device's one chat session for a plain question outside a focus
+	// task (docs/decisions/mobile-remote.md §8). Neither route takes a
+	// session id — the handler resolves "my session" from the device id on
+	// the request (internal/apihandlers/remote_chat.go).
+	focusRule([]string{http.MethodPost}, "/v1/remote/chat/session", "device chat session ensure"),
+	focusRule([]string{http.MethodGet}, "/v1/remote/chat/history", "device chat session history"),
 	// The routes below name a session. Their handlers let a phone reach only
-	// focus pipeline sessions (internal/tarsserver/focus_device_scope.go).
-	focusRule([]string{http.MethodPost}, "/v1/chat", "chat turn in a focus pipeline session"),
+	// focus pipeline sessions, or (§8) the device's own chat session
+	// (internal/tarsserver/focus_device_scope.go).
+	focusRule([]string{http.MethodPost}, "/v1/chat", "chat turn in a focus pipeline or device chat session"),
 	focusRule([]string{http.MethodGet}, "/v1/chat/stream", "turn feed of a focus session"),
 	focusRule([]string{http.MethodPost}, "/v1/chat/cancel", "cancel a focus session's turn"),
 	focusRule([]string{http.MethodPost}, "/v1/chat/permissions/:id", "answer a focus turn's permission question"),

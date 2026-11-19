@@ -221,6 +221,41 @@ func TestWithWorkspaceID(t *testing.T) {
 	}
 }
 
+func TestWithDeviceIDContext(t *testing.T) {
+	// An empty (or all-whitespace) device id leaves whatever ctx already
+	// carries alone.
+	ctx := WithDeviceIDContext(context.Background(), "  dev-1  ")
+	req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+	if got := DeviceIDFromRequest(req); got != "dev-1" {
+		t.Fatalf("expected dev-1, got %q", got)
+	}
+	same := WithDeviceIDContext(ctx, "   ")
+	if same != ctx {
+		t.Fatalf("an empty device id must not replace the context")
+	}
+	// A request with no device id, and a nil request, both answer "".
+	if got := DeviceIDFromRequest(httptest.NewRequest(http.MethodGet, "/", nil)); got != "" {
+		t.Fatalf("no device id on the request: got %q", got)
+	}
+	if got := DeviceIDFromRequest(nil); got != "" {
+		t.Fatalf("nil request: got %q", got)
+	}
+}
+
+func TestWithDeviceIDNilRequest(t *testing.T) {
+	if got := withDeviceID(nil, "dev-1"); got != nil {
+		t.Fatalf("withDeviceID(nil, ...) must stay nil, got %v", got)
+	}
+}
+
+func TestResolveRoleWithoutBearer(t *testing.T) {
+	compiled := compileOptions(Options{UserToken: "user-token"}, io.Discard)
+	role, source, deviceID := compiled.resolveRole("")
+	if role != "" || source != "" || deviceID != "" {
+		t.Fatalf("no bearer at all must resolve to nothing: role=%q source=%q deviceID=%q", role, source, deviceID)
+	}
+}
+
 func TestMiddleware_AdminPathRejectsUserToken(t *testing.T) {
 	mw := NewMiddleware(Options{
 		Mode:        ModeRequired,
@@ -617,13 +652,13 @@ func TestCompileOptions_NormalizesPathsTokensAndWorkspaceSettings(t *testing.T) 
 	if !compiled.adminPaths.match("/v1/channels/webhook/inbound/general") {
 		t.Fatalf("expected wildcard admin path to match by prefix")
 	}
-	if role, source := compiled.resolveRole("Bearer user-token"); role != RoleUser || source != authSourceBearer {
+	if role, source, _ := compiled.resolveRole("Bearer user-token"); role != RoleUser || source != authSourceBearer {
 		t.Fatalf("expected user token to resolve to role user")
 	}
-	if role, _ := compiled.resolveRole("Bearer admin-token"); role != RoleAdmin {
+	if role, _, _ := compiled.resolveRole("Bearer admin-token"); role != RoleAdmin {
 		t.Fatalf("expected admin token to resolve to role admin")
 	}
-	if role, source := compiled.resolveRole("Bearer unknown-token"); role != "" || source != "" {
+	if role, source, _ := compiled.resolveRole("Bearer unknown-token"); role != "" || source != "" {
 		t.Fatalf("expected unknown token to resolve to empty role")
 	}
 	if !compiled.requireWorkspaceForAuthorized {
