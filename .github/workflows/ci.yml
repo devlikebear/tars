@@ -73,8 +73,13 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Skip apt when the image already has rg, and retry the download:
+      # an Ubuntu mirror timeout failed this required job on 2026-11-19.
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        run: |
+          if command -v rg >/dev/null 2>&1; then rg --version | head -1; exit 0; fi
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y ripgrep
 
       - name: Run security scan
         run: make security-scan
