@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import { serveLocally } from '../src/lib/api/client.ts'
 import { inboxAPI, desktopAPI, taskAPI } from '../src/lib/mobile/desktopApi.ts'
+import { remoteChatAPI } from '../src/lib/mobile/remoteChat.ts'
 import { createDemoDesk, demoBaseURL, demoDesktop, isDemoDesktop } from '../src/lib/mobile/demoDesk.ts'
 import { targetOf } from '../src/lib/mobile/desktops.ts'
 import { remoteFocusApi } from '../src/lib/mobile/focusRemote.ts'
@@ -190,4 +191,58 @@ test('a running turn streams into the pipeline screen and ends with the turn', a
   const history = await api.getHistory(id)
   assert.equal(history.at(-2)?.content, 'Use a switch, not a dropdown')
   assert.equal(history.at(-1)?.role, 'assistant')
+})
+
+// The device's own chat session (§8): not a pipeline, so it never shows in
+// /v1/focus/pipelines, and a round trip through it answers with fixed text.
+test('the device chat session answers a plain question and settles into history', async () => {
+  const demo = createDemoDesk({ turnMs: 100 })
+  serveLocally(demoBaseURL, demo.handle)
+  const target = targetOf(demoDesktop(new Date()))
+
+  const sessionId = await remoteChatAPI.ensureSession(target)
+  assert.equal(sessionId, 'demo-chat')
+  // Asking again returns the same session, not a new one.
+  assert.equal(await remoteChatAPI.ensureSession(target), sessionId)
+  assert.ok(!(await inboxAPI.pipelines(target)).some((p) => p.session_id === sessionId))
+
+  assert.deepEqual((await remoteChatAPI.history(target)).messages, [])
+  assert.equal(await remoteChatAPI.attach(target, sessionId, () => {}), false)
+
+  const events: ChatEvent[] = []
+  await remoteChatAPI.send(target, sessionId, 'what can you do here?', (e) => events.push(e))
+  assert.equal(events[0].type, 'turn_started')
+  assert.equal(events.at(-1)?.type, 'done')
+  assert.ok(events.some((e) => e.type === 'delta'))
+
+  const after = await remoteChatAPI.history(target)
+  assert.equal(after.sessionId, sessionId)
+  assert.deepEqual(
+    after.messages.map((m) => m.role),
+    ['user', 'assistant'],
+  )
+  assert.equal(after.messages[0].content, 'what can you do here?')
+  assert.match(after.messages[1].content, /demo desk/)
+})
+
+test('a device chat turn can be cancelled mid-stream, with no reply recorded', async () => {
+  const demo = createDemoDesk({ turnMs: 300 })
+  serveLocally(demoBaseURL, demo.handle)
+  const target = targetOf(demoDesktop(new Date()))
+  const sessionId = await remoteChatAPI.ensureSession(target)
+
+  const events: ChatEvent[] = []
+  const sent = remoteChatAPI.send(target, sessionId, 'hello', (e) => events.push(e))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(await remoteChatAPI.cancel(target, sessionId), true)
+  await sent
+  assert.equal(events.at(-1)?.type, 'done')
+
+  const history = await remoteChatAPI.history(target)
+  assert.deepEqual(
+    history.messages.map((m) => m.role),
+    ['user'],
+  )
+  // Cancelling again has nothing left to cancel.
+  assert.equal(await remoteChatAPI.cancel(target, sessionId), false)
 })

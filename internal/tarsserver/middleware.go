@@ -48,15 +48,16 @@ func browserSessionRoleResolver(workspaceDir string) func(sessionID string) (str
 
 // deviceTokenRoleResolver resolves a paired mobile device's bearer token
 // (docs/decisions/mobile-remote.md §4). serverauth accepts only the focus role
-// from it.
-func deviceTokenRoleResolver(workspaceDir string) func(token string) (string, bool) {
+// from it, and carries the device id so a handler can scope a request to
+// that device's own resources (§8).
+func deviceTokenRoleResolver(workspaceDir string) func(token string) (string, string, bool) {
 	store := consoleauth.NewStore(workspaceDir)
-	return func(token string) (string, bool) {
+	return func(token string) (string, string, bool) {
 		device, ok, err := store.ValidateDeviceToken(token)
 		if err != nil || !ok {
-			return "", false
+			return "", "", false
 		}
-		return device.Role, true
+		return device.Role, device.ID, true
 	}
 }
 

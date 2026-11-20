@@ -102,6 +102,31 @@ func TestDeviceTokensAreDistinct(t *testing.T) {
 	}
 }
 
+func TestDeviceByID(t *testing.T) {
+	store := NewStore(t.TempDir())
+	device, _, err := store.CreateDevice("phone", RoleFocus)
+	if err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+	if got, ok, err := store.DeviceByID(device.ID); err != nil || !ok || got.ID != device.ID || got.Name != device.Name {
+		t.Fatalf("DeviceByID = %+v, %v, %v", got, ok, err)
+	}
+	if _, ok, err := store.DeviceByID("nope"); err != nil || ok {
+		t.Fatalf("unknown id: ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := store.DeviceByID(""); err != nil || ok {
+		t.Fatalf("empty id: ok=%v err=%v", ok, err)
+	}
+	// A revoked device's name is still readable (e.g. for a chat session
+	// title made before it was revoked).
+	if err := store.RevokeDevice(device.ID); err != nil {
+		t.Fatalf("RevokeDevice: %v", err)
+	}
+	if got, ok, err := store.DeviceByID(device.ID); err != nil || !ok || got.RevokedAt == nil {
+		t.Fatalf("revoked device should still be found: %+v, %v, %v", got, ok, err)
+	}
+}
+
 func TestConsumePairingCodeForRole(t *testing.T) {
 	now := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)
 	store := NewStore(t.TempDir(), WithNow(func() time.Time { return now }))
