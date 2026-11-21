@@ -40,7 +40,7 @@ Add a new core package, `internal/claudecodelog`, that uses only the standard li
 
 - **Find** a conversation by id. The id must parse as a UUID before it becomes part of a path, and only files directly under `<config dir>/projects/*/` are opened. The directory name encodes the cwd lossily (`/` and `.` both become `-`), so it is never decoded back into a path.
 - **List** the conversations whose records carry a given `cwd`. The match uses the `cwd` field inside the file, and worktree paths count as their own cwd. Each entry has the id, the title (`custom-title`, otherwise the first user text), the last timestamp, `gitBranch`, and a message count. Newest first, capped at 20, reading only the head and tail of each file.
-- **Read** the messages. Only `user` and `assistant` records count. Records with `isSidechain`, `isMeta` or `isCompactSummary` are skipped, and so are tool-result-only user records. Only text blocks are kept. An assistant record's `tool_use` blocks are kept as a count, not as content. Unknown record types and fields are ignored. A line that does not parse is skipped and counted, so it never fails the read.
+- **Read** the messages. Only `user` and `assistant` records count. Records with `isSidechain`, `isMeta` or `isCompactSummary` are skipped, and so are tool-result-only user records. Only text blocks are kept. One assistant reply is written as several records (one per content block, the first often empty), so records are grouped by `message.id` into one message. An assistant record's `tool_use` blocks are kept as a count, not as content. Unknown record types and fields are ignored. A line that does not parse is skipped and counted, so it never fails the read.
 
 The reader is tolerant on purpose. When the format changes, the worst outcome should be a thinner imported transcript, not a failed handoff. A fixture taken from a real file (scrubbed: no absolute home paths, no keys, per `make security-scan`) pins the current shape.
 
@@ -64,9 +64,9 @@ A session on `claude-code-cli` with an `UpstreamSessionID` shows **Open in Claud
 
 This amends `bot-mode.md` §5, which says "what happens in the terminal does not come back". Going back and forth is the point of this record, so it does come back, under one rule.
 
-`POST /v1/admin/sessions/{id}/adopt {session_id}` (admin, 409 while a turn runs) appends the terminal conversation's new messages to an existing TARS session. It is allowed only when the terminal conversation **contains the TARS session's last assistant message**, compared by text after trimming whitespace. That proves the fork was taken from where TARS stopped and that TARS has not moved on since. In that case:
+`POST /v1/admin/sessions/{id}/adopt {session_id}` (admin, 409 while a turn runs) appends the terminal conversation's new messages to an existing TARS session. It is allowed only when the terminal conversation **contains the record `uuid` of the last message in TARS's own upstream conversation** (the file of the session's current `UpstreamSessionID`, read at bring-back time). A fork copies earlier records with their `uuid`s unchanged (phase 0). So this proves the fork was taken from where TARS stopped and that TARS has not moved on since: a later TARS turn would have a newer last `uuid` that the fork does not have. TARS does no per-turn bookkeeping for this. In that case:
 
-- The server appends only the messages after that point, with the same marking as §4.
+- The server appends only the records after that `uuid`, with the same marking as §4.
 - `UpstreamSessionID` becomes the terminal's id, marked "fork on next turn" (§2).
 - The session keeps its tier, cwd, worktree, permission mode and, for a pipeline, its stage.
 
@@ -100,27 +100,40 @@ The console finds candidates by listing conversations in the session's cwd (§3)
 ## Consequences
 
 - **The format can break.** TARS now depends on an undocumented file format. A change in it degrades adopt and bring back (fewer messages, or none). Chat and pipelines are not affected. `tars doctor` reports whether the reader understood the newest local conversation, so the break shows up there before it surprises anyone.
-- **Every adopt and bring back costs a fork.** That is one call whose cost the existing rule records as 0, because the fork's earlier total is unknown (`claude_code_cli_cost.go`). Usage readouts undercount by that one call. This is accepted, as for the first resume after a restart.
+- **Every adopt and bring back costs a fork.** A fork's `total_cost_usd` is the parent's running total plus its own call (phase 0). The existing rule records the first call of an unknown id as 0 (`claude_code_cli_cost.go`), which is right here: recording the reported value would bill the parent's whole history again. Usage readouts undercount by that one call. This is accepted, as for the first resume after a restart.
 - **Imported history is display only.** Tool calls made in Claude Code show as a count, not as cards. That is less than a native TARS turn shows, and the notice line says so.
 - **Public API changes.** `pkg/session` gains `Adopted` and the `claude_code` origin value. `pkg/llm` gains a fork flag on `ChatOptions`. `make api-snapshot` changes.
 - **New behaviour on adopted conversations.** A TARS session adopted from Claude Code never continues the terminal's id. Someone who expects the two windows to share one live conversation gets two forks instead. Both buttons say "fork" for that reason.
 
 ## Open decisions
 
-1. Whether bring back's rule (§6) should compare record `uuid`s instead of message text, if a fork keeps them. Text is used until phase 0 shows what a fork copies.
+1. ~~Whether bring back's rule (§6) should compare record `uuid`s instead of message text.~~ Settled by phase 0: a fork keeps them, so §6 compares `uuid`s.
 2. Whether adopt should also import Claude Code's `/compact` summaries as a collapsed block. Proposed: no. TARS's own compaction does not apply to a resumed CLI session anyway (`sessionHealth.ts`).
 3. Whether an adopted pipeline should default to `isolate: true` when the tree is clean. Proposed: no. Starting where the terminal was is less surprising.
 
 ## Phases
 
-0. **Measure.** Check these on the installed CLI and write the results here. No product change.
-   - Does `-p --resume <id>` keep `<id>` or return a new one?
-   - Does `--fork-session` work with `-p` and with `--permission-prompt-tool stdio`?
-   - Does a fork copy the earlier records and their `uuid`s?
-   - What does the first forked call report as `total_cost_usd`?
+0. **Measure.** Done 2026-11-21; results below. No product change.
 1. **Reader, adopt in, fork out.** `internal/claudecodelog`, §2, §4 and §5, in chat only.
 2. **Bring back.** §6.
 3. **Focus adopt.** §7, including the New task picker.
+
+## Phase 0 results
+
+Measured on 2026-11-21 with Claude Code 2.1.280, model `haiku`, in an empty git repository. The run was 7 headless calls costing about $0.06 in total.
+
+| Question | Result | Effect on this record |
+| --- | --- | --- |
+| Does `-p --resume <id>` keep `<id>`? | Yes. Two resumes of one id returned the same id, and the file grew in place. | TARS's own conversation keeps one id across turns, so §6 can read "TARS's own upstream file" from `UpstreamSessionID`. |
+| Does `--fork-session` work with `-p`? | Yes. It returned a new id, and the reply showed the earlier turns were in context. | §2 and §4 work as written. |
+| Does it work with the interactive permission path (`--input-format stream-json --permission-prompt-tool stdio`)? | Yes. The new id already appears in the `system`/`init` event, before the result. | A fork that fails mid-turn still reports its id, so the existing `UpstreamSessionError` path keeps it. |
+| Does forking change the original? | No. A resume of the original after the fork did not see the forked turn. | One writer per id holds (§2). |
+| Does a fork copy earlier records? | Yes, all of them, with the same `uuid` and `timestamp`. `sessionId` is rewritten to the new id. | §6 compares `uuid`s (open decision 1). |
+| Where does a fork from another folder land? | Under the **new** cwd's project dir. Every copied record's `cwd` is rewritten to the new cwd. | Find-by-id must scan all project dirs (§3). A terminal fork taken in the session's cwd is listed under that cwd. |
+| What does a fork report as `total_cost_usd`? | The parent's running total plus its own call, e.g. 0.0346 then 0.0393 for a call of about 0.0047. | The existing "unknown id → 0" rule is the right one (Consequences). |
+| How is an assistant reply stored? | As several records sharing `message.id`: an empty one, then the text. | The reader groups by `message.id` (§3). |
+
+Not measured: the interactive TUI (`claude --resume <id> --fork-session` without `-p`). It uses the same flags, and it is checked by hand in phase 1.
 
 ## Re-evaluate when
 
