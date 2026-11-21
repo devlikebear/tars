@@ -330,6 +330,9 @@ type Pipeline struct {
 	// web UI change with a scripted check in verify. Empty — the CLI is not
 	// on this desk — changes nothing.
 	BrowserCheck string `json:"browser_check,omitempty"`
+	// WebUI copies the template's WebUI: the work is a web page someone
+	// uses, so the browser-check teaching applies without a pr stage.
+	WebUI bool `json:"web_ui,omitempty"`
 	// Checks are the checks the pipeline's creator pinned (pinned.go):
 	// every plan carries them and no edit removes them. Nil — every
 	// pipeline started without them — changes nothing.
@@ -374,6 +377,7 @@ func NewFromTemplate(sessionID, goal string, tpl Template, now time.Time) Pipeli
 	if tpl.ID != DevTemplateID {
 		p.Template = tpl.ID
 	}
+	p.WebUI = tpl.WebUI
 	return p
 }
 
@@ -399,6 +403,13 @@ func (p Pipeline) workStages() int {
 // open a pull request (guidance.go's pushPRInWrongStageWarning): a
 // template without a pr stage at all (writing, research) never mentions
 // one.
+// touchesWebUI reports whether the pipeline's work may be a web page, so
+// that its plan is taught scripted browser checks: code work that ends in
+// a pull request, or a template marked WebUI.
+func (p Pipeline) touchesWebUI() bool {
+	return p.WebUI || p.hasStageKind(StagePR)
+}
+
 func (p Pipeline) hasStageKind(kind StageID) bool {
 	for _, s := range p.Stages {
 		if s.KindOf() == kind {

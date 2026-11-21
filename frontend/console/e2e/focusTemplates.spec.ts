@@ -50,7 +50,7 @@ test('a writing task in goal mode runs outline, draft and revise to the end with
 
   // The template picker lists the built-in templates and shows the stages.
   const picker = page.getByTestId('focus-new-template')
-  await expect(picker.locator('option')).toHaveText(['Development', 'Writing', 'Research'])
+  await expect(picker.locator('option')).toHaveText(['Development', 'Writing', 'Research', 'Web app'])
   await picker.selectOption('writing')
   await expect(page.getByTestId('focus-new-template-stages')).toContainText('Stages: Outline → Draft → Revise')
   await page.getByTestId('focus-new-goal-mode').check()
@@ -105,7 +105,7 @@ test('a workspace template file is offered, and goal mode can be turned on and o
   writeFileSync(join(dir, 'broken.yaml'), 'name: Broken\n')
 
   const listed = await (await page.request.get('/v1/focus/templates')).json()
-  expect(listed.templates.map((t: { id: string }) => t.id)).toEqual(['dev', 'writing', 'research', 'blog'])
+  expect(listed.templates.map((t: { id: string }) => t.id)).toEqual(['dev', 'writing', 'research', 'webapp', 'blog'])
   expect(listed.diagnostics.map((d: { source: string }) => d.source)).toEqual(['broken.yaml'])
 
   const repo = newRepo('tars-e2e-focus-blog-')

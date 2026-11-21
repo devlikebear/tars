@@ -38,11 +38,12 @@ const browserCheckPlanTail = "The server runs each verify command by itself in t
 	" Skip all of this when the work does not touch a web UI."
 
 // browserCheckPlanInstructions is added to the plan stage of a pipeline
-// whose desk has the scripted-browser CLI and whose template ends in a pull
-// request (code work; a writing or research template never hears of it).
+// whose desk has the scripted-browser CLI and whose work may be a web page
+// (touchesWebUI: a template that ends in a pull request, or one marked
+// WebUI; a writing or research template never hears of it).
 func (p Pipeline) browserCheckPlanInstructions() string {
 	cli := strings.TrimSpace(p.BrowserCheck)
-	if cli == "" || !p.hasStageKind(StagePR) {
+	if cli == "" || !p.touchesWebUI() {
 		return ""
 	}
 	var b strings.Builder
@@ -66,7 +67,7 @@ func (p Pipeline) browserCheckPlanInstructions() string {
 // different execution tier).
 func (p Pipeline) browserCheckBuildNote() string {
 	cli := strings.TrimSpace(p.BrowserCheck)
-	if cli == "" || !p.hasStageKind(StagePR) {
+	if cli == "" || !p.touchesWebUI() {
 		return ""
 	}
 	return " If a task is a scripted browser check: `" + cli + " skills get core` prints the CLI's usage; the script starts " +

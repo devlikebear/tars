@@ -77,6 +77,8 @@ What differs for generated work and is allowed for in the design:
 
 **Expert mode** is the console as it is today: the session board, the focus pipeline screens, the chat workbench and settings. A switch in easy mode opens the same project there. Both modes read the same data, so there is nothing to sync. An existing workspace opens in expert mode, so current use does not change. Importing an existing project, GitHub and pull requests, template editing, changing a bot's engine or instructions, goal mode and permission modes are expert-mode features.
 
+**After the plan is approved, easy mode does not ask** (decided 2026-11-21). A beginner cannot judge a reviewer's finding, so an easy-mode project runs on goal mode's fixed policy once its plan is approved: low findings are set aside, every other one is fixed, retries have a budget, and the session's permission mode is `auto` meanwhile. Goal mode stays admin-only everywhere else; the exception is the project folder TARS created for easy mode. Publishing is never part of it: it is always a person's click (§7).
+
 A switch of every screen at once would shake the whole console e2e suite (`make console-e2e`; see the #1194 note in `CLAUDE.md`). The easy screens are added beside the existing ones and become the default for new installs only once they cover the first-run path.
 
 ### 5. Bots are a visible team, each with its own setup
@@ -145,7 +147,7 @@ The easy screens are added beside the existing ones throughout.
 
 0. **Records.** This record and the amendments to the three above. Done (#1391).
 1. **Checking.** Done (#1392), for templates that end in a pull request. Scripted browser checks in `verify`, with failures told in plain words. Done when a planted screen bug stops a pipeline.
-2. **The easy flow.** The "make a web app" work kind, a template that ends without a pull request and applies verified work to the project, creating the project folder and its version control without asking, the Make and Progress screens, and the bots shown on stages. Done when one sentence leads to "finished" with none of the hidden words on screen (checked automatically).
+2. **The easy flow.** The "make a web app" work kind (the built-in `webapp` template: plan, make, review, no pull request, marked `web_ui` so phase 1's checks apply), a template that ends without a pull request and applies verified work to the project, creating the project folder and its version control without asking, the Make and Progress screens, and the bots shown on stages. Done when one sentence leads to "finished" with none of the hidden words on screen (checked automatically).
 3. **The result.** Running the user's app and showing it, "change it like this", and going back to an earlier version.
 4. **Onboarding.** The Start screen, checking the engine's install and sign-in, and plain messages for subscription limits. Done when three people other than the maintainer get from install to a first result within 10 minutes, without help.
 5. **Publish.** The publish stage, the Connect screen and the deploy skill. Done when the published address opens and the server has read its answer.
@@ -160,7 +162,6 @@ Easy mode becomes the default for new installs after phase 4.
 - **Work aimed at experienced users slows down.** The workbench and the handoff features keep working, but they are not where new effort goes first.
 - **Setup is the hard part.** A beginner still needs a paid AI subscription and has to install and sign in to Claude Code. TARS can check and explain that step; it cannot do it for the user.
 - **The stack brings its own setup and weight.** It needs Node on the user's computer, which a beginner's Mac usually lacks, so the app has to bring or install it. One project's dependencies took about 560 MB; ten projects would pass 5 GB unless installs share packages or old projects' dependencies are cleared. The preview server answered on `localhost` and not on `127.0.0.1`, so the preview and the scripted checks must name the address the same way.
-- **The checks do not reach easy mode yet.** The scripted-browser guidance of phase 1 is attached to templates that end in a pull request (`focus-mode.md` §5.5). The easy flow's template has none, so phase 2 has to restate that condition.
 - **Scope can widen again.** The freeze in `product-focus.md` existed because the surface was wider than one person could keep correct. The list under "Not in the first version" and the three seams of §3 are the limit; a generated-work feature outside those seams waits.
 
 ## Open decisions
