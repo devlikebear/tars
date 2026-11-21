@@ -1,6 +1,8 @@
 package tarsserver
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -143,5 +145,17 @@ func TestFocusCleanupWorktreeNilDriver(t *testing.T) {
 	var d *focusDriver
 	if end := d.cleanupWorktree("s1", "keep"); end.Action != "none" {
 		t.Fatalf("end = %+v", end)
+	}
+}
+
+func TestFocusCleanupWorktreeFinishFails(t *testing.T) {
+	d, _, id, _ := stoppedCleanupFixture(t)
+	d.finishWorktree = func(context.Context, string, string) error { return errWorktreeMissing }
+	if end := d.cleanupWorktree(id, "keep"); end.Action != "none" {
+		t.Fatalf("missing worktree: end = %+v", end)
+	}
+	d.finishWorktree = func(context.Context, string, string) error { return errors.New("git apply failed") }
+	if end := d.cleanupWorktree(id, "discard"); end.Action != "left" || end.Reason != "git apply failed" {
+		t.Fatalf("failed finish: end = %+v", end)
 	}
 }
