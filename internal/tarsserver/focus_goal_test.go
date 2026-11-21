@@ -420,7 +420,8 @@ func TestFocusTemplatesAPI(t *testing.T) {
 	}
 	rec := focusRequest(t, h, http.MethodGet, "/v1/focus/templates", "", false)
 	decodeInto(t, rec, &listed)
-	if rec.Code != http.StatusOK || len(listed.Templates) != 4 || listed.Templates[0].ID != focuspipeline.DevTemplateID || listed.Templates[3].ID != "blog" {
+	if rec.Code != http.StatusOK || len(listed.Templates) != 5 || listed.Templates[0].ID != focuspipeline.DevTemplateID ||
+		listed.Templates[3].ID != focuspipeline.WebAppTemplateID || listed.Templates[4].ID != "blog" {
 		t.Fatalf("templates = %d %s", rec.Code, rec.Body.String())
 	}
 	if len(listed.Diagnostics) != 1 || listed.Diagnostics[0].Source != "bad.yaml" {

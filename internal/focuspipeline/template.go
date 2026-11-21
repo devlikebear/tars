@@ -48,6 +48,11 @@ type Template struct {
 	Name        string          `json:"name" yaml:"name"`
 	Description string          `json:"description,omitempty" yaml:"description"`
 	Stages      []TemplateStage `json:"stages" yaml:"stages"`
+	// WebUI marks a template whose work is a web page someone uses: its
+	// plan stage is taught scripted browser checks (browser_check.go) even
+	// though it ends without a pull request. A template with a pr stage is
+	// taught them anyway.
+	WebUI bool `json:"web_ui,omitempty" yaml:"web_ui"`
 	// Builtin marks the templates shipped with the server; Source is the
 	// file a user template was read from.
 	Builtin bool   `json:"builtin" yaml:"-"`
@@ -196,7 +201,7 @@ func DevTemplate() Template {
 // BuiltinTemplates are the templates shipped with the server, the
 // development one first.
 func BuiltinTemplates() []Template {
-	return []Template{DevTemplate(), writingTemplate(), researchTemplate()}
+	return []Template{DevTemplate(), writingTemplate(), researchTemplate(), WebAppTemplate()}
 }
 
 func writingTemplate() Template {

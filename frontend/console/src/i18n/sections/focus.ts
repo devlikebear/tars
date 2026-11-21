@@ -126,6 +126,11 @@ export const focusEn = {
       description: 'Research a question: scope, investigate, write the report, check it.',
       stages: { plan: 'Scope', research: 'Research', report: 'Report', check: 'Check' },
     },
+    webapp: {
+      name: 'Web app',
+      description: 'Make a web app from one sentence: plan, make, review. No pull request.',
+      stages: { plan: 'Plan', make: 'Make', review: 'Review' },
+    },
   },
   stages: {
     plan: 'Plan',
@@ -593,6 +598,11 @@ export const focusKo: FocusTranslations = {
       name: '리서치',
       description: '질문 조사: 범위 정하기, 조사, 보고서 작성, 검증.',
       stages: { plan: '범위', research: '조사', report: '보고서', check: '검증' },
+    },
+    webapp: {
+      name: '웹앱',
+      description: '한 문장으로 웹앱 만들기: 계획, 만들기, 검수. PR 없음.',
+      stages: { plan: '계획', make: '만들기', review: '검수' },
     },
   },
   stages: {
