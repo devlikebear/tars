@@ -56,10 +56,14 @@ func (s *Store) CreateDevice(name, role string) (Device, string, error) {
 	if err != nil {
 		return Device{}, "", err
 	}
-	id, err := randomOpaqueID(s.randReader, deviceIDBytes)
+	// Hex, not base64url: an id is typed on the command line (`tars auth
+	// devices revoke <id>`), and a base64url id starting with "-" read as a
+	// flag there, so that device could not be revoked by its id.
+	raw, err := randomBytes(s.randReader, deviceIDBytes)
 	if err != nil {
 		return Device{}, "", err
 	}
+	id := hex.EncodeToString(raw)
 	device := Device{
 		ID:        id,
 		Name:      name,

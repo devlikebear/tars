@@ -1,6 +1,7 @@
 package consoleauth
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"strings"
@@ -78,6 +79,20 @@ func TestCreateDeviceRejectsBadInput(t *testing.T) {
 	}
 	if got := len([]rune(device.Name)); got != maxDeviceNameRune {
 		t.Fatalf("name has %d runes, want %d", got, maxDeviceNameRune)
+	}
+}
+
+// Bytes whose base64url text starts with "-" (0xF8 is 111110…, index 62)
+// give an id the command line still reads as an id, not a flag.
+func TestDeviceIDNeverStartsWithADash(t *testing.T) {
+	store := NewStore(t.TempDir())
+	store.randReader = bytes.NewReader(bytes.Repeat([]byte{0xF8}, 64))
+	device, _, err := store.CreateDevice("phone", RoleFocus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device.ID != strings.Repeat("f8", deviceIDBytes) {
+		t.Fatalf("id = %q", device.ID)
 	}
 }
 
