@@ -77,8 +77,11 @@ type FailureFact struct {
 	ExitCode int    `json:"exit_code"`
 	TimedOut bool   `json:"timed_out,omitempty"`
 	// E2E is true when the failed check is an end-to-end goal.
-	E2E       bool                 `json:"e2e,omitempty"`
-	Excerpt   string               `json:"excerpt,omitempty"`
+	E2E     bool   `json:"e2e,omitempty"`
+	Excerpt string `json:"excerpt,omitempty"`
+	// Check is the failure in the check's own words, when the command
+	// printed a CHECK FAILED block (browser_check.go). Nil otherwise.
+	Check     *CheckReport         `json:"check,omitempty"`
 	Iteration int                  `json:"iteration"`
 	Results   []VerificationResult `json:"results,omitempty"`
 }
@@ -361,6 +364,9 @@ func failureFact(v Verification, iteration int) FailureFact {
 		if !r.Passed {
 			fact.Command, fact.ExitCode, fact.TimedOut, fact.E2E = r.Command, r.ExitCode, r.TimedOut, r.E2E
 			fact.Excerpt = tailRunes(strings.TrimSpace(r.Excerpt), excerptRunes)
+			if !r.E2E && !r.TimedOut {
+				fact.Check = ParseCheckReport(r.Excerpt)
+			}
 			break
 		}
 	}
@@ -376,6 +382,9 @@ func failureFact(v Verification, iteration int) FailureFact {
 func failureTitle(f FailureFact) string {
 	if f.TimedOut {
 		return fmt.Sprintf("Verification timed out: %s", f.Command)
+	}
+	if f.Check != nil {
+		return f.Check.title()
 	}
 	return fmt.Sprintf("Verification failed: %s (exit %d)", f.Command, f.ExitCode)
 }

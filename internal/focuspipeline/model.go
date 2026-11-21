@@ -324,6 +324,12 @@ type Pipeline struct {
 	// (MergeRepoVerify). Empty — a repository without the file — changes
 	// nothing.
 	RepoVerify []string `json:"repo_verify,omitempty"`
+	// BrowserCheck is how a shell in the session's folder runs the
+	// scripted-browser CLI (agent-browser), found when the pipeline was
+	// created (browser_check.go): the plan stage is then taught to prove a
+	// web UI change with a scripted check in verify. Empty — the CLI is not
+	// on this desk — changes nothing.
+	BrowserCheck string `json:"browser_check,omitempty"`
 	// Checks are the checks the pipeline's creator pinned (pinned.go):
 	// every plan carries them and no edit removes them. Nil — every
 	// pipeline started without them — changes nothing.
