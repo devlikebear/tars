@@ -463,6 +463,9 @@ type focusCreateRequest struct {
 	// harnessFrom marks a pipeline the server opens as a harness proposal;
 	// never read from a request.
 	harnessFrom *focuspipeline.HarnessSource
+	// saveVersion has the server save the finished work as a version (an
+	// easy-mode project, easy_projects.go); never read from a request.
+	saveVersion bool
 	// ReleaseItems and ReleaseSince (kind release only) are the release
 	// train's list and cut-off the release ships.
 	ReleaseItems []string   `json:"release_items,omitempty"`
@@ -588,6 +591,7 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	// repository's verify list: once, from the folder the pipeline works in.
 	p.BrowserCheck = focusprobe.BrowserCheckCLI(sess.CurrentDir)
 	p.Checks = checks
+	p.SaveVersion = req.saveVersion
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
 	}

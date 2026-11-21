@@ -163,23 +163,53 @@ func ScaffolderFromEnv() Scaffolder {
 	return NPMScaffolder{}
 }
 
-// InitGit starts version control in dir and records the scaffold as the
-// first version. The identity is set for these commands only, so a computer
-// with no git identity still works and the user's own settings are never
-// written.
-func InitGit(ctx context.Context, dir string) error {
-	steps := [][]string{
-		{"init", "-q", "-b", "main"},
-		{"add", "-A"},
-		{"-c", "user.name=TARS", "-c", "user.email=tars@localhost", "-c", "commit.gpgSign=false",
-			"commit", "-q", "--allow-empty", "-m", "Start the project"},
+// tarsIdentity is the author of the versions TARS saves, given per
+// command, so a computer with no git identity still works and the user's
+// own settings are never written.
+var tarsIdentity = []string{"-c", "user.name=TARS", "-c", "user.email=tars@localhost", "-c", "commit.gpgSign=false"}
+
+func git(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed program; arguments are the server's own
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		name := args[0]
+		for i := 0; i+1 < len(args) && args[i] == "-c"; i += 2 {
+			name = args[i+2]
+		}
+		return "", fmt.Errorf("git %s: %w: %s", name, err, strings.TrimSpace(string(out)))
 	}
-	for _, args := range steps {
-		cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed arguments
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(out)))
+	return strings.TrimSpace(string(out)), nil
+}
+
+// InitGit starts version control in dir and records the scaffold as the
+// first version.
+func InitGit(ctx context.Context, dir string) error {
+	if _, err := git(ctx, dir, "init", "-q", "-b", "main"); err != nil {
+		return err
+	}
+	if _, err := git(ctx, dir, "add", "-A"); err != nil {
+		return err
+	}
+	_, err := git(ctx, dir, append(tarsIdentity, "commit", "-q", "--allow-empty", "-m", "Start the project")...)
+	return err
+}
+
+// SaveVersion records everything in dir as a new version with message and
+// answers its commit. When nothing changed it saves nothing and answers the
+// commit that was already there.
+func SaveVersion(ctx context.Context, dir, message string) (string, error) {
+	status, err := git(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return "", err
+	}
+	if status != "" {
+		if _, err := git(ctx, dir, "add", "-A"); err != nil {
+			return "", err
+		}
+		if _, err := git(ctx, dir, append(tarsIdentity, "commit", "-q", "-m", message)...); err != nil {
+			return "", err
 		}
 	}
-	return nil
+	return git(ctx, dir, "rev-parse", "HEAD")
 }

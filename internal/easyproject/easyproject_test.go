@@ -183,6 +183,35 @@ func TestCreatorMakesAReadyProject(t *testing.T) {
 	}
 }
 
+func TestSaveVersion(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := InitGit(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	first, err := SaveVersion(ctx, dir, "nothing new")
+	if err != nil || first == "" {
+		t.Fatalf("unchanged: %q %v", first, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := SaveVersion(ctx, dir, "Change the text")
+	if err != nil || second == first {
+		t.Fatalf("changed: %q %v", second, err)
+	}
+	out, _ := exec.Command("git", "-C", dir, "log", "--format=%an|%s").Output()
+	if got := strings.TrimSpace(string(out)); got != "TARS|Change the text\nTARS|Start the project" {
+		t.Fatalf("history:\n%s", got)
+	}
+	if _, err := SaveVersion(ctx, t.TempDir(), "x"); err == nil || !strings.Contains(err.Error(), "git status") {
+		t.Fatalf("no git: %v", err)
+	}
+}
+
 func TestCreatorRefusesBeforeMakingAnything(t *testing.T) {
 	c, base := newCreator(t, fakeScaffolder{notReady: true}, nil)
 	if _, err := c.Start(context.Background(), "a page"); !errors.Is(err, ErrNodeMissing) {
