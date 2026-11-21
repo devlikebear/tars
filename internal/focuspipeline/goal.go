@@ -224,6 +224,14 @@ func GoalApplied(p Pipeline, step GoalStep, now time.Time) Pipeline {
 
 // NextGoalStep decides what goal mode does next for a pipeline nothing is
 // running on (no turn, no verification, no driver run). It never changes p.
+// GoalDueOnApproval reports whether approving gate with action on p turns
+// goal mode on: the plan's approval, on a pipeline that asked for it
+// (GoalAfterPlan) and has never been in goal mode. Goal mode turned off by
+// a person stays off.
+func GoalDueOnApproval(p Pipeline, gate, action string) bool {
+	return p.GoalAfterPlan && p.GoalMode == nil && gate == GatePlan && action == GateApprove
+}
+
 func NextGoalStep(p Pipeline, now time.Time) GoalStep {
 	wait := GoalStep{Kind: GoalWait}
 	if !p.GoalActive() {
