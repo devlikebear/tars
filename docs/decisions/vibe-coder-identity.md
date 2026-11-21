@@ -123,12 +123,14 @@ A failed check is told in plain words: which screen, what was expected, what was
 ### 7. The first version
 
 - **What can be made:** web apps only, on one technical stack that the work kind fixes, because a beginner cannot choose one.
+- **The stack (decided 2026-11-21):** React and TypeScript on Vite with the Cloudflare Vite plugin; server code is a Worker in the same project, written with Hono; saved data is D1; styling is Tailwind. One command starts the preview, the page and the API answer on one address, and the preview runs in the same runtime the published app does, with D1 simulated on the user's computer and no Cloudflare account until publish. Measured that day on the maintainer's Mac (Node 26, a fast connection) with Cloudflare's own scaffolder (`create-cloudflare` 2.75.0, `--framework=react`): scaffold and install 25 s with an empty package cache and 10 s with a warm one, 2 s more to add Hono and Tailwind, first page from the preview server after about 1 s, a build in 1 s; a row written through a Hono route to local D1 was still there after a restart. Not measured: a slow connection, an older Mac, installing Node itself, a real deploy, and how well a model builds on this stack.
+- **Saved data is in.** A sign-up form is among the first things a beginner asks for, and local D1 needs no account, so an app that stores data can be made, previewed and published. Secrets (payments, outside API keys) stay out.
 - **Where it ends:** at publish, with one real target. Publishing is the last step of the shared flow, and stopping before it would leave the most important seam untested. The candidate is Cloudflare (a free account, upload without GitHub, no deploy quota that repeated publishing runs into); its limits are checked against the official documentation before it is built.
 - **Publishing is always a person's click.** It cannot be undone, so goal mode never does it. The server reads the published address itself before saying it is online.
 - **Platform:** the macOS desktop app first. It is the only install that already carries the server.
 - **The measure:** a new user gets from installing the app to seeing their own idea running within 10 minutes.
 
-Not in the first version: apps that need secrets or a database when published, importing an existing project in easy mode, Windows, a Codex engine, the operations and automation bots, other kinds of coding (mobile apps, automation scripts), and any generated-work kind.
+Not in the first version: apps that need secrets when published, importing an existing project in easy mode, Windows, a Codex engine, the operations and automation bots, other kinds of coding (mobile apps, automation scripts), and any generated-work kind.
 
 ## Relation to other records
 
@@ -141,8 +143,8 @@ Not in the first version: apps that need secrets or a database when published, i
 
 The easy screens are added beside the existing ones throughout.
 
-0. **Records.** This record and the amendments to the three above.
-1. **Checking.** Scripted browser checks in `verify`, with failures told in plain words. Done when a planted screen bug stops a pipeline.
+0. **Records.** This record and the amendments to the three above. Done (#1391).
+1. **Checking.** Done (#1392), for templates that end in a pull request. Scripted browser checks in `verify`, with failures told in plain words. Done when a planted screen bug stops a pipeline.
 2. **The easy flow.** The "make a web app" work kind, a template that ends without a pull request and applies verified work to the project, creating the project folder and its version control without asking, the Make and Progress screens, and the bots shown on stages. Done when one sentence leads to "finished" with none of the hidden words on screen (checked automatically).
 3. **The result.** Running the user's app and showing it, "change it like this", and going back to an earlier version.
 4. **Onboarding.** The Start screen, checking the engine's install and sign-in, and plain messages for subscription limits. Done when three people other than the maintainer get from install to a first result within 10 minutes, without help.
@@ -157,11 +159,13 @@ Easy mode becomes the default for new installs after phase 4.
 - **The README and the marketing site lead with the beginner.** For example: "Say what you want to make; TARS builds it, checks that it works and shows you." The pipeline explanation moves under it.
 - **Work aimed at experienced users slows down.** The workbench and the handoff features keep working, but they are not where new effort goes first.
 - **Setup is the hard part.** A beginner still needs a paid AI subscription and has to install and sign in to Claude Code. TARS can check and explain that step; it cannot do it for the user.
+- **The stack brings its own setup and weight.** It needs Node on the user's computer, which a beginner's Mac usually lacks, so the app has to bring or install it. One project's dependencies took about 560 MB; ten projects would pass 5 GB unless installs share packages or old projects' dependencies are cleared. The preview server answered on `localhost` and not on `127.0.0.1`, so the preview and the scripted checks must name the address the same way.
+- **The checks do not reach easy mode yet.** The scripted-browser guidance of phase 1 is attached to templates that end in a pull request (`focus-mode.md` §5.5). The easy flow's template has none, so phase 2 has to restate that condition.
 - **Scope can widen again.** The freeze in `product-focus.md` existed because the surface was wider than one person could keep correct. The list under "Not in the first version" and the three seams of §3 are the limit; a generated-work feature outside those seams waits.
 
 ## Open decisions
 
-1. Which technical stack the "make a web app" work kind fixes. The preview, the scripted checks and the deploy target all depend on it.
+1. How the stack's runtime reaches a beginner's computer and how its disk use is kept down (see Consequences). Decided in phase 4 at the latest.
 2. Whether importing an existing project belongs in easy mode. This record keeps it in expert mode; that was not discussed with the maintainer.
 3. The bot names (§5).
 4. How the CASE companion relates to the bot team: whether CASE is the leader bot or stays separate.
