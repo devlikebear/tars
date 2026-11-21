@@ -95,8 +95,21 @@ func TestFindAgentBrowserRepoLocalThenKnownDirs(t *testing.T) {
 	}
 	local := fakeCLI(t, filepath.Join(repo, "node_modules", ".bin"))
 	inv, path := FindAgentBrowser(" " + repo + " ")
-	if inv != "./node_modules/.bin/agent-browser" || path != local {
+	if real, _ := filepath.EvalSymlinks(local); inv != "./node_modules/.bin/agent-browser" || path != real {
 		t.Fatalf("repo-local: %q %q", inv, path)
+	}
+	// A link that leaves the working folder is not the folder's own copy.
+	if runtime.GOOS != "windows" {
+		linked := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(linked, "node_modules", ".bin"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(fakeCLI(t, t.TempDir()), filepath.Join(linked, "node_modules", ".bin", "agent-browser")); err != nil {
+			t.Fatal(err)
+		}
+		if inv, _ := FindAgentBrowser(linked); inv != knownCLI {
+			t.Fatalf("a link out of the folder was taken: %q", inv)
+		}
 	}
 	// A folder named like the CLI is not the CLI.
 	other := t.TempDir()

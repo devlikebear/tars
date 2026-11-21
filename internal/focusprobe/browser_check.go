@@ -38,7 +38,9 @@ func FindAgentBrowser(dir string) (invocation, path string) {
 		return name, p
 	}
 	if dir = strings.TrimSpace(dir); dir != "" {
-		if p := filepath.Join(dir, filepath.FromSlash(repoLocalAgentBrowser)); isRegularFile(p) {
+		// The folder comes from a request: only a regular file that is
+		// still inside it once symlinks are resolved counts.
+		if p, ok := focusInsideRepo(dir, filepath.Join(dir, filepath.FromSlash(repoLocalAgentBrowser))); ok {
 			return repoLocalAgentBrowser, p
 		}
 	}
