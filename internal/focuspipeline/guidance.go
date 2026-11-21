@@ -121,7 +121,11 @@ func stageInstruction(p Pipeline) string {
 		text += " " + e2ePlanInstructions
 	}
 	if stage.KindOf() == StagePlan {
+		text += p.browserCheckPlanInstructions()
 		text += p.pinnedPlanInstructions()
+	}
+	if stage.KindOf() == StageBuild {
+		text += p.browserCheckBuildNote()
 	}
 	if (stage.KindOf() == StagePlan || stage.KindOf() == StageBuild) && p.hasStageKind(StagePR) {
 		text += pushPRInWrongStageWarning

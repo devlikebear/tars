@@ -583,6 +583,9 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	// The repository's default verify list, from the folder the pipeline
 	// works in (its worktree when isolated): every plan carries it.
 	p.RepoVerify = focusprobe.ReadRepoVerify(ctx, sess.CurrentDir)
+	// Whether this desk can run scripted browser checks, read like the
+	// repository's verify list: once, from the folder the pipeline works in.
+	p.BrowserCheck = focusprobe.BrowserCheckCLI(sess.CurrentDir)
 	p.Checks = checks
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
