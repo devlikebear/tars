@@ -63,6 +63,7 @@ var AppPackages = []string{
 	"critic",
 	"computeruse",
 	"cron",
+	"easyproject",
 	"embodiment",
 	"extensions",
 	"focuspipeline",

@@ -407,6 +407,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("GET /v1/focus/folders", api.folders)
 	mux.HandleFunc("GET /v1/focus/exec-report", api.execReport)
 	mux.HandleFunc("GET /v1/focus/answer-report", api.answerReport)
+	registerEasyProjects(mux, api, logger)
 	return mux
 }
 
