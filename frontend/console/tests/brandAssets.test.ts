@@ -32,6 +32,7 @@ test('brand PNG assets have expected dimensions and alpha channel', () => {
   assert.deepEqual(readPNGMeta('../../../docs/brand/tars-readme-header-dark.png'), { width: 760, height: 220, colorType: 6 })
   assert.deepEqual(readPNGMeta('../public/tars-icon.png'), { width: 256, height: 256, colorType: 6 })
   assert.deepEqual(readPNGMeta('../public/tars-avatar.png'), { width: 256, height: 256, colorType: 6 })
+  assert.deepEqual(readPNGMeta('../public/favicon-32.png'), { width: 32, height: 32, colorType: 6 })
 })
 
 test('README and console surfaces reference the refreshed TARS brand assets', () => {
@@ -43,8 +44,8 @@ test('README and console surfaces reference the refreshed TARS brand assets', ()
   assert.doesNotMatch(readmeSource, /<h1>TARS<\/h1>/)
   assert.match(navSource, /src="\/console\/tars-icon\.png"/)
   assert.match(navSource, /object-fit:\s*contain/)
-  assert.match(navSource, /box-shadow:\s*0 0 0 2px rgba\(255, 211, 170, 0\.14\)/)
+  assert.match(navSource, /box-shadow:\s*0 0 0 2px rgba\(var\(--primary-rgb\), 0\.14\)/)
   assert.match(chatMessageSource, /src="\/console\/tars-avatar\.png"/)
   assert.match(chatMessageSource, /chat-avatar/)
-  assert.match(chatMessageSource, /box-shadow:\s*0 0 0 2px rgba\(255, 211, 170, 0\.16\)/)
+  assert.match(chatMessageSource, /box-shadow:\s*0 0 0 2px rgba\(var\(--primary-rgb\), 0\.16\)/)
 })
