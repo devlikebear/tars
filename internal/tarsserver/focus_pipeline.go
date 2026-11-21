@@ -466,6 +466,9 @@ type focusCreateRequest struct {
 	// saveVersion has the server save the finished work as a version (an
 	// easy-mode project, easy_projects.go); never read from a request.
 	saveVersion bool
+	// goalAfterPlan turns goal mode on when the plan is approved (an
+	// easy-mode project); never read from a request.
+	goalAfterPlan bool
 	// ReleaseItems and ReleaseSince (kind release only) are the release
 	// train's list and cut-off the release ships.
 	ReleaseItems []string   `json:"release_items,omitempty"`
@@ -592,6 +595,7 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	p.BrowserCheck = focusprobe.BrowserCheckCLI(sess.CurrentDir)
 	p.Checks = checks
 	p.SaveVersion = req.saveVersion
+	p.GoalAfterPlan = req.goalAfterPlan
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
 	}
@@ -919,7 +923,9 @@ func focusApplyGate(ctx context.Context, sessions *session.Store, driver *focusD
 	}
 	now := clock()
 	act := none
+	goalOn := false
 	p, _, err := store.Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		goalOn = focuspipeline.GoalDueOnApproval(p, gate, action)
 		next, result, err := focuspipeline.Apply(p, focuspipeline.Event{
 			Kind:   focuspipeline.EventGate,
 			Gate:   gate,
@@ -931,13 +937,25 @@ func focusApplyGate(ctx context.Context, sessions *session.Store, driver *focusD
 			By:     req.By,
 		}, now)
 		if err != nil {
+			goalOn = false
 			return p, err
 		}
 		act = result
+		if goalOn {
+			// An easy-mode project: from the approved plan on, goal mode
+			// decides the gates and findings (vibe-coder-identity.md §4).
+			next = focuspipeline.StartGoal(next, 0, now)
+		}
 		return next, nil
 	})
 	if err != nil {
 		return p, none, "", err
+	}
+	if goalOn {
+		// Before the build turn starts, so it runs in goal mode's
+		// permission mode. The watcher sends nothing yet: the pipeline has
+		// just changed and the turn below is already owed to the driver.
+		p = driver.goalStarted(id, p)
 	}
 	warning := ""
 	if gate == focuspipeline.GatePlan && action == focuspipeline.GateApprove && p.Plan != nil {

@@ -338,6 +338,11 @@ type Pipeline struct {
 	// project, which has no pull request. Saved is how that went.
 	SaveVersion bool          `json:"save_version,omitempty"`
 	Saved       *SavedVersion `json:"saved,omitempty"`
+	// GoalAfterPlan turns goal mode on the moment a person approves the
+	// plan (GoalDueOnApproval): set by the server for an easy-mode project,
+	// whose owner cannot judge a reviewer's finding. Goal mode is otherwise
+	// turned on by an admin only.
+	GoalAfterPlan bool `json:"goal_after_plan,omitempty"`
 	// Checks are the checks the pipeline's creator pinned (pinned.go):
 	// every plan carries them and no edit removes them. Nil — every
 	// pipeline started without them — changes nothing.

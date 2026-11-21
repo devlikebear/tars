@@ -71,7 +71,7 @@ func easyOpenPipeline(api *focusAPI) easyproject.Opener {
 		}
 		status, resp := api.open(ctx, focusCreateRequest{
 			Goal: idea, Cwd: folder, Template: focuspipeline.WebAppTemplateID, Start: true,
-			saveVersion: true,
+			saveVersion: true, goalAfterPlan: true,
 		}, role)
 		if status != http.StatusCreated {
 			msg, _ := resp["error"].(string)
