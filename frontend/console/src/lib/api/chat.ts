@@ -1,4 +1,4 @@
-import { APIRequestError, fetchAt, requestJSON, type APITarget } from './client.ts'
+import { APIRequestError, fetchAt, requestJSON, requestJSONAt, type APITarget } from './client.ts'
 import type {
   APIErrorPayload,
   ChatEvent,
@@ -229,11 +229,15 @@ export async function readEventStream<T>(response: Response, onEvent: (event: T)
 }
 
 export async function cancelChat(sessionId: string): Promise<boolean> {
+  return cancelChatAt(null, sessionId)
+}
+
+export async function cancelChatAt(target: APITarget | null, sessionId: string): Promise<boolean> {
   try {
-    const result = await requestJSON<{ cancelled: boolean }>(
-      `/v1/chat/cancel?session_id=${encodeURIComponent(sessionId)}`,
-      { method: 'POST' },
-    )
+    const path = `/v1/chat/cancel?session_id=${encodeURIComponent(sessionId)}`
+    const result = target
+      ? await requestJSONAt<{ cancelled: boolean }>(target, path, { method: 'POST' })
+      : await requestJSON<{ cancelled: boolean }>(path, { method: 'POST' })
     return result.cancelled
   } catch {
     return false
@@ -250,11 +254,31 @@ export async function answerChatPermission(
   decision: 'allow_once' | 'allow_session' | 'allow_always' | 'deny',
   mode?: 'accept_edits' | 'auto',
 ): Promise<void> {
-  await requestJSON(`/v1/chat/permissions/${encodeURIComponent(requestId)}`, {
+  await answerChatPermissionAt(null, requestId, sessionId, decision, mode)
+}
+
+// answerChatPermissionAt is answerChatPermission aimed at a desktop (the
+// mobile app). A paired device (role focus) is refused allow_always and any
+// mode by the server (docs/decisions/mobile-remote.md §4/§8) — this helper
+// does not filter them; the caller decides what to offer.
+export async function answerChatPermissionAt(
+  target: APITarget | null,
+  requestId: string,
+  sessionId: string,
+  decision: 'allow_once' | 'allow_session' | 'allow_always' | 'deny',
+  mode?: 'accept_edits' | 'auto',
+): Promise<void> {
+  const path = `/v1/chat/permissions/${encodeURIComponent(requestId)}`
+  const init: RequestInit = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(mode ? { session_id: sessionId, decision, mode } : { session_id: sessionId, decision }),
-  })
+  }
+  if (target) {
+    await requestJSONAt(target, path, init)
+  } else {
+    await requestJSON(path, init)
+  }
 }
 
 // --- Permission modes (#970) ---

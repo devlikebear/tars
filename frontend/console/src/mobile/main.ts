@@ -14,6 +14,8 @@ import { DesktopEvents } from '../lib/mobile/desktopEvents'
 import { DesktopStore } from '../lib/mobile/desktopStore.svelte'
 import { IdeaStore } from '../lib/mobile/ideaStore.svelte'
 import { InboxStore } from '../lib/mobile/inboxStore.svelte'
+import { remoteChatAPI } from '../lib/mobile/remoteChat'
+import { RemoteChatStore } from '../lib/mobile/remoteChatStore.svelte'
 import { appSecureStore } from '../lib/mobile/secureStore'
 import { serveLocally } from '../lib/api/client'
 
@@ -66,6 +68,7 @@ const app = mount(MobileApp, {
     store,
     inbox: new InboxStore({ api: inboxAPI }),
     ideas: new IdeaStore({ storage, api: taskAPI }),
+    chat: new RemoteChatStore({ api: remoteChatAPI }),
     events: new DesktopEvents({ api: eventsAPI }),
     links,
   },

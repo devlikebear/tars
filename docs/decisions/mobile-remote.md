@@ -9,7 +9,7 @@ The developer runs TARS on more than one machine — a MacBook, a Mac mini and a
 
 What the phone should do, in the developer's words: remotely drive the TARS installed on a desktop, **focus mode only**, start a new focus task or continue one, and switch between desktops.
 
-This fits `product-focus.md`: the focus pipeline and goal mode are the product, and "the `tars-desktop` tray and notifications that surface a pipeline waiting on its developer" are core. A phone that answers a waiting pipeline is the same thing in a pocket. A phone that mirrors the chat workbench, memory or config is not, and is out of scope.
+This fits `product-focus.md`: the focus pipeline and goal mode are the product, and "the `tars-desktop` tray and notifications that surface a pipeline waiting on its developer" are core. A phone that answers a waiting pipeline is the same thing in a pocket. A phone that mirrors the chat workbench, memory or config is not, and is out of scope — the one exception is §8's single chat session per device, added for a quick question away from a pipeline, which is not the workbench (no session list, no history beyond that one session, no tier pin, no memory/config screens).
 
 Facts this record stands on (2026-11-13):
 
@@ -51,9 +51,10 @@ Pairing: the desktop console shows a QR code holding the device's base URL and a
 The token carries a new role, `focus`, accepted only by:
 
 - the focus pipeline, card, gate, finding, plan-edit and Q&A routes;
-- the chat turn and turn-feed routes, for focus pipeline sessions only;
-- a focus event stream (`GET /v1/focus/events`, which names the pipeline that changed and nothing else — the general `/v1/events/stream` carries other sessions' events and stays closed to phones), the chat activity and board reads, and `/v1/ops/approvals/{id}/approve|reject` for focus sessions;
-- turning goal mode off.
+- the chat turn and turn-feed routes, for focus pipeline sessions **and**, per §8, the one chat session the token's own device owns;
+- a focus event stream (`GET /v1/focus/events`, which names the pipeline that changed and nothing else — the general `/v1/events/stream` carries other sessions' events and stays closed to phones), the chat activity and board reads, and `/v1/ops/approvals/{id}/approve|reject` for focus sessions and the device's own chat session;
+- turning goal mode off;
+- `POST /v1/remote/chat/session` and `GET /v1/remote/chat/history` (§8).
 
 Creating a pipeline keeps its admin rule for every other caller. For a `focus` token it is allowed only in a folder the desktop's owner has registered for the phone; the phone picks from that list and never sends a free path. This keeps "a phone can make the server run an agent in any folder" off the table.
 
@@ -74,6 +75,16 @@ Ideas are written on the phone and stored on the phone, so capture works with ev
 The first version sends no push of its own. A device that has a pipeline waiting (an open gate, an undecided card, a queued approval) alerts through the Telegram channel that already exists, with a link to that pipeline.
 
 The link is the device's own Tailscale HTTPS address and the console's focus path (`https://<device>.<tailnet>.ts.net/console/focus/<session>`), not a `tars-mobile://` URL: Telegram makes only `http(s)` and `tg://` links tappable, in message text and on buttons alike. The phone is on the tailnet, so the link opens the pipeline in the console today; when the app exists it claims these links. Decided with the app (2026-11-15): a hand-off on the console page, not universal links — an app's associated domains are fixed when it is built, and every desktop's tailnet name differs. On an iPhone, a pipeline's page offers **Open in app**, a `tars-mobile://focus?url=<desktop>&session=<pipeline>` link that the app opens on the desktop paired at that address. The host in the link also tells the phone which device sent it. Native push needs an APNs relay holding an Apple key — the first hosted part TARS would have — and is decided after phase 1 shows the app is used.
+
+### 8. A device chat session, not the workbench
+
+The developer wants a plain question answered from the phone without opening a focus task for it (2026-11-18). This is one chat session per paired device, not the chat workbench: no session list, no switching sessions, no history beyond that one session, no tier pin, no memory or config screens.
+
+- **One session per device, server-chosen.** `POST /v1/remote/chat/session` returns the device's session, creating it on first use (title `Phone · <device name>`, permission mode `manual`/Ask) and recording the mapping in `<workspace>/auth/device-chats.json` (device id → session id). If that session was deleted or auto-archived past recovery, the server makes a new one and updates the mapping — the phone never names a session id. This is not the main session: it is never `kind: main`, so it never receives initiative's greet/check-in traffic or CASE's hidden-worker turns, and auto-archive/auto-delete (`runtime.session.auto_archive_days`/`auto_delete_days`) applies to it exactly as to any other non-main session.
+- **Scope, not a new rule shape.** `focusEndpointRules` already lists the chat turn, turn-feed, cancel, permission-answer and activity routes for `focus` tokens; §4's wording above extends what *session* those routes may name, from "a focus pipeline session" to "a focus pipeline session or the token's own device-chat session." The handler-level check (`internal/tarsserver/focus_device_scope.go`) is what enforces this, same as it already does for pipelines — the endpoint table cannot, because the session lives in the request body or query, not the path.
+- **Device identity has to reach the handler.** Today `DeviceTokenResolver` tells the auth layer a bearer resolves to role `focus` and nothing else — enough to admit the request, not enough to know *whose* chat session it may touch. It now also returns the device id, carried on the request context, so the scope check can compare "the session this request names" against "the session this device owns" instead of just "is this role focus."
+- **Same hard limits as a pipeline session.** No tier pin, no `allow_always` or plan-mode permission answers, native high-risk tools filtered the same way a pipeline turn's `focus` role already filters them. Ask is the permission mode and stays Ask — the phone is never offered Accept Edits or Plan for this session, because nobody is at a desk to have pre-approved it.
+- **Not the workbench, concretely:** the app's Chat tab shows exactly this one session's messages, an input box and a stop button — no new-session button, no session switcher, no tier UI, no memory search, no slash commands beyond what a plain turn needs. Revoking the device's pairing stops access to its chat session along with everything else in §4; the session itself is not deleted by revocation.
 
 ## Consequences
 

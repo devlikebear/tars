@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/consoleauth"
 	"github.com/devlikebear/tars/internal/focuspipeline"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -13,24 +14,46 @@ import (
 
 // A paired phone (role focus, docs/decisions/mobile-remote.md §4) reaches
 // the chat turn, turn feed, cancel, permission-answer and ops-approval
-// routes only for focus pipeline sessions. serverauth's focus table lets the
-// request in; the session it names is checked here, by the handler, because
-// only the handler knows which session that is (a body field, a query
-// parameter, or the session an approval belongs to).
+// routes only for focus pipeline sessions, or for the one chat session its
+// own device owns (§8). serverauth's focus table lets the request in; the
+// session it names is checked here, by the handler, because only the
+// handler knows which session that is (a body field, a query parameter, or
+// the session an approval belongs to).
 //
 // Which sessions a phone reaches:
 //   - a pipeline's own session, for everything;
 //   - a pipeline's hidden Q&A session, for reading its turn feed, cancelling
 //     it and answering its queued approvals. The phone asks Q&A through
-//     POST /v1/focus/pipelines/{id}/qa, never by sending a chat turn there.
+//     POST /v1/focus/pipelines/{id}/qa, never by sending a chat turn there;
+//   - the device's own chat session (§8), for everything a pipeline's own
+//     session reaches — it is not an "extra" session the way Q&A is, so
+//     pipelineOnly never excludes it.
 
 // focusDeviceScope answers which sessions a phone may reach.
 type focusDeviceScope struct {
 	pipelines *focuspipeline.Store
+	auth      *consoleauth.Store
 }
 
 func newFocusDeviceScope(sessions *session.Store) focusDeviceScope {
-	return focusDeviceScope{pipelines: focusStoreFor(sessions)}
+	scope := focusDeviceScope{pipelines: focusStoreFor(sessions)}
+	if sessions != nil {
+		scope.auth = consoleauth.NewStore(sessions.WorkspaceDir())
+	}
+	return scope
+}
+
+// deviceChatSessionID returns the chat session the request's device owns
+// (§8), if the request carries a device id and that device has one.
+func (s focusDeviceScope) deviceChatSessionID(r *http.Request) (string, bool, error) {
+	if s.auth == nil {
+		return "", false, nil
+	}
+	deviceID := strings.TrimSpace(serverauth.DeviceIDFromRequest(r))
+	if deviceID == "" {
+		return "", false, nil
+	}
+	return s.auth.DeviceChatSession(deviceID)
 }
 
 // isFocusDevice reports whether r comes from a paired phone.
@@ -60,19 +83,31 @@ func (s focusDeviceScope) sessions() (map[string]bool, error) {
 	return out, nil
 }
 
-// allows reports whether a phone may reach sessionID. pipelineOnly leaves
-// out the Q&A sessions.
-func (s focusDeviceScope) allows(sessionID string, pipelineOnly bool) (bool, error) {
+// allows reports whether r's phone may reach sessionID. pipelineOnly leaves
+// out the Q&A sessions; it never excludes the device's own chat session
+// (§8), which is reachable the same unconditional way a pipeline's own
+// session is.
+func (s focusDeviceScope) allows(r *http.Request, sessionID string, pipelineOnly bool) (bool, error) {
 	id := strings.TrimSpace(sessionID)
-	if s.pipelines == nil || id == "" {
+	if id == "" {
 		return false, nil
 	}
-	_, ok, err := s.pipelines.Get(id)
-	if errors.Is(err, focuspipeline.ErrInvalidSessionID) {
-		return false, nil
+	if s.pipelines != nil {
+		_, ok, err := s.pipelines.Get(id)
+		if err != nil && !errors.Is(err, focuspipeline.ErrInvalidSessionID) {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
 	}
-	if err != nil || ok || pipelineOnly {
-		return ok, err
+	if chatID, ok, err := s.deviceChatSessionID(r); err != nil {
+		return false, err
+	} else if ok && chatID == id {
+		return true, nil
+	}
+	if pipelineOnly {
+		return false, nil
 	}
 	all, err := s.sessions()
 	if err != nil {
@@ -87,13 +122,13 @@ func (s focusDeviceScope) refuse(w http.ResponseWriter, r *http.Request, session
 	if !isFocusDevice(r) {
 		return false
 	}
-	ok, err := s.allows(sessionID, pipelineOnly)
+	ok, err := s.allows(r, sessionID, pipelineOnly)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "", "failed to read focus pipelines")
 		return true
 	}
 	if !ok {
-		writeError(w, http.StatusForbidden, "forbidden", "a paired device reaches only focus pipeline sessions")
+		writeError(w, http.StatusForbidden, "forbidden", "a paired device reaches only focus pipeline sessions or its own chat session")
 		return true
 	}
 	return false
@@ -127,11 +162,16 @@ func (s focusDeviceScope) refusePermissionAnswer(w http.ResponseWriter, r *http.
 }
 
 // filterActivity keeps only the phone's sessions in a chat activity
-// snapshot.
-func (s focusDeviceScope) filterActivity(snap chatActivitySnapshot) (chatActivitySnapshot, error) {
+// snapshot: its pipelines' sessions and (§8) its own device chat session.
+func (s focusDeviceScope) filterActivity(r *http.Request, snap chatActivitySnapshot) (chatActivitySnapshot, error) {
 	allowed, err := s.sessions()
 	if err != nil {
 		return chatActivitySnapshot{}, err
+	}
+	if chatID, ok, err := s.deviceChatSessionID(r); err != nil {
+		return chatActivitySnapshot{}, err
+	} else if ok {
+		allowed[chatID] = true
 	}
 	out := chatActivitySnapshot{Running: []chatRunningSession{}, Pending: []chatPendingApproval{}, Queued: []chatQueuedApproval{}}
 	for _, item := range snap.Running {

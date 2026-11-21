@@ -40,8 +40,10 @@ type Options struct {
 	BrowserSessionCookieName      string
 	BrowserSessionRoleResolver    func(sessionID string) (string, bool)
 	// DeviceTokenResolver maps a bearer token that is none of the static
-	// tokens to a paired device's role. Only RoleFocus is accepted from it.
-	DeviceTokenResolver func(token string) (string, bool)
+	// tokens to a paired device's role and its device id. Only RoleFocus is
+	// accepted from it; the device id lets a handler scope a request to that
+	// device's own resources (docs/decisions/mobile-remote.md §8).
+	DeviceTokenResolver func(token string) (role string, deviceID string, ok bool)
 }
 
 type pathMatcher struct {
@@ -60,7 +62,7 @@ type compiledOptions struct {
 	adminWorkspaceAllowlist       map[string]struct{}
 	browserSessionCookieName      string
 	browserSessionRoleResolver    func(sessionID string) (string, bool)
-	deviceTokenResolver           func(token string) (string, bool)
+	deviceTokenResolver           func(token string) (string, string, bool)
 	logger                        zerolog.Logger
 	hasLegacyToken                bool
 	hasUserToken                  bool
@@ -81,6 +83,7 @@ type requestRequirement struct {
 type workspaceIDKey struct{}
 type roleKey struct{}
 type authSourceKey struct{}
+type deviceIDKey struct{}
 
 const (
 	RoleUser  = "user"
@@ -137,6 +140,20 @@ func RoleFromContext(ctx context.Context) string {
 	return strings.TrimSpace(value)
 }
 
+// WithDeviceIDContext returns ctx carrying deviceID, for work the server
+// starts on behalf of a request that has ended, and for tests that need to
+// simulate a paired device's request without going through the middleware.
+func WithDeviceIDContext(ctx context.Context, deviceID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, deviceIDKey{}, deviceID)
+}
+
 func RoleFromRequest(r *http.Request) string {
 	if r == nil {
 		return ""
@@ -152,6 +169,18 @@ func AuthSourceFromRequest(r *http.Request) string {
 		return ""
 	}
 	value, _ := r.Context().Value(authSourceKey{}).(string)
+	return strings.TrimSpace(value)
+}
+
+// DeviceIDFromRequest returns the paired device id a focus-role request
+// authenticated with (docs/decisions/mobile-remote.md §4/§8), or "" when the
+// request did not authenticate through a device token (another auth source,
+// or no device id reported).
+func DeviceIDFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	value, _ := r.Context().Value(deviceIDKey{}).(string)
 	return strings.TrimSpace(value)
 }
 
@@ -227,8 +256,9 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			_, hasBearer := parseBearerToken(r.Header.Get("Authorization"))
 			role := ""
 			authSource := ""
+			deviceID := ""
 			if hasBearer {
-				role, authSource = compiled.resolveRole(r.Header.Get("Authorization"))
+				role, authSource, deviceID = compiled.resolveRole(r.Header.Get("Authorization"))
 				if requirement.tokenNeeded && role == "" {
 					w.Header().Set("WWW-Authenticate", "Bearer")
 					writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
@@ -250,6 +280,7 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			}
 			req = withRole(req, role)
 			req = withAuthSource(req, authSource)
+			req = withDeviceID(req, deviceID)
 			req = withDebugRoleHeader(req, role)
 			if compiled.requireWorkspaceForAuthorized && strings.TrimSpace(role) != "" {
 				if strings.TrimSpace(WorkspaceIDFromContext(req.Context())) == "" {
@@ -351,12 +382,15 @@ func (c compiledOptions) requirementForRequest(r *http.Request) requestRequireme
 	}
 }
 
-// resolveRole returns the bearer token's role and where it came from: one of
-// the static tokens ("bearer") or a paired device ("device").
-func (c compiledOptions) resolveRole(authHeader string) (string, string) {
+// resolveRole returns the bearer token's role, where it came from (one of
+// the static tokens ("bearer") or a paired device ("device")), and, for a
+// device token, its device id. A static token always wins even if a device
+// record happens to carry the same token value (resolveTokenRole is tried
+// first, so this never falls through to the device resolver for it).
+func (c compiledOptions) resolveRole(authHeader string) (string, string, string) {
 	presentedToken, hasBearer := parseBearerToken(authHeader)
 	if !hasBearer {
-		return "", ""
+		return "", "", ""
 	}
 	if role := resolveTokenRole(
 		presentedToken,
@@ -367,16 +401,16 @@ func (c compiledOptions) resolveRole(authHeader string) (string, string) {
 		c.userHash,
 		c.adminHash,
 	); role != "" {
-		return role, authSourceBearer
+		return role, authSourceBearer, ""
 	}
 	if c.deviceTokenResolver == nil {
-		return "", ""
+		return "", "", ""
 	}
-	role, ok := c.deviceTokenResolver(presentedToken)
+	role, deviceID, ok := c.deviceTokenResolver(presentedToken)
 	if !ok || strings.TrimSpace(strings.ToLower(role)) != RoleFocus {
-		return "", ""
+		return "", "", ""
 	}
-	return RoleFocus, authSourceDevice
+	return RoleFocus, authSourceDevice, strings.TrimSpace(deviceID)
 }
 
 func (c compiledOptions) resolveBrowserSessionRole(r *http.Request) string {
@@ -473,6 +507,18 @@ func withAuthSource(r *http.Request, source string) *http.Request {
 		return r
 	}
 	ctx := context.WithValue(r.Context(), authSourceKey{}, trimmed)
+	return r.WithContext(ctx)
+}
+
+func withDeviceID(r *http.Request, deviceID string) *http.Request {
+	if r == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(deviceID)
+	if trimmed == "" {
+		return r
+	}
+	ctx := context.WithValue(r.Context(), deviceIDKey{}, trimmed)
 	return r.WithContext(ctx)
 }
 

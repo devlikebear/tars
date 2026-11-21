@@ -73,8 +73,13 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Skip apt when the image already has rg, and retry the download:
+      # an Ubuntu mirror timeout failed this required job on 2026-11-19.
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        run: |
+          if command -v rg >/dev/null 2>&1; then rg --version | head -1; exit 0; fi
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y ripgrep
 
       - name: Run security scan
         run: make security-scan
@@ -113,7 +118,9 @@ jobs:
           cache-dependency-path: desktop/go.sum
 
       - name: Install webview headers
-        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+        run: |
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y libgtk-4-dev libwebkitgtk-6.0-dev
 
       - name: Vet and test the desktop shell
         run: make desktop-test
@@ -186,7 +193,10 @@ jobs:
   test:
     needs: [security, changes]
     if: ${{ !cancelled() && github.event_name == 'push' && needs.security.result == 'success' && needs.changes.outputs.code != 'false' }}
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright 1.58 refuses
+    # to install Chromium ("Playwright does not support chromium on
+    # ubuntu26.04-x64"). Move back once Playwright supports it.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -229,7 +239,10 @@ jobs:
   pr-diff:
     needs: [security, changes]
     if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.security.result == 'success' && needs.changes.outputs.code != 'false' }}
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright 1.58 refuses
+    # to install Chromium ("Playwright does not support chromium on
+    # ubuntu26.04-x64"). Move back once Playwright supports it.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v6
