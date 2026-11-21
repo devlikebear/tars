@@ -145,6 +145,23 @@ test('findings all dismissed go straight to the PR gate; a stop ends the pipelin
   assert.equal(p.cards.length, cards + 1)
   assert.equal(p.cards.at(-1)!.state, 'unseen')
   assert.equal((await api.resume!(id)).conflict, true)
+
+  // Stopped again, then cleaned up.
+  p = (await api.stop(id)).pipeline
+  assert.equal(pipelinePhase(p), 'stopped')
+  // Cleaning up a stopped pipeline records how its worktree ended, the
+  // same shape the real server answers (focus_pipeline.go's cleanup).
+  assert.equal(p.worktree_end, undefined)
+  p = (await api.cleanup!(id, 'discard')).pipeline
+  assert.equal(p.worktree_end?.action, 'discard')
+})
+
+test('cleanup refuses an active pipeline, like the real server (409 conflict result)', async () => {
+  const d = desk()
+  const id = 'demo-upload-retry'
+  const api = d.api(id)
+  const result = await api.cleanup!(id, 'keep')
+  assert.equal(result.conflict, true)
 })
 
 test('an idea sent as a task drafts a plan and waits at its gate', async () => {

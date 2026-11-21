@@ -71,6 +71,17 @@ export const focusEn = {
     more: 'More actions',
     stop: 'Stop pipeline',
     stopConfirm: 'Stop this pipeline? The session stays; the pipeline stops at the current stage.',
+    // The cleanup choice (tars dogfooding #4): stopping a pipeline leaves
+    // its session worktree (the files it worked in) on disk; this dialog
+    // offers to finish it right away, and the standalone button offers the
+    // same choice for one stopped or finished earlier without it.
+    cleanupStopHint: 'Stop this pipeline and finish its session worktree: Keep commits what it gathered to its branch, then removes the folder; Discard removes the folder and its branch. The session stays either way.',
+    cleanupHint: "Finish this pipeline's session worktree: Keep commits what it gathered to its branch, then removes the folder; Discard removes the folder and its branch.",
+    cleanupKeep: 'Keep and clean up',
+    cleanupDiscard: 'Discard everything',
+    cleanupCancel: 'Cancel',
+    cleanup: 'Clean up',
+    cleanupTitle: 'Finish the leftover session worktree',
     markDone: 'Mark stage done',
     markDoneTitle: 'Pass the current stage by hand',
     loadFailed: (message: string) => `Could not load the pipeline: ${message}`,
@@ -532,6 +543,13 @@ export const focusKo: FocusTranslations = {
     more: '더 보기',
     stop: '파이프라인 중지',
     stopConfirm: '이 파이프라인을 멈출까요? 세션은 남고, 파이프라인은 현재 단계에서 멈춥니다.',
+    cleanupStopHint: '이 파이프라인을 멈추고 세션 워크트리를 정리합니다: 보관 정리는 워크트리가 모은 변경을 브랜치에 커밋한 뒤 폴더를 지우고, 전부 삭제는 폴더와 브랜치를 모두 지웁니다. 세션은 어느 쪽이든 남습니다.',
+    cleanupHint: '이 파이프라인의 세션 워크트리를 정리합니다: 보관 정리는 워크트리가 모은 변경을 브랜치에 커밋한 뒤 폴더를 지우고, 전부 삭제는 폴더와 브랜치를 모두 지웁니다.',
+    cleanupKeep: '보관 정리',
+    cleanupDiscard: '전부 삭제',
+    cleanupCancel: '취소',
+    cleanup: '정리',
+    cleanupTitle: '남아 있는 세션 워크트리 정리하기',
     markDone: '단계 완료로 표시',
     markDoneTitle: '현재 단계를 직접 통과시키기',
     loadFailed: (message: string) => `파이프라인을 불러오지 못했습니다: ${message}`,

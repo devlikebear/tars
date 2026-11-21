@@ -82,7 +82,7 @@ export const desktopAPI: DesktopAPI = {
 export type TaskAPI = {
   folders(target: APITarget): Promise<RegisteredFolder[]>
   templates(target: APITarget): Promise<FocusTemplate[]>
-  createPipeline(target: APITarget, request: { goal: string; cwd: string; template?: string }): Promise<{ session_id: string }>
+  createPipeline(target: APITarget, request: { goal: string; cwd: string; extra_dirs?: string[]; template?: string }): Promise<{ session_id: string }>
 }
 
 export const taskAPI: TaskAPI = {

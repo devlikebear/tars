@@ -351,6 +351,35 @@ func (d *focusDriver) endWorktree(sessionID string, p focuspipeline.Pipeline) fo
 	return end
 }
 
+// cleanupWorktree finishes a stopped or finished pipeline's session
+// worktree by hand (POST .../cleanup, focus_pipeline.go's cleanup): action
+// is the caller's own choice ("keep" or "discard"), never the PR-merge
+// guess endWorktree makes, so no discard check runs here. cancel already
+// waits out a run still winding down (up to focusPreemptWait), so a call
+// racing a just-issued stop still finds the session's turn gone before it
+// looks at the worktree.
+func (d *focusDriver) cleanupWorktree(sessionID, action string) focuspipeline.WorktreeEnd {
+	if d == nil {
+		return focuspipeline.WorktreeEnd{Action: worktreeEndNone}
+	}
+	d.cancel(sessionID)
+	sess, err := d.sessions.Get(sessionID)
+	if err != nil || sess.Worktree == nil || d.finishWorktree == nil {
+		return focuspipeline.WorktreeEnd{Action: worktreeEndNone}
+	}
+	if d.cancels != nil && d.cancels.Running(sessionID) {
+		return focuspipeline.WorktreeEnd{Action: worktreeEndLeft, Reason: "a turn was running on the session"}
+	}
+	if err := d.finishWorktree(d.ctx, sessionID, action); err != nil {
+		if errors.Is(err, errWorktreeMissing) {
+			return focuspipeline.WorktreeEnd{Action: worktreeEndNone}
+		}
+		d.logger.Warn().Err(err).Str("session_id", sessionID).Str("action", action).Msg("focus: clean up the session worktree by hand")
+		return focuspipeline.WorktreeEnd{Action: worktreeEndLeft, Reason: err.Error()}
+	}
+	return focuspipeline.WorktreeEnd{Action: action}
+}
+
 // gitDiscardCheck says why the worktree in dir must not be discarded after
 // its PR merged at head, or "" when discarding loses nothing: the tree is
 // clean and every local commit is in the merged head.

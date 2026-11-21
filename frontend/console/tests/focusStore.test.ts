@@ -68,6 +68,8 @@ function fakeApi(initial: FocusPipeline) {
     askResult: { qa_session_id: 'qa1', turn: 1 },
     findingCalls: [] as unknown[][],
     findingResult: null as FocusActionResult | null,
+    cleanupCalls: [] as unknown[][],
+    cleanupResult: null as FocusActionResult | null,
   }
   const api = {
     getPipeline: async () => state.pipeline,
@@ -116,6 +118,10 @@ function fakeApi(initial: FocusPipeline) {
     },
     advance: async () => ({ pipeline: state.pipeline, next_prompt: '' }),
     stop: async () => ({ pipeline: state.pipeline, next_prompt: '' }),
+    cleanup: async (...args: unknown[]) => {
+      state.cleanupCalls.push(args)
+      return state.cleanupResult ?? { pipeline: state.pipeline, next_prompt: '' }
+    },
     activity: async () => ({ running: state.runningSessions.map((session_id) => ({ session_id })), pending_approvals: [] }),
     ask: async (...args: unknown[]) => {
       state.askCalls.push(args)
@@ -788,4 +794,34 @@ test('poll re-reads the pipeline when no turn runs: server-side facts (the gh pr
   fake.state.pipeline = pipeline('2026-10-01T00:00:05Z', [], { current: 'pr' })
   await store.poll()
   assert.equal(store.pipeline?.pr_unavailable, 'e2e gh stub: not logged in')
+})
+
+test('cleanup defaults to "keep", sends it to the api, and adopts the result', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:01Z', [], { current: 'plan', stages: [{ id: 'plan', status: 'blocked', iteration: 1 }] }))
+  const store = newStore(fake)
+  await store.load('s1')
+  fake.state.cleanupResult = { pipeline: pipeline('2026-10-01T00:00:02Z', [], { worktree_end: { action: 'keep' } }), next_prompt: '' }
+  const ok = await store.cleanup()
+  assert.equal(ok, true)
+  assert.deepEqual(fake.state.cleanupCalls, [['s1', 'keep']])
+  assert.equal(store.pipeline?.worktree_end?.action, 'keep')
+})
+
+test('cleanup passes "discard" through unchanged', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:01Z'))
+  const store = newStore(fake)
+  await store.load('s1')
+  await store.cleanup('discard')
+  assert.deepEqual(fake.state.cleanupCalls, [['s1', 'discard']])
+})
+
+test('cleanup is a no-op when the api predates it', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:01Z'))
+  const api = { ...fake.api, cleanup: undefined }
+  const store = new FocusStore(api as never, memoryStorage())
+  store.timing = { chaseTries: 3, chaseDelayMs: 1, qaAttachTries: 5, qaAttachDelayMs: 1, qaMaxWaitMs: 200 }
+  await store.load('s1')
+  const ok = await store.cleanup()
+  assert.equal(ok, false)
+  assert.deepEqual(fake.state.cleanupCalls, [])
 })

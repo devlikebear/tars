@@ -52,6 +52,7 @@
     addFinding: api.focusAddFinding,
     stop: api.focusStop,
     resume: api.focusResume,
+    cleanup: api.focusCleanup,
     goal: api.setFocusGoal,
     ask: api.askFocusQuestion,
     activity: api.getChatActivity,
@@ -178,10 +179,38 @@
     await store.setGoal(!goalOn)
   }
 
-  async function stop() {
+  // The cleanup choice dialog (tars dogfooding #4): 'stop' stops the
+  // pipeline first, then cleans up when the choice is keep/discard; 'clean'
+  // only cleans up an already stopped or finished pipeline. null is closed.
+  let cleanupPrompt = $state<'stop' | 'clean' | null>(null)
+  // Once a pipeline stopped or finished, its worktree stays until cleaned
+  // up by hand: offer the button only while one is actually left.
+  let worktreeToCleanUp = $derived(!!worktree && !pipeline?.worktree_end && (phase === 'stopped' || phase === 'finished'))
+
+  function stop() {
     menuOpen = false
-    if (!confirm($t.focus.screen.stopConfirm)) return
-    await store.stop()
+    if (!worktree) {
+      if (confirm($t.focus.screen.stopConfirm)) void store.stop()
+      return
+    }
+    cleanupPrompt = 'stop'
+  }
+
+  function openCleanup() {
+    cleanupPrompt = 'clean'
+  }
+
+  function cancelCleanup() {
+    cleanupPrompt = null
+  }
+
+  // Failures land on the store's own actionError banner, same as every
+  // other action on this screen.
+  async function confirmCleanup(action: 'keep' | 'discard') {
+    const mode = cleanupPrompt
+    cleanupPrompt = null
+    if (mode === 'stop' && !(await store.stop())) return
+    await store.cleanup(action)
   }
 
   $effect(() => {
@@ -254,8 +283,24 @@
           {/if}
         </div>
       {/if}
+      {#if worktreeToCleanUp}
+        <button type="button" class="btn btn-secondary btn-sm" disabled={store.busy} title={$t.focus.screen.cleanupTitle} onclick={openCleanup} data-testid="focus-cleanup-button">{$t.focus.screen.cleanup}</button>
+      {/if}
     </div>
   </header>
+
+  {#if cleanupPrompt}
+    <div class="cleanup-backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) cancelCleanup() }}>
+      <div class="cleanup-modal" role="dialog" aria-modal="true" aria-label={$t.focus.screen.cleanupTitle} data-testid="focus-cleanup-dialog">
+        <p>{cleanupPrompt === 'stop' ? $t.focus.screen.cleanupStopHint : $t.focus.screen.cleanupHint}</p>
+        <div class="cleanup-actions">
+          <button type="button" class="btn btn-secondary btn-sm" disabled={store.busy} onclick={() => void confirmCleanup('keep')} data-testid="focus-cleanup-keep">{$t.focus.screen.cleanupKeep}</button>
+          <button type="button" class="btn btn-danger btn-sm" disabled={store.busy} onclick={() => void confirmCleanup('discard')} data-testid="focus-cleanup-discard">{$t.focus.screen.cleanupDiscard}</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled={store.busy} onclick={cancelCleanup} data-testid="focus-cleanup-cancel">{$t.focus.screen.cleanupCancel}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   {#if store.error === 'notFound'}
     <p class="banner">{$t.focus.screen.notFound}</p>
@@ -476,6 +521,36 @@
 
   .menu-popover .danger {
     color: var(--error);
+  }
+
+  .cleanup-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: var(--space-4);
+  }
+
+  .cleanup-modal {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    max-width: 480px;
+    padding: var(--space-4);
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+  }
+
+  .cleanup-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
   }
 
   .stage-bar {

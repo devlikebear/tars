@@ -175,6 +175,7 @@ func TestFocusEndpointTable(t *testing.T) {
 		{http.MethodPost, "/v1/focus/pipelines/s1/advance"},
 		{http.MethodPost, "/v1/focus/pipelines/s1/stop"},
 		{http.MethodPost, "/v1/focus/pipelines/s1/resume"},
+		{http.MethodPost, "/v1/focus/pipelines/s1/cleanup"},
 		{http.MethodPost, "/v1/focus/pipelines/s1/qa"},
 		{http.MethodPost, "/v1/focus/pipelines/s1/goal"},
 		{http.MethodPost, "/v1/focus/pipelines/s1/plan?x=1"},

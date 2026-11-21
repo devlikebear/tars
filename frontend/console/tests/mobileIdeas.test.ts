@@ -93,7 +93,7 @@ test('sending an idea starts a task in a registered folder on the desktop and re
   assert.deepEqual(store.options?.folders.map((f) => f.path), ['/work/app'])
   assert.equal(store.options?.desktopID, mac.id)
 
-  const sent = await store.send(mac, idea.id, ' Dark mode, with a toggle ', '/work/app', '')
+  const sent = await store.send(mac, idea.id, ' Dark mode, with a toggle ', ['/work/app'], '')
   assert.equal(sent?.sessionID, 'sess-1')
   assert.equal(sent?.desktopName, 'mac')
   // Goal, folder; no template when the desk's default is picked, and nothing
@@ -104,14 +104,25 @@ test('sending an idea starts a task in a registered folder on the desktop and re
   assert.equal(saved.sent?.sessionID, 'sess-1')
 
   // A sent idea is not sent twice, nor edited.
-  assert.equal(await store.send(mac, idea.id, 'again', '/work/app', ''), null)
+  assert.equal(await store.send(mac, idea.id, 'again', ['/work/app'], ''), null)
   await store.edit(idea.id, 'changed')
   assert.equal(store.ideas[0].text, 'Dark mode, with a toggle')
   assert.equal(created.length, 1)
 
   const other = (await store.add('Release notes'))!
-  await store.send(mac, other.id, 'Release notes', '/work/app', 'writing')
+  await store.send(mac, other.id, 'Release notes', ['/work/app'], 'writing')
   assert.deepEqual(created[1].body, { goal: 'Release notes', cwd: '/work/app', template: 'writing' })
+})
+
+test('sending with more than one folder puts the first as cwd and the rest as extra_dirs', async () => {
+  const b = backing()
+  const { api, created } = fakeTaskAPI()
+  const store = new IdeaStore(deps(b, api))
+  await store.load()
+  const idea = (await store.add('Dark mode'))!
+
+  await store.send(mac, idea.id, 'Dark mode', ['/work/app', '/work/shared', '/work/docs'], '')
+  assert.deepEqual(created[0].body, { goal: 'Dark mode', cwd: '/work/app', extra_dirs: ['/work/shared', '/work/docs'] })
 })
 
 test('a send that fails says why and keeps the idea unsent', async () => {
@@ -127,7 +138,7 @@ test('a send that fails says why and keeps the idea unsent', async () => {
     const store = new IdeaStore(deps(b, api))
     await store.load()
     const idea = (await store.add('x'))!
-    assert.equal(await store.send(mac, idea.id, 'x', '/work/app', ''), null)
+    assert.equal(await store.send(mac, idea.id, 'x', ['/work/app'], ''), null)
     assert.equal(store.sendFailure, failure)
     assert.equal(store.sending, false)
     assert.equal(parseIdeas(b.map.get('tars-mobile:ideas'))[0].sent, undefined)

@@ -69,6 +69,7 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/advance", "focus manual stage pass"),
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/stop", "focus pipeline stop"),
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/resume", "focus pipeline resume"),
+	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/cleanup", "focus pipeline worktree cleanup"),
 	// Goal mode: turning it on is admin-only in the handler (it hands every
 	// gate and tool permission to the server); anyone at the console may
 	// turn it off.
@@ -144,6 +145,7 @@ var focusEndpointRules = []EndpointPolicyRule{
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/advance", "focus manual stage pass"),
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/stop", "focus pipeline stop"),
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/resume", "focus pipeline resume"),
+	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/cleanup", "focus pipeline worktree cleanup"),
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/qa", "focus Q&A"),
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/goal", "focus goal mode"),
 	focusRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/plan", "focus plan edit"),

@@ -62,6 +62,11 @@ export type FocusStoreApi = {
   stop(sessionId: string): Promise<FocusActionResult>
   // Picks a stopped pipeline up again (POST …/resume).
   resume?(sessionId: string): Promise<FocusActionResult>
+  // Finishes a stopped or finished pipeline's session worktree by hand
+  // (POST …/cleanup): "keep" (default) commits what it gathered to its
+  // branch and removes the folder, "discard" removes the folder and its
+  // branch. Optional only for a caller built before cleanup existed.
+  cleanup?(sessionId: string, action?: 'keep' | 'discard'): Promise<FocusActionResult>
   // Goal mode on or off (POST …/goal).
   goal?(sessionId: string, enabled: boolean): Promise<FocusActionResult>
   ask?(sessionId: string, cardId: string, question: string): Promise<FocusQAResult>
@@ -726,6 +731,16 @@ export class FocusStore {
     if (ok) this.viewStage = null
     await this.flush()
     return ok
+  }
+
+  // cleanup finishes a stopped or finished pipeline's session worktree by
+  // hand; the stepper only shows the button once the pipeline's own
+  // worktree_end says there is one left to finish.
+  async cleanup(action: 'keep' | 'discard' = 'keep'): Promise<boolean> {
+    const sessionId = this.sessionId
+    const cleanup = this.api.cleanup
+    if (!sessionId || !cleanup) return false
+    return this.act(() => cleanup(sessionId, action))
   }
 
   // setGoal turns the pipeline's goal mode on or off.
