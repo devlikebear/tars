@@ -1,6 +1,6 @@
 # Decision: Hand a session back and forth between TARS and Claude Code
 
-Status: proposed (draft, not accepted)
+Status: proposed (draft, not accepted). Since 2026-11-21 this is an expert-mode feature (`vibe-coder-identity.md` §4): it is for someone who also runs Claude Code, and its phase 1 is built in that record's phase 7. The console entry points named below (New chat, the session header, the focus New task screen) are expert-mode screens
 Date: 2026-11-21
 Builds on: `bot-mode.md` §5 and its phase 1 ("use alongside, Claude only"). This record makes that phase concrete, extends it to focus pipelines, and amends one sentence of it (§6 below).
 

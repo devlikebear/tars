@@ -1,6 +1,6 @@
 # ADR: The product is the focus pipeline and goal mode
 
-- Status: Accepted
+- Status: Accepted; amended 2026-11-21 by [`vibe-coder-identity.md`](vibe-coder-identity.md) (see "Amendment" at the end, which overrides the sections above where they differ)
 - Decision date: 2026-10-10
 - Scope: [#1204](https://github.com/devlikebear/tars/issues/1204) item 1. Items 2 (`internal/tarsserver` split) and 3 (release cadence) follow from this record.
 
@@ -111,3 +111,32 @@ Review on 2026-12-31, or earlier if either failure condition is already clear.
 2. A coding tool the pipeline runs on ships the same staged, gated flow natively. Then the remaining difference is provider neutrality alone, and that has to be enough on its own to continue.
 
 **Unfreeze an area when** a pipeline feature needs it, stated in the pull request that does it. An area is not unfrozen because it would be nice to finish.
+
+## Amendment (2026-11-21)
+
+[`vibe-coder-identity.md`](vibe-coder-identity.md) changes who the product is for: someone who cannot read code but can say what they want to make. It was taken before the review date, as the answer to "Reconsider the choice if" 1 — nobody outside had completed a pipeline, so the limit was reach, not scope.
+
+**What holds.** The focus pipeline and goal mode are the product. Transitions are decided by facts the server reads. The three classes and what each accepts. Rules 2, 3 and 4. "Frozen does not mean removed."
+
+**Classification changes.**
+
+| Area | Was | Now |
+| --- | --- | --- |
+| Onboarding and first run, `tars doctor`, readiness | Maintained | Core |
+| Desktop shell (`tars-desktop`) | Core for the tray and notifications | Core as a whole: install, first run, the window the easy screens open in |
+| The easy screens (Start, Make, Progress, Result, Connect) | did not exist | Core |
+| Result preview: running the user's app and showing it | did not exist | Core |
+| Scripted browser checks in `verify` | Core (verification) | Core, named |
+| Publish: the publish stage and the connect screen; deploy targets are skills in `tars-skills` | did not exist | Core |
+| Bot records, a bot's own model, instructions, skills, tools and memory, bots on template stages | proposed (`bot-mode.md`) | Core, in the phase `vibe-coder-identity.md` gives it |
+| The focus pipeline screens and the session board | Core | Core, shown as expert mode |
+| The Advanced workbench | Maintained | Maintained, part of expert mode |
+| Claude Code handoff (`claude-code-handoff.md`) | proposed | Core, as an expert-mode feature, in the phase `vibe-coder-identity.md` gives it |
+
+Everything listed as Frozen stays Frozen. The opt-in computer-use e2e is still frozen; scripted checks replace it as the way a result is proven.
+
+**The freeze.** The date of 2026-12-31 no longer gates the areas in the table: they are reclassified now. Rule 1 stays, with one more accepted reason — a `feat:` outside Core needs a sentence naming the pipeline behaviour **or the step of the beginner's first run** that requires it. Rule 5's review still happens on 2026-12-31, for the areas this amendment does not touch.
+
+**Scope.** This record exists because the surface was wider than one person could keep correct. The amendment adds surface, so the limit moves into `vibe-coder-identity.md`: its "Not in the first version" list and its three seams for later kinds of work. A feature for generated work (novels, music, video) outside those seams waits.
+
+**Success criteria.** "The decision held if" 1 becomes: at least three people other than the maintainer got from installing the app to seeing their own idea running, without help, within 10 minutes. A merged pull request is no longer the measure, because easy mode has none. Criteria 2 and 3 stand.

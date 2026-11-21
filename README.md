@@ -67,7 +67,7 @@ Focus mode stands on a general agent runtime, and the rest of it is there to use
 Each has a section under [Key Features](#key-features).
 
 > [!NOTE]
-> **Where the work is going.** The focus pipeline and goal mode are the product; the other areas are maintained or frozen. [The decision](docs/decisions/product-focus.md) lists which is which. Computer use, the speak-first initiative loop, reflection and a few providers are frozen: they work and get no new features.
+> **Where the work is going.** The focus pipeline and goal mode are the product, and since 2026-11-21 they are being reworked for people who cannot read code: say what you want to make, and TARS builds it, checks that it works and shows you ([the decision](docs/decisions/vibe-coder-identity.md)). The other areas are maintained or frozen; [this record](docs/decisions/product-focus.md) lists which is which. Computer use, the speak-first initiative loop, reflection and a few providers are frozen: they work and get no new features.
 
 The name comes from the TARS in *Interstellar* — practical, direct, dependable when things get complicated. TARS aims for that. Not affiliated with the film; the name is borrowed.
 

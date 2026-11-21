@@ -1,6 +1,6 @@
 # Decision: Bots are the front of TARS and the workers of a pipeline
 
-Status: proposed (draft, not accepted)
+Status: proposed (draft, not accepted); amended 2026-11-21 by [`vibe-coder-identity.md`](vibe-coder-identity.md), which replaces §2, §7 and part of §8 and gives the phases their place (notes marked "Amended" below)
 Date: 2026-11-21
 
 ## Context
@@ -27,6 +27,8 @@ Bots are never read from a repository's `.tars/`. A cloned repository must not c
 No new process, registry or tool comes with a bot. Running a bot is running a chat turn with that engine and those instructions.
 
 ### 2. TARS is the primary bot
+
+> **Amended 2026-11-21.** Replaced by `vibe-coder-identity.md` §4 and §5: the console opens on easy mode, where a work kind's bots are a visible team with a leader bot at its head. How the main session's persona (IDENTITY.md, CASE) relates to the leader bot is an open decision there. The last sentence below still holds: no coordinator model decides which bot gets a job.
 
 The main session is the primary bot and keeps IDENTITY.md as its voice. Other bots are picked directly (a new chat with a bot) or assigned to pipeline stages (§6). There is no coordinator model that decides which bot gets a job: the user picks, or the template says.
 
@@ -58,9 +60,13 @@ A template stage may name a bot. The turn of that stage runs with the bot's engi
 
 ### 7. Memory is shared in the first version
 
+> **Amended 2026-11-21.** Replaced by `vibe-coder-identity.md` §5: each bot has its own memory beside the shared facts about the user, because a bot with its own model, instructions, memory, skills and tools is what the maintainer asked for. What goes in which store is an open decision there.
+
 One user profile, one memory, one set of experiences for every bot. A bot differs by its instructions and engine only. Per-bot memory (Grok Bot's model: own memory, shared facts about the user) is left for later: with a single user it would mostly split what recall can find.
 
 ### 8. The console opens on bots; the workbench moves behind Advanced
+
+> **Amended 2026-11-21.** The default screens are the easy mode of `vibe-coder-identity.md` §4, not a bot list; today's console, the workbench included, is its expert mode. What stands from this section: nothing is removed, and a bot is created and edited by describing it, through draft → preview → approve. The user adding a bot is a requirement, not an option.
 
 The default screens become: talk to a bot, see what waits on you, and the focus pipeline. Tier pins, dock layout and session config stay where they are, under Advanced. **Nothing is removed.** A bot is created and edited by describing it, through the same draft → preview → approve flow as focus templates (`POST /v1/focus/templates/draft`): the model proposes a record, the server validates it, a person saves it.
 
@@ -72,6 +78,8 @@ The default screens become: talk to a bot, see what waits on you, and the focus 
 - Bots as a security boundary. What a turn may do is decided by the session's permission mode and the unattended queue, as now.
 
 ## Relation to `product-focus.md`
+
+> **Amended 2026-11-21.** `product-focus.md` now classifies bot records, per-bot setup and bots on template stages as Core, built in phase 6 of `vibe-coder-identity.md` (this record's phase 2 and the editor of its phase 3). This record's phase 1 belongs to `claude-code-handoff.md`. More engines (phase 4) still wait. The text below is kept as written on the day.
 
 This record does not fit the freeze as written, and it should not be accepted around it.
 
