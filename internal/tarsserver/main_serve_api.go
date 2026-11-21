@@ -988,6 +988,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 		mux.Handle("/v1/focus/folders", handlers.focus)
 		mux.Handle("/v1/focus/exec-report", handlers.focus)
 		mux.Handle("/v1/focus/answer-report", handlers.focus)
+		mux.Handle("/v1/easy/projects", handlers.focus)
+		mux.Handle("/v1/easy/projects/", handlers.focus)
 	}
 	if handlers.focusTemplateEdit != nil {
 		mux.Handle("/v1/focus/templates/", handlers.focusTemplateEdit)
