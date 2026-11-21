@@ -46,6 +46,8 @@ What does not cross: the previous CLI's internal context (tool results it kept, 
 - **Adopt in.** A CLI session started in a terminal can become a TARS session: the server reads that CLI's saved conversation for display and sets it as the upstream session.
 - **Never two writers on one upstream session.** Both directions are refused while a turn is running.
 
+Detailed, and amended so the terminal's continuation can come back, in `claude-code-handoff.md`.
+
 ### 6. In a pipeline, bots are assigned to stages; transitions do not change
 
 A template stage may name a bot. The turn of that stage runs with the bot's engine and instructions; the stage boundary is the handoff of §4, carried by the server through the stage guidance it already writes. Plan approval, verify exit codes, triage and the PR probe decide every transition exactly as now.
