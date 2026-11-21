@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Changed
+
+- **Brand mark redesign: a T whose stem is a cursor replaces the robot mascot.** `desktop/internal/icon` draws a pale bar over a signal-green stem on graphite instead of the old photorealistic robot: the T is the name, the stem a terminal's block cursor. It stays legible from a 16px favicon to a desktop app tile (below 48px the two blocks snap to whole pixels and the stem thickens). It now covers every icon surface: the desktop app and tray icons (tray state now a corner badge), the iOS app icon, launch image and the native launch cover, the console favicon/PWA icons (including a new 32px favicon and maskable variants with a proper safe zone), the chat avatar, and the README header.
+
 ## [0.69.0] - 2026-11-15
 
 ### Security

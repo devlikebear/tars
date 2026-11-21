@@ -55,22 +55,21 @@ class TarsBridgeViewController: CAPBridgeViewController {
 }
 
 // LaunchMarkView draws desktop/internal/icon Launch as iOS shows the launch
-// image: the page colour, and the ring in a square filling the screen's
-// longer side, its radius 4.5% of that side.
+// image: the page colour, and the mark (a pale bar over a green stem) in a
+// box 13% of the screen's longer side, in the proportions of icon.go's
+// markRects.
 final class LaunchMarkView: UIView {
-    private let ring = CAShapeLayer()
-    private let dot = CAShapeLayer()
+    private let bar = CAShapeLayer()
+    private let stem = CAShapeLayer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         backgroundColor = UIColor(red: 0x0d / 255, green: 0x0f / 255, blue: 0x11 / 255, alpha: 1)
-        let signal = UIColor(red: 0x3e / 255, green: 0xe0 / 255, blue: 0x7f / 255, alpha: 1).cgColor
-        ring.fillColor = UIColor.clear.cgColor
-        ring.strokeColor = signal
-        dot.fillColor = signal
-        layer.addSublayer(ring)
-        layer.addSublayer(dot)
+        bar.fillColor = UIColor(red: 0xdf / 255, green: 0xe3 / 255, blue: 0xe8 / 255, alpha: 1).cgColor
+        stem.fillColor = UIColor(red: 0x3e / 255, green: 0xe0 / 255, blue: 0x7f / 255, alpha: 1).cgColor
+        layer.addSublayer(bar)
+        layer.addSublayer(stem)
     }
 
     required init?(coder: NSCoder) {
@@ -79,10 +78,13 @@ final class LaunchMarkView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let side = max(bounds.width, bounds.height)
-        let centre = CGPoint(x: bounds.midX, y: bounds.midY)
-        ring.lineWidth = side * 0.012
-        ring.path = UIBezierPath(arcCenter: centre, radius: side * 0.045, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
-        dot.path = UIBezierPath(arcCenter: centre, radius: side * 0.015, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
+        let s = max(bounds.width, bounds.height) * 0.13
+        let barW = s * 0.53, barH = s * 0.133, gap = s * 0.047
+        let stemW = s * 0.172, stemH = s * 0.336, radius = s * 0.031
+        let top = bounds.midY - (barH + gap + stemH) / 2
+        let barRect = CGRect(x: bounds.midX - barW / 2, y: top, width: barW, height: barH)
+        let stemRect = CGRect(x: bounds.midX - stemW / 2, y: top + barH + gap, width: stemW, height: stemH)
+        bar.path = UIBezierPath(roundedRect: barRect, cornerRadius: radius).cgPath
+        stem.path = UIBezierPath(roundedRect: stemRect, cornerRadius: radius).cgPath
     }
 }
