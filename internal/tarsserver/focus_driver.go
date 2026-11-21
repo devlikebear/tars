@@ -661,7 +661,9 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 
 	turn := countUserTurns(d.sessions.TranscriptPath(run.sessionID))
 	act := none
+	var prev focuspipeline.Pipeline
 	updated, _, err := store.Update(run.sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		prev = p
 		next, a, err := focuspipeline.Apply(p, focuspipeline.Event{Kind: focuspipeline.EventVerification, Turn: turn, Verification: &v}, d.now())
 		act = a
 		return next, err
@@ -669,6 +671,12 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	if err != nil {
 		log.Warn().Err(err).Msg("focus: apply verification failed")
 		return none, true
+	}
+	// A passing verification is how a pipeline without a merge stage ends:
+	// the after-finish steps run here, outside the store's lock.
+	d.pipelineFinished(run.sessionID, prev, updated)
+	if saved, found, err := store.Get(run.sessionID); err == nil && found && saved.Saved != nil && updated.Saved == nil {
+		updated = saved
 	}
 	stream.pipeline(updated, focusNextPrompt(act))
 	stream.focusDone()

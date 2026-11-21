@@ -74,7 +74,7 @@ func TestEasyProjectFromOneSentence(t *testing.T) {
 	}
 
 	pipeline := pipelineOf(t, f.store, p.SessionID)
-	if pipeline.Template != focuspipeline.WebAppTemplateID || !pipeline.WebUI || pipeline.Goal != idea {
+	if pipeline.Template != focuspipeline.WebAppTemplateID || !pipeline.WebUI || !pipeline.SaveVersion || pipeline.Goal != idea {
 		t.Fatalf("pipeline: template %q web ui %v goal %q", pipeline.Template, pipeline.WebUI, pipeline.Goal)
 	}
 	sess, err := f.store.Get(p.SessionID)

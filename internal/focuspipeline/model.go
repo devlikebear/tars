@@ -333,6 +333,11 @@ type Pipeline struct {
 	// WebUI copies the template's WebUI: the work is a web page someone
 	// uses, so the browser-check teaching applies without a pr stage.
 	WebUI bool `json:"web_ui,omitempty"`
+	// SaveVersion has the server save the work as a version once the
+	// pipeline finishes (saved.go): set by the server for an easy-mode
+	// project, which has no pull request. Saved is how that went.
+	SaveVersion bool          `json:"save_version,omitempty"`
+	Saved       *SavedVersion `json:"saved,omitempty"`
 	// Checks are the checks the pipeline's creator pinned (pinned.go):
 	// every plan carries them and no edit removes them. Nil — every
 	// pipeline started without them — changes nothing.
@@ -507,6 +512,10 @@ func (p Pipeline) clone() Pipeline {
 	if p.WorktreeEnd != nil {
 		end := *p.WorktreeEnd
 		out.WorktreeEnd = &end
+	}
+	if p.Saved != nil {
+		saved := *p.Saved
+		out.Saved = &saved
 	}
 	if p.PRDraft != nil {
 		d := *p.PRDraft
