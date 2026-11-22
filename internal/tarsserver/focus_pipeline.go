@@ -469,6 +469,12 @@ type focusCreateRequest struct {
 	// goalAfterPlan turns goal mode on when the plan is approved (an
 	// easy-mode project); never read from a request.
 	goalAfterPlan bool
+	// stayInFolder turns the session's automatic worktree isolation off
+	// (an easy-mode project, whose folder is its own): a change pipeline
+	// opened while the last one still holds the folder's lease must work in
+	// the folder, not move into a worktree the project never sees. Never
+	// read from a request.
+	stayInFolder bool
 	// ReleaseItems and ReleaseSince (kind release only) are the release
 	// train's list and cut-off the release ships.
 	ReleaseItems []string   `json:"release_items,omitempty"`
@@ -577,6 +583,11 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	})
 	if err != nil {
 		return folderErrorStatus(err), map[string]any{"error": err.Error()}
+	}
+	if req.stayInFolder {
+		if err := a.sessions.SetIsolation(sess.ID, session.IsolationOff); err != nil {
+			return http.StatusInternalServerError, map[string]any{"error": err.Error()}
+		}
 	}
 	p := focuspipeline.NewFromTemplate(sess.ID, goal, tpl, a.now())
 	if worktreeNoticeResult != nil && worktreeNoticeResult.Base.Fallback != "" {

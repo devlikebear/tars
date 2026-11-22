@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { EASY_BOTS, easyLive, easyView, hiddenWordsIn, previewPollMs, previewReachable, type EasyProject } from '../src/lib/easy.ts'
+import { EASY_BOTS, easyCanChange, easyLive, easyView, hiddenWordsIn, previewPollMs, previewReachable, type EasyProject } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
 import { resolveRoute } from '../src/lib/router.ts'
 import type { FocusCard, FocusPipeline } from '../src/lib/types.ts'
@@ -114,6 +114,35 @@ test('no easy-mode sentence uses a hidden word', () => {
     for (const text of texts) assert.deepEqual(hiddenWordsIn(text), [], `${lang}: ${text}`)
   }
   for (const bot of EASY_BOTS) assert.ok(easyEn.bots[bot] && easyKo.bots[bot], bot)
+})
+
+test('a finished project takes a change once its version is saved, and a change run shows the request', () => {
+  const finished = pipeline({
+    finished_at: 'x',
+    stages: [
+      { id: 'plan', status: 'done', iteration: 1 },
+      { id: 'make', kind: 'build', status: 'done', iteration: 1 },
+      { id: 'review', kind: 'review', status: 'done', iteration: 1 },
+    ],
+  })
+  const saving = easyView(project(), finished)
+  assert.equal(saving.saved, undefined)
+  assert.equal(easyLive(saving), true, 'keeps reading until the save is recorded')
+  assert.equal(easyCanChange(saving), false)
+  const saved = easyView(project(), { ...finished, saved: { commit: 'abc' } } as FocusPipeline)
+  assert.equal(easyCanChange(saved), true)
+  assert.equal(easyCanChange(easyView(project(), { ...finished, saved: { error: 'save_failed' } } as FocusPipeline)), true)
+  assert.equal(easyCanChange(easyView(project(), pipeline())), false)
+
+  const changed = project({
+    session_id: 's2',
+    changes: [
+      { request: 'Make it green', session_id: 's1', at: '' },
+      { request: 'Make it bigger', session_id: 's2', at: '' },
+    ],
+  })
+  assert.equal(easyView(changed, pipeline({ session_id: 's2' })).change, 'Make it bigger')
+  assert.equal(easyView(project(), pipeline()).change, undefined, 'the first version is no change')
 })
 
 test('the preview is read soon while it starts, rarely while it runs, never after', () => {

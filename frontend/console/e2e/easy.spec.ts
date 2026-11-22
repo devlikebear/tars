@@ -24,7 +24,7 @@ test.describe.serial('easy mode', () => {
   let projectPath = ''
 
   test('one sentence becomes a finished, saved project', async ({ page }) => {
-    test.setTimeout(150_000)
+    test.setTimeout(300_000)
     await page.goto('/console/easy')
     await expect(page.getByRole('heading', { name: 'What do you want to make?' })).toBeVisible()
     // The workbench's navigation is not part of easy mode.
@@ -69,6 +69,23 @@ test.describe.serial('easy mode', () => {
     await expect(page.frameLocator('[data-testid="easy-preview-frame"]').getByRole('heading', { name: 'Book club sign-up' })).toBeVisible()
     await expectNoHiddenWords(page, 'result')
 
+    // "Change it like this": an empty request is refused in plain words; a
+    // real one opens the next run in the same project, whose plan waits for
+    // the person again and shows what they asked for.
+    await page.getByTestId('easy-change-submit').click()
+    await expect(page.getByTestId('easy-change-error')).toHaveText('Write what you want to change first.')
+    await page.getByTestId('easy-change-input').fill('[e2e:focus-template] Make the sign-up button green')
+    await page.getByTestId('easy-change-submit').click()
+    await expect(page.getByTestId('easy-change')).toHaveCount(0)
+    await expect(page.getByTestId('easy-asked')).toContainText('Make the sign-up button green')
+    await expect(phase).toHaveAttribute('data-phase', 'approve', { timeout: 60_000 })
+    await expectNoHiddenWords(page, 'change plan to approve')
+    await page.getByTestId('easy-approve').click()
+    await expect(phase).toHaveAttribute('data-phase', 'finished', { timeout: 120_000 })
+    await expect(page.getByTestId('easy-message')).toHaveText('Finished, and saved as a version.')
+    await expect(page.getByTestId('easy-change')).toBeVisible()
+    await expectNoHiddenWords(page, 'change finished')
+
     // The project is listed on the make screen, and expert mode opens its
     // work in the focus screen.
     await page.getByRole('button', { name: /All projects/ }).click()
@@ -91,6 +108,7 @@ test.describe.serial('easy mode', () => {
       await expect(page.getByTestId('easy-bot-publisher')).toContainText('출판봇')
       await expect(page.getByTestId('easy-result')).toContainText('내 앱')
       await expect(page.getByTestId('easy-preview-frame')).toBeVisible()
+      await expect(page.getByTestId('easy-change')).toContainText('이렇게 고쳐 줘')
       await expectNoHiddenWords(page, 'finished (ko)')
     })
   })

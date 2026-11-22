@@ -21,6 +21,17 @@ export async function getEasyProject(id: string): Promise<EasyProject> {
   return res.project
 }
 
+// "Change it like this" (internal/tarsserver/easy_change.go): opens the next
+// run in the project's folder and answers the project pointing at it.
+export async function changeEasyProject(id: string, request: string): Promise<EasyProject> {
+  const res = await requestJSON<{ project: EasyProject }>(`/v1/easy/projects/${encodeURIComponent(id)}/changes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ request }),
+  })
+  return res.project
+}
+
 // A project's preview (internal/tarsserver/easy_preview.go): reading it keeps
 // it running, starting it is idempotent.
 function previewPath(id: string): string {

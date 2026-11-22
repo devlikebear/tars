@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/devlikebear/tars/internal/easyproject"
 	"github.com/devlikebear/tars/internal/focuspipeline"
@@ -31,6 +33,11 @@ type easyProjectsAPI struct {
 	canRun func() bool
 	// previews run the projects' apps for the result screen (easy_preview.go).
 	previews *easyproject.Previews
+	// pipelines reads the projects' focus pipelines; now stamps changes.
+	pipelines func() *focuspipeline.Store
+	now       func() time.Time
+	// changeMu makes a change one step (easy_change.go).
+	changeMu sync.Mutex
 }
 
 // registerEasyProjects adds the routes to the focus API's mux: opening the
@@ -54,7 +61,9 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 				logger.Warn().Err(err).Str("project_id", p.ID).Str("code", p.ErrorCode).Msg("easy projects: creation failed")
 			},
 		},
-		canRun: func() bool { return api.driver != nil && api.driver.canRunTurns() },
+		canRun:    func() bool { return api.driver != nil && api.driver.canRunTurns() },
+		pipelines: api.store,
+		now:       api.now,
 	}
 	previews, stopPreviews := newEasyPreviews(api.sessions.WorkspaceDir())
 	easy.previews = previews
@@ -68,21 +77,23 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 	mux.HandleFunc("GET /v1/easy/projects/{id}/preview", easy.previewStatus)
 	mux.HandleFunc("POST /v1/easy/projects/{id}/preview", easy.previewStart)
 	mux.HandleFunc("DELETE /v1/easy/projects/{id}/preview", easy.previewStop)
+	mux.HandleFunc("POST /v1/easy/projects/{id}/changes", easy.change)
 }
 
-// easyOpenPipeline opens the project's pipeline through the focus API's
-// create path: the webapp template, in the project folder, not isolated
-// (the folder is the project's own), the first turn sent by the server and
-// run as the role that asked.
+// easyOpenPipeline opens a project's pipeline through the focus API's
+// create path: the webapp template, in the project folder and never moved
+// out of it (the folder is the project's own, stayInFolder), the first
+// turn sent by the server and run as the role that asked. A change opens
+// its pipeline the same way, with the change as the goal.
 func easyOpenPipeline(api *focusAPI) easyproject.Opener {
-	return func(ctx context.Context, folder, idea string) (string, error) {
+	return func(ctx context.Context, folder, goal string) (string, error) {
 		role := serverauth.RoleFromContext(ctx)
 		if role == "" {
 			role = serverauth.RoleUser
 		}
 		status, resp := api.open(ctx, focusCreateRequest{
-			Goal: idea, Cwd: folder, Template: focuspipeline.WebAppTemplateID, Start: true,
-			saveVersion: true, goalAfterPlan: true,
+			Goal: goal, Cwd: folder, Template: focuspipeline.WebAppTemplateID, Start: true,
+			saveVersion: true, goalAfterPlan: true, stayInFolder: true,
 		}, role)
 		if status != http.StatusCreated {
 			msg, _ := resp["error"].(string)
