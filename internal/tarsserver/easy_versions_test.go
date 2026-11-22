@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/easyproject"
@@ -88,5 +89,29 @@ func TestEasyVersionsListAndGoBack(t *testing.T) {
 	}
 	if raw, _ := os.ReadFile(filepath.Join(dir, "index.html")); string(raw) != "sign-up\n" {
 		t.Fatalf("index.html = %q", raw)
+	}
+
+	// A git step that fails is a 500 with a fixed code, and nothing moved.
+	if err := os.WriteFile(filepath.Join(dir, ".git", "index.lock"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	green := back.Versions[2].Commit
+	rec = focusRequestAs(t, h, http.MethodPost, "/v1/easy/projects/"+id+"/versions/"+green+"/restore", "", serverauth.RoleUser)
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "restore_failed") {
+		t.Fatalf("restore with git failing = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// A project without a pipeline record and a folder without history.
+func TestEasyVersionsOfAFolderWithoutHistory(t *testing.T) {
+	f := newWorktreeFixture(t)
+	putEasyProject(t, f.store.WorkspaceDir(), easyproject.Project{ID: "0123456789abcdef", Name: "x", Folder: t.TempDir(), Status: easyproject.StatusReady})
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+	if rec := focusRequestAs(t, h, http.MethodGet, "/v1/easy/projects/0123456789abcdef/versions", "", serverauth.RoleUser); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("versions = %d", rec.Code)
+	}
+	restore := "/v1/easy/projects/0123456789abcdef/versions/" + strings.Repeat("a", 40) + "/restore"
+	if rec := focusRequestAs(t, h, http.MethodPost, restore, "", serverauth.RoleUser); rec.Code != http.StatusNotFound {
+		t.Fatalf("restore = %d", rec.Code)
 	}
 }

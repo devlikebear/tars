@@ -106,10 +106,7 @@ func RestoreVersion(ctx context.Context, dir, commit string) (Version, error) {
 		return Version{}, err
 	}
 	title := strings.TrimPrefix(target, restorePrefix)
-	if _, err := SaveVersion(ctx, dir, unsavedMessage); err != nil {
-		return Version{}, err
-	}
-	head, err := git(ctx, dir, "rev-parse", "HEAD")
+	head, err := SaveVersion(ctx, dir, unsavedMessage)
 	if err != nil {
 		return Version{}, err
 	}
@@ -123,11 +120,8 @@ func RestoreVersion(ctx context.Context, dir, commit string) (Version, error) {
 		}
 	}
 	versions, err := Versions(ctx, dir)
-	if err != nil {
-		return Version{}, err
-	}
-	if len(versions) == 0 {
-		return Version{}, ErrVersionNotFound
+	if err != nil || len(versions) == 0 {
+		return Version{}, errors.Join(ErrVersionNotFound, err)
 	}
 	return versions[0], nil
 }

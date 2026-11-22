@@ -141,6 +141,29 @@ func TestRestoreVersionOfTheCurrentOneSavesNothing(t *testing.T) {
 	}
 }
 
+func TestVersionsOfAFolderWithoutHistory(t *testing.T) {
+	if _, err := Versions(context.Background(), t.TempDir()); err == nil {
+		t.Fatal("a folder without version control has no versions")
+	}
+}
+
+// A git step that fails (here: another git process holds the index) leaves
+// the error to the caller and the files as they were.
+func TestRestoreVersionWhenGitFails(t *testing.T) {
+	ctx := context.Background()
+	dir, _, signUp, _ := versionedProject(t)
+	if err := os.WriteFile(filepath.Join(dir, ".git", "index.lock"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := RestoreVersion(ctx, dir, signUp.Commit)
+	if err == nil || errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+	if got := readFile(t, filepath.Join(dir, "style.css")); got != "green\n" {
+		t.Fatalf("the files changed: style.css = %q", got)
+	}
+}
+
 func TestRestoreVersionRefusesWhatIsNotAVersion(t *testing.T) {
 	ctx := context.Background()
 	dir, _, _, _ := versionedProject(t)
