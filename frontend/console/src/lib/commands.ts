@@ -37,6 +37,7 @@ export const pageEntries: PageEntry[] = [
   { view: 'board', path: '/console', adminOnly: false, keywords: ['home', 'sessions', 'board', 'status'] },
   { view: 'home', path: '/console/system', adminOnly: false, keywords: ['dashboard', 'overview', 'system'] },
   { view: 'focus', path: '/console/focus', adminOnly: false, keywords: ['pipeline', 'task', 'gate'] },
+  { view: 'easy', path: '/console/easy', adminOnly: false, keywords: ['beginner', 'make', 'simple', 'project'] },
   { view: 'chat', path: '/console/chat', adminOnly: false, keywords: ['conversation', 'session'] },
   { view: 'tasks', path: '/console/tasks', adminOnly: false, keywords: ['plans', 'work', 'contracts'] },
   { view: 'agentruntime', path: '/console/agentruntime', adminOnly: false, keywords: ['runs', 'subagents', 'agents'] },

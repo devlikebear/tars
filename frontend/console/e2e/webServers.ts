@@ -42,6 +42,10 @@ export function tarsServeWebServer(opts: { repoRoot: string; workspace: string; 
       // installed on the host — that one reads the real screen.
       CUA_DRIVER_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-cua-driver.sh'),
       TARS_E2E_CUA_LOG: join(workspace, 'e2e-cua-driver.log'),
+      // Easy-mode projects are made under the workspace, scaffolded by this
+      // stub (no npm, no network), never in the host's ~/TARS Projects.
+      TARS_EASY_PROJECTS_DIR: join(workspace, 'easy-projects'),
+      TARS_EASY_SCAFFOLD_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-scaffold.sh'),
     },
     reuseExistingServer: false,
     // The first `go run` compiles the binary.

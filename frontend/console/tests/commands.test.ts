@@ -44,7 +44,7 @@ test('every page is the top result within four typed characters', () => {
     home: 'Home', chat: 'Chat', tasks: 'Plans', agentruntime: 'Agent Runtime',
     memory: 'Memory', sysprompt: 'System Prompt', ops: 'Approvals', cron: 'Cron', logs: 'Logs',
     analytics: 'Analytics', config: 'Settings', extensions: 'Extensions', pulse: 'Pulse',
-    reflection: 'Reflection', channels: 'Channels', onboarding: 'Setup Wizard',
+    reflection: 'Reflection', channels: 'Channels', onboarding: 'Setup Wizard', easy: 'Easy mode',
   }
   const commands = pageCommands(english, 'admin', () => {})
   for (const cmd of commands) {

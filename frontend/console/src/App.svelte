@@ -391,6 +391,7 @@
       home: tr.palette.pages.home,
       chat: tr.nav.items.chat,
       focus: tr.nav.items.focus,
+      easy: tr.easy.palette,
       tasks: tr.nav.items.plans,
       agentruntime: tr.nav.items.agentruntime,
       memory: tr.nav.items.memory,
@@ -619,6 +620,15 @@
           <div class="route-error">Could not load console page.</div>
         {/await}
       </div>
+    {:else if route.view === 'easy'}
+      {#await loadRouteComponent('easy')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const EasyRoute = module.default}
+        <EasyRoute projectId={route.projectId} onNavigate={navigate} />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'chat'}
       {#await loadRouteComponent('chat')}
         <div class="route-loading">Loading...</div>
