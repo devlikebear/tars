@@ -191,7 +191,7 @@ func InitGit(ctx context.Context, dir string) error {
 	if _, err := git(ctx, dir, "add", "-A"); err != nil {
 		return err
 	}
-	_, err := git(ctx, dir, append(tarsIdentity, "commit", "-q", "--allow-empty", "-m", "Start the project")...)
+	_, err := git(ctx, dir, append(tarsIdentity, "commit", "-q", "--allow-empty", "-m", startMessage)...)
 	return err
 }
 

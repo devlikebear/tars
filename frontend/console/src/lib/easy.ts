@@ -207,3 +207,22 @@ export function previewReachable(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, '')
   return host === 'localhost' || host === '::1' || host.endsWith('.localhost') || /^127\./.test(host)
 }
+
+// A saved version of a project (internal/easyproject/versions.go): the
+// start the scaffold left, the work of a finished run, or a going back
+// (whose title names the version it brought back).
+export type EasyVersionKind = 'start' | 'saved' | 'restored'
+export type EasyVersion = { commit: string; title: string; kind: EasyVersionKind; at: string; current?: boolean }
+
+// How a version is named on the screen. The titles are the team's own
+// plain words (the plan's goal); the start has no words of its own.
+export function versionLabel(v: EasyVersion, words: { start: string; backTo: (title: string) => string }): string {
+  switch (v.kind) {
+    case 'start':
+      return words.start
+    case 'restored':
+      return words.backTo(v.title)
+    default:
+      return v.title
+  }
+}

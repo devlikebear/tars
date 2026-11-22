@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { EASY_BOTS, easyCanChange, easyLive, easyView, hiddenWordsIn, previewPollMs, previewReachable, type EasyProject } from '../src/lib/easy.ts'
+import { EASY_BOTS, easyCanChange, easyLive, easyView, hiddenWordsIn, previewPollMs, previewReachable, versionLabel, type EasyProject } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
 import { resolveRoute } from '../src/lib/router.ts'
 import type { FocusCard, FocusPipeline } from '../src/lib/types.ts'
@@ -143,6 +143,15 @@ test('a finished project takes a change once its version is saved, and a change 
   })
   assert.equal(easyView(changed, pipeline({ session_id: 's2' })).change, 'Make it bigger')
   assert.equal(easyView(project(), pipeline()).change, undefined, 'the first version is no change')
+})
+
+test('a version is named by its own words, the start and a going back by the screen', () => {
+  const words = easyEn.versions
+  const v = (kind: 'start' | 'saved' | 'restored', title: string) => ({ commit: 'c', title, kind, at: '' })
+  assert.equal(versionLabel(v('start', 'Start the project'), words), 'The empty starting project')
+  assert.equal(versionLabel(v('saved', 'A sign-up page'), words), 'A sign-up page')
+  assert.equal(versionLabel(v('restored', 'A sign-up page'), words), 'Back to: A sign-up page')
+  assert.equal(versionLabel(v('restored', 'A sign-up page'), easyKo.versions), '되돌림: A sign-up page')
 })
 
 test('the preview is read soon while it starts, rarely while it runs, never after', () => {

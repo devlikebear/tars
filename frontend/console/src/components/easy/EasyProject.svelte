@@ -13,6 +13,7 @@
   import { EASY_BOTS, easyBase, easyCanChange, easyLive, easyView, type EasyProject } from '../../lib/easy'
   import type { FocusPipeline } from '../../lib/types'
   import EasyPreview from './EasyPreview.svelte'
+  import EasyVersions from './EasyVersions.svelte'
 
   let { projectId, onNavigate }: { projectId: string; onNavigate: (path: string) => void } = $props()
 
@@ -76,6 +77,7 @@
     }
   }
 
+  let previewKey = $state(0)
   let changeRequest = $state('')
   let changing = $state(false)
   let changeError = $state('')
@@ -143,7 +145,11 @@
     </header>
 
     {#if view.phase === 'finished'}
-      <EasyPreview projectId={project.id} />
+      <!-- Going back stops the preview on the server; a new key starts it
+           again on the files the folder holds now. -->
+      {#key previewKey}
+        <EasyPreview projectId={project.id} />
+      {/key}
     {/if}
 
     {#if easyCanChange(view)}
@@ -162,6 +168,7 @@
         </button>
         {#if changeError}<p class="error" role="alert" data-testid="easy-change-error">{changeError}</p>{/if}
       </section>
+      <EasyVersions projectId={project.id} onRestored={() => (previewKey += 1)} />
     {/if}
 
     {#if view.phase === 'approve' && view.plan}
