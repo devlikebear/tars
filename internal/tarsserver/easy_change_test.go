@@ -2,6 +2,8 @@ package tarsserver
 
 import (
 	"net/http"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/easyproject"
@@ -110,6 +112,40 @@ func TestEasyChangeOpensTheNextPipelineInTheSameFolder(t *testing.T) {
 	// The change's pipeline is working now: a second change waits.
 	if rec := focusRequestAs(t, h, http.MethodPost, changes, `{"request":"And bigger"}`, serverauth.RoleUser); rec.Code != http.StatusConflict {
 		t.Fatalf("second change while busy = %d", rec.Code)
+	}
+}
+
+func TestEasyChangeRefusals(t *testing.T) {
+	easyFixture(t)
+	f := newWorktreeFixture(t)
+	workspace := f.store.WorkspaceDir()
+	putEasyProject(t, workspace, easyproject.Project{ID: "0123456789abcdef", Name: "making", Status: easyproject.StatusCreating})
+	// Ready, but its folder is gone and it has no pipeline: opening the
+	// change's pipeline fails.
+	putEasyProject(t, workspace, easyproject.Project{ID: "fedcba9876543210", Name: "gone", Status: easyproject.StatusReady,
+		Folder: filepath.Join(t.TempDir(), "missing"), SessionID: "no-such-session"})
+
+	noDriver := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+	if rec := focusRequestAs(t, noDriver, http.MethodPost, "/v1/easy/projects/fedcba9876543210/changes", `{"request":"x"}`, serverauth.RoleUser); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("without a driver = %d", rec.Code)
+	}
+
+	d, _ := createFocusDriver(t, f.store, focusPlanReply)
+	h := newFocusPipelineHandler(f.store, f.c, d, zerolog.Nop())
+	for _, tc := range []struct {
+		id, body string
+		code     int
+	}{
+		{"0123456789abcdef", `{"request":"` + strings.Repeat("a", easyproject.MaxIdeaRunes+1) + `"}`, http.StatusBadRequest},
+		{"0123456789abcdef", `{"request":"x"}`, http.StatusConflict},
+		{"fedcba9876543210", `{"request":"x"}`, http.StatusInternalServerError},
+	} {
+		if rec := focusRequestAs(t, h, http.MethodPost, "/v1/easy/projects/"+tc.id+"/changes", tc.body, serverauth.RoleUser); rec.Code != tc.code {
+			t.Fatalf("%s %.40s = %d %s", tc.id, tc.body, rec.Code, rec.Body.String())
+		}
+	}
+	if p := getEasyProject(t, h, "fedcba9876543210"); len(p.Changes) != 0 || p.SessionID != "no-such-session" {
+		t.Fatalf("a failed change was recorded: %+v", p)
 	}
 }
 
