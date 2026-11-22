@@ -12,6 +12,7 @@
   import { APIRequestError } from '../../lib/api/client'
   import { EASY_BOTS, easyBase, easyLive, easyView, type EasyProject } from '../../lib/easy'
   import type { FocusPipeline } from '../../lib/types'
+  import EasyPreview from './EasyPreview.svelte'
 
   let { projectId, onNavigate }: { projectId: string; onNavigate: (path: string) => void } = $props()
 
@@ -109,6 +110,10 @@
       <p class="say" data-testid="easy-message">{phaseText()}</p>
       {#if loadFailed}<p class="muted">{$t.easy.project.loadFailed}</p>{/if}
     </header>
+
+    {#if view.phase === 'finished'}
+      <EasyPreview projectId={project.id} />
+    {/if}
 
     {#if view.phase === 'approve' && view.plan}
       <section class="your-turn" data-testid="easy-your-turn">

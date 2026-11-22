@@ -46,6 +46,7 @@ export function tarsServeWebServer(opts: { repoRoot: string; workspace: string; 
       // stub (no npm, no network), never in the host's ~/TARS Projects.
       TARS_EASY_PROJECTS_DIR: join(workspace, 'easy-projects'),
       TARS_EASY_SCAFFOLD_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-scaffold.sh'),
+      TARS_EASY_PREVIEW_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-preview.sh'),
     },
     reuseExistingServer: false,
     // The first `go run` compiles the binary.

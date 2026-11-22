@@ -108,6 +108,16 @@ type focusDriver struct {
 	// this host cannot (no checkpoints or no OS sandbox).
 	promotion *focusPromotion
 	wg        sync.WaitGroup
+	// closers run when the driver closes, after its runs: what the focus
+	// API started beside the pipelines (easy-mode previews).
+	closers []func()
+}
+
+// onClose adds f to what Close runs.
+func (d *focusDriver) onClose(f func()) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.closers = append(d.closers, f)
 }
 
 // focusTurnRunner runs one turn on a session (runServerChatTurn in the
@@ -323,6 +333,13 @@ func (d *focusDriver) Close(ctx context.Context) {
 	case <-finished:
 	case <-ctx.Done():
 		d.logger.Warn().Msg("focus: driver runs still going at shutdown")
+	}
+	d.mu.Lock()
+	closers := d.closers
+	d.closers = nil
+	d.mu.Unlock()
+	for _, f := range closers {
+		f()
 	}
 }
 

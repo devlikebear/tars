@@ -29,6 +29,8 @@ type easyProjectsAPI struct {
 	creator *easyproject.Creator
 	// canRun reports whether the server can send a pipeline's first turn.
 	canRun func() bool
+	// previews run the projects' apps for the result screen (easy_preview.go).
+	previews *easyproject.Previews
 }
 
 // registerEasyProjects adds the routes to the focus API's mux: opening the
@@ -54,9 +56,18 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 		},
 		canRun: func() bool { return api.driver != nil && api.driver.canRunTurns() },
 	}
+	previews, stopPreviews := newEasyPreviews(api.sessions.WorkspaceDir())
+	easy.previews = previews
+	if api.driver != nil {
+		// A preview must not outlive the server: it holds a port.
+		api.driver.onClose(stopPreviews)
+	}
 	mux.HandleFunc("POST /v1/easy/projects", easy.create)
 	mux.HandleFunc("GET /v1/easy/projects", easy.list)
 	mux.HandleFunc("GET /v1/easy/projects/{id}", easy.get)
+	mux.HandleFunc("GET /v1/easy/projects/{id}/preview", easy.previewStatus)
+	mux.HandleFunc("POST /v1/easy/projects/{id}/preview", easy.previewStart)
+	mux.HandleFunc("DELETE /v1/easy/projects/{id}/preview", easy.previewStop)
 }
 
 // easyOpenPipeline opens the project's pipeline through the focus API's
