@@ -12,6 +12,7 @@ import type { NewChatFolderTranslations } from './sections/newChatFolder.ts'
 import type { ProviderTestTranslations } from './sections/providerTest.ts'
 import type { LocalEmbedTranslations } from './sections/localEmbed.ts'
 import type { FocusTranslations } from './sections/focus.ts'
+import type { EasyTranslations } from './sections/easy.ts'
 import type { ChatApprovalTranslations } from './sections/chatApproval.ts'
 import type { SessionBoardTranslations } from './sections/sessionBoard.ts'
 
@@ -1472,6 +1473,7 @@ export type Translations = {
   providerTest: ProviderTestTranslations
   localEmbed: LocalEmbedTranslations
   focus: FocusTranslations
+  easy: EasyTranslations
   chatApproval: ChatApprovalTranslations
   sessionBoard: SessionBoardTranslations
 

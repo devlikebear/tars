@@ -624,7 +624,9 @@ export function focusOwnsShortcut(action: string, route: { view: string; session
 }
 
 export function focusChromeHidden(route: { view: string }): boolean {
-  return route.view === 'focus'
+  // Easy mode hides the workbench's navigation too: its one way out is its
+  // own "expert mode" link.
+  return route.view === 'focus' || route.view === 'easy'
 }
 
 // Triage progress (P3): how many finding cards of the open triage gate are

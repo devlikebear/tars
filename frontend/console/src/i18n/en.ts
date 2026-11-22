@@ -13,6 +13,7 @@ import { newChatFolderEn } from './sections/newChatFolder.ts'
 import { providerTestEn } from './sections/providerTest.ts'
 import { localEmbedEn } from './sections/localEmbed.ts'
 import { focusEn } from './sections/focus.ts'
+import { easyEn } from './sections/easy.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
 import { sessionBoardEn } from './sections/sessionBoard.ts'
 
@@ -1528,6 +1529,7 @@ export const en = {
   providerTest: providerTestEn,
   localEmbed: localEmbedEn,
   focus: focusEn,
+  easy: easyEn,
   chatApproval: chatApprovalEn,
   sessionBoard: sessionBoardEn,
 

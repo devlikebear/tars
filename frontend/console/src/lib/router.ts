@@ -1,6 +1,7 @@
 const consoleBase = '/console'
 const chatPrefix = `${consoleBase}/chat`
 const focusPrefix = `${consoleBase}/focus`
+const easyPrefix = `${consoleBase}/easy`
 
 export type Route =
   | { view: 'board' }
@@ -23,6 +24,9 @@ export type Route =
   | { view: 'reflection' }
   | { view: 'channels' }
   | { view: 'onboarding'; reentry?: boolean }
+  // Easy mode (docs/decisions/vibe-coder-identity.md §4): the make screen,
+  // or one project's progress.
+  | { view: 'easy'; projectId?: string }
 
 export function resolveRoute(pathname: string): Route {
   let path = pathname.trim()
@@ -56,6 +60,11 @@ export function resolveRoute(pathname: string): Route {
     }
     if (sessionQuery) return { view: 'chat', sessionId: sessionQuery }
     return { view: 'chat' }
+  }
+
+  if (path === easyPrefix || path.startsWith(`${easyPrefix}/`)) {
+    const projectId = decodeURIComponent(path.slice(easyPrefix.length + 1).split('/')[0]?.trim() || '')
+    return projectId ? { view: 'easy', projectId } : { view: 'easy' }
   }
 
   if (path === focusPrefix || path.startsWith(`${focusPrefix}/`)) {

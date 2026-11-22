@@ -13,6 +13,7 @@ import { newChatFolderKo } from './sections/newChatFolder.ts'
 import { providerTestKo } from './sections/providerTest.ts'
 import { localEmbedKo } from './sections/localEmbed.ts'
 import { focusKo } from './sections/focus.ts'
+import { easyKo } from './sections/easy.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
 import { sessionBoardKo } from './sections/sessionBoard.ts'
 
@@ -1526,6 +1527,7 @@ export const ko = {
   providerTest: providerTestKo,
   localEmbed: localEmbedKo,
   focus: focusKo,
+  easy: easyKo,
   chatApproval: chatApprovalKo,
   sessionBoard: sessionBoardKo,
 
