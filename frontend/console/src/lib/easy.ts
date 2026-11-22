@@ -17,9 +17,14 @@ export type EasyProject = {
   status: EasyProjectStatus
   error_code?: string
   session_id?: string
+  // What the person asked to change after the first version, oldest first.
+  changes?: EasyChange[]
   created_at: string
   updated_at: string
 }
+
+// One "change it like this" and the pipeline that makes it.
+export type EasyChange = { request: string; session_id: string; at: string }
 
 // The team, in the order it works. The publisher arrives with phase 5.
 export const EASY_BOTS = ['leader', 'maker', 'reviewer', 'checker', 'publisher'] as const
@@ -50,8 +55,12 @@ export type EasyView = {
   // The last failed check, in the check's own words (scripted browser
   // checks print screen / expected / seen; the server copies them).
   check?: EasyCheckFailure
-  // Whether the finished version was saved (Pipeline.saved).
+  // Whether the finished version was saved (Pipeline.saved); undefined
+  // while the server is still saving it.
   saved?: boolean
+  // The person's own words, when this run makes a change they asked for
+  // ("change it like this") rather than the first version.
+  change?: string
 }
 
 // The stage kinds a bot works in.
@@ -107,10 +116,13 @@ export function easyView(project: EasyProject, pipeline: (FocusPipeline & SavedF
   if (pipeline.awaiting_verification) bots.checker = 'working'
 
   const view: EasyView = { phase: 'building', bots, check: lastCheckFailure(pipeline.cards) }
+  const change = project.changes?.findLast((c) => c.session_id === project.session_id)
+  if (change) view.change = change.request
   if (pipeline.finished_at) {
     bots.checker = 'done'
     view.phase = 'finished'
-    view.saved = Boolean(pipeline.saved?.commit) && !pipeline.saved?.error
+    // The server saves the version a moment after the pipeline finishes.
+    if (pipeline.saved) view.saved = Boolean(pipeline.saved.commit) && !pipeline.saved.error
     return view
   }
   if (pipeline.open_gate === 'plan' && pipeline.plan) {
@@ -133,7 +145,14 @@ export function easyView(project: EasyProject, pipeline: (FocusPipeline & SavedF
 
 // Whether a project still changes on its own, so the screen keeps reading.
 export function easyLive(view: EasyView): boolean {
+  if (view.phase === 'finished') return view.saved === undefined
   return view.phase === 'creating' || view.phase === 'planning' || view.phase === 'building'
+}
+
+// Whether the project takes a change now: finished and saved (or its save
+// failed), so the folder is free. The server checks the same.
+export function easyCanChange(view: EasyView): boolean {
+  return view.phase === 'finished' && view.saved !== undefined
 }
 
 // Words an easy-mode screen never shows (vibe-coder-identity.md §4): the

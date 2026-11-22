@@ -61,6 +61,8 @@ export const easyEn = {
     stuck: 'The team stopped and could not go on by itself. Open it in expert mode to see what happened.',
     finished: 'Finished, and saved as a version.',
     finishedNotSaved: 'Finished, but this version could not be saved.',
+    finishedSaving: 'Finished. Saving this version…',
+    asked: 'What you asked to change',
     checkFailed: (screen: string, expected: string, seen: string) =>
       `${screen ? `On ${screen}, the` : 'The'} checker expected ${expected}, but saw ${seen}. The maker is fixing it.`,
     actionFailed: 'That did not go through. Try again.',
@@ -78,6 +80,13 @@ export const easyEn = {
     elsewhere: 'Your app runs on the computer TARS is on. Open TARS there to see it.',
     frameTitle: 'Your app',
   },
+  change: {
+    title: 'Change it like this',
+    hint: 'Say what should be different. The team plans the change, you approve it, and they make it.',
+    placeholder: 'Make the sign-up button green, and ask for a phone number too',
+    submit: 'Make this change',
+    submitting: 'Starting…',
+  },
   errors: {
     node_missing: 'This computer needs Node.js before TARS can make a web app. Install it from nodejs.org, then try again.',
     scaffold_failed: 'Setting up the project did not work. Check the internet connection and try again.',
@@ -87,6 +96,9 @@ export const easyEn = {
     idea_required: 'Write what you want to make first.',
     idea_too_long: 'That is a lot. Keep it to a few sentences.',
     cannot_run: 'TARS cannot start the team right now. Check that the AI is set up in settings.',
+    change_required: 'Write what you want to change first.',
+    change_too_long: 'That is a lot. Keep it to a few sentences.',
+    busy: 'The team is still working on this project. Wait until it is finished.',
     unknown: 'Something went wrong. Try again.',
   } as Record<string, string>,
 }
@@ -147,6 +159,8 @@ export const easyKo: EasyTranslations = {
     stuck: '봇 팀이 멈췄고 스스로 이어 가지 못했어요. 전문가 모드로 열어 무슨 일인지 확인하세요.',
     finished: '완성했고, 버전으로 저장했어요.',
     finishedNotSaved: '완성했지만 이번 버전을 저장하지 못했어요.',
+    finishedSaving: '완성했어요. 이번 버전을 저장하는 중…',
+    asked: '바꿔 달라고 한 내용',
     checkFailed: (screen: string, expected: string, seen: string) =>
       `${screen ? `${screen}에서 ` : ''}확인봇은 "${expected}"를 기대했는데 "${seen}"이 보였어요. 제작봇이 고치고 있어요.`,
     actionFailed: '처리되지 않았어요. 다시 시도해 주세요.',
@@ -164,6 +178,13 @@ export const easyKo: EasyTranslations = {
     elsewhere: '앱은 TARS가 설치된 컴퓨터에서 돌아가요. 그 컴퓨터에서 TARS를 열어야 볼 수 있어요.',
     frameTitle: '내 앱',
   },
+  change: {
+    title: '이렇게 고쳐 줘',
+    hint: '무엇이 달라졌으면 하는지 말해 주세요. 봇 팀이 고칠 계획을 세우고, 확인을 받은 뒤 고쳐요.',
+    placeholder: '신청 버튼을 초록색으로 바꾸고, 전화번호도 받아 줘',
+    submit: '이대로 고치기',
+    submitting: '시작하는 중…',
+  },
   errors: {
     node_missing: '웹앱을 만들려면 이 컴퓨터에 Node.js가 필요해요. nodejs.org에서 설치한 뒤 다시 시도해 주세요.',
     scaffold_failed: '프로젝트를 준비하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.',
@@ -173,6 +194,9 @@ export const easyKo: EasyTranslations = {
     idea_required: '먼저 무엇을 만들지 적어 주세요.',
     idea_too_long: '조금 길어요. 몇 문장으로 줄여 주세요.',
     cannot_run: '지금은 봇 팀을 시작할 수 없어요. 설정에서 AI가 연결돼 있는지 확인해 주세요.',
+    change_required: '먼저 무엇을 고칠지 적어 주세요.',
+    change_too_long: '조금 길어요. 몇 문장으로 줄여 주세요.',
+    busy: '봇 팀이 아직 이 프로젝트를 만들고 있어요. 끝난 뒤에 다시 시도해 주세요.',
     unknown: '문제가 생겼어요. 다시 시도해 주세요.',
   },
 }

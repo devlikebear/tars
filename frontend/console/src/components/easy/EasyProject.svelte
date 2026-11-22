@@ -7,10 +7,10 @@
   // while it still changes on its own.
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../../i18n'
-  import { getEasyProject } from '../../lib/api/easy'
+  import { changeEasyProject, getEasyProject } from '../../lib/api/easy'
   import { focusGate, getFocusPipeline } from '../../lib/api/focus'
   import { APIRequestError } from '../../lib/api/client'
-  import { EASY_BOTS, easyBase, easyLive, easyView, type EasyProject } from '../../lib/easy'
+  import { EASY_BOTS, easyBase, easyCanChange, easyLive, easyView, type EasyProject } from '../../lib/easy'
   import type { FocusPipeline } from '../../lib/types'
   import EasyPreview from './EasyPreview.svelte'
 
@@ -32,10 +32,12 @@
   async function read() {
     try {
       const next = await getEasyProject(projectId)
+      // The project and its pipeline are shown together: after a change the
+      // project names a new pipeline, and showing it with the old one (or
+      // none) would flash the wrong step.
+      const nextPipeline = next.status === 'ready' && next.session_id ? await getFocusPipeline(next.session_id) : null
       project = next
-      if (next.status === 'ready' && next.session_id) {
-        pipeline = await getFocusPipeline(next.session_id)
-      }
+      pipeline = nextPipeline
       loadFailed = false
     } catch (err) {
       if (err instanceof APIRequestError && err.status === 404) {
@@ -74,12 +76,38 @@
     }
   }
 
+  let changeRequest = $state('')
+  let changing = $state(false)
+  let changeError = $state('')
+
+  async function submitChange() {
+    if (!project || changing) return
+    if (!changeRequest.trim()) {
+      changeError = $t.easy.errors.change_required
+      return
+    }
+    changing = true
+    changeError = ''
+    try {
+      await changeEasyProject(project.id, changeRequest)
+      changeRequest = ''
+      clearTimeout(timer)
+      await loop()
+    } catch (err) {
+      const code = err instanceof APIRequestError ? String((err.payload as { code?: string } | undefined)?.code ?? '') : ''
+      changeError = (code && $t.easy.errors[code]) || $t.easy.errors.unknown
+    } finally {
+      changing = false
+    }
+  }
+
   function phaseText(): string {
     if (!view) return ''
     switch (view.phase) {
       case 'failed':
         return $t.easy.errors[view.errorCode ?? 'unknown'] ?? $t.easy.errors.unknown
       case 'finished':
+        if (view.saved === undefined) return $t.easy.project.finishedSaving
         return view.saved ? $t.easy.project.finished : $t.easy.project.finishedNotSaved
       case 'approve':
         return $t.easy.project.approveIntro
@@ -109,10 +137,31 @@
       <h1>{project.name}</h1>
       <p class="say" data-testid="easy-message">{phaseText()}</p>
       {#if loadFailed}<p class="muted">{$t.easy.project.loadFailed}</p>{/if}
+      {#if view.change && view.phase !== 'finished'}
+        <p class="asked" data-testid="easy-asked"><span>{$t.easy.project.asked}</span> {view.change}</p>
+      {/if}
     </header>
 
     {#if view.phase === 'finished'}
       <EasyPreview projectId={project.id} />
+    {/if}
+
+    {#if easyCanChange(view)}
+      <section class="change" data-testid="easy-change">
+        <h2>{$t.easy.change.title}</h2>
+        <p class="muted">{$t.easy.change.hint}</p>
+        <textarea
+          rows="3"
+          data-testid="easy-change-input"
+          placeholder={$t.easy.change.placeholder}
+          aria-label={$t.easy.change.title}
+          bind:value={changeRequest}
+        ></textarea>
+        <button type="button" class="btn btn-primary" data-testid="easy-change-submit" disabled={changing} onclick={submitChange}>
+          {changing ? $t.easy.change.submitting : $t.easy.change.submit}
+        </button>
+        {#if changeError}<p class="error" role="alert" data-testid="easy-change-error">{changeError}</p>{/if}
+      </section>
     {/if}
 
     {#if view.phase === 'approve' && view.plan}
@@ -221,6 +270,39 @@
   }
   .error {
     color: var(--error);
+  }
+  .asked {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid rgba(var(--primary-rgb), 0.6);
+    background: var(--surface);
+  }
+  .asked span {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+  .change {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  .change h2,
+  .change .muted {
+    margin: 0;
+  }
+  .change textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--text-md);
+    resize: vertical;
   }
   .check {
     border-left: 3px solid var(--warning);

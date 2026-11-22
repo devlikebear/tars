@@ -49,10 +49,56 @@ type Project struct {
 	Status Status `json:"status"`
 	// ErrorCode is set when Status is failed.
 	ErrorCode string `json:"error_code,omitempty"`
-	// SessionID is the focus pipeline's session once the project is ready.
-	SessionID string    `json:"session_id,omitempty"`
+	// SessionID is the focus pipeline's session once the project is ready:
+	// the latest one, so a change's pipeline replaces the first one here.
+	SessionID string `json:"session_id,omitempty"`
+	// Changes are what the person asked to change after the first version,
+	// oldest first (phase 3, "change it like this").
+	Changes   []Change  `json:"changes,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Change is one "change it like this": the person's words and the pipeline
+// that makes it.
+type Change struct {
+	Request   string    `json:"request"`
+	SessionID string    `json:"session_id"`
+	At        time.Time `json:"at"`
+}
+
+// ErrChangeRequired and ErrChangeTooLong reject a change request before a
+// pipeline is opened. It becomes the goal, like an idea.
+var (
+	ErrChangeRequired = errors.New("a change request is required")
+	ErrChangeTooLong  = fmt.Errorf("a change request is at most %d characters", MaxIdeaRunes)
+)
+
+// CleanChange trims a change request and checks its length.
+func CleanChange(request string) (string, error) {
+	request, err := CleanIdea(request)
+	switch {
+	case errors.Is(err, ErrIdeaRequired):
+		return "", ErrChangeRequired
+	case errors.Is(err, ErrIdeaTooLong):
+		return "", ErrChangeTooLong
+	}
+	return request, err
+}
+
+// ChangeGoal is the goal of the pipeline that makes a change: the person's
+// words, said to be a change to the app the folder already holds (the
+// webapp template already says to build on what is there).
+func ChangeGoal(request string) string {
+	return "Change the app that is already in this folder: " + request
+}
+
+// WithChange answers p with request recorded and sessionID as its pipeline.
+func (p Project) WithChange(request, sessionID string, now time.Time) Project {
+	p.Changes = append(append([]Change(nil), p.Changes...), Change{Request: request, SessionID: sessionID, At: now})
+	p.SessionID = sessionID
+	p.UpdatedAt = now
+	return p
 }
 
 // MaxIdeaRunes caps the idea: it becomes the pipeline's goal.
@@ -188,6 +234,7 @@ func validID(id string) bool {
 	return err == nil
 }
 
-// Opener opens the focus pipeline that builds the idea in folder, starting
-// its first turn, and returns the pipeline's session id.
-type Opener func(ctx context.Context, folder, idea string) (string, error)
+// Opener opens a focus pipeline with goal in folder, starting its first
+// turn, and returns the pipeline's session id: the idea for the first
+// version, ChangeGoal for a change.
+type Opener func(ctx context.Context, folder, goal string) (string, error)
