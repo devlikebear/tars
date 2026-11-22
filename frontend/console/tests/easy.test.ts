@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { EASY_BOTS, easyLive, easyView, hiddenWordsIn, type EasyProject } from '../src/lib/easy.ts'
+import { EASY_BOTS, easyLive, easyView, hiddenWordsIn, previewPollMs, previewReachable, type EasyProject } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
 import { resolveRoute } from '../src/lib/router.ts'
 import type { FocusCard, FocusPipeline } from '../src/lib/types.ts'
@@ -114,6 +114,22 @@ test('no easy-mode sentence uses a hidden word', () => {
     for (const text of texts) assert.deepEqual(hiddenWordsIn(text), [], `${lang}: ${text}`)
   }
   for (const bot of EASY_BOTS) assert.ok(easyEn.bots[bot] && easyKo.bots[bot], bot)
+})
+
+test('the preview is read soon while it starts, rarely while it runs, never after', () => {
+  assert.equal(previewPollMs({ state: 'starting' }), 1000)
+  assert.equal(previewPollMs({ state: 'running', url: 'http://127.0.0.1:5173/' }), 30_000)
+  assert.equal(previewPollMs({ state: 'failed', error_code: 'preview_failed' }), null)
+  assert.equal(previewPollMs({ state: 'stopped' }), null)
+})
+
+test('the preview shows only on the computer TARS runs on', () => {
+  for (const host of ['127.0.0.1', 'localhost', '[::1]', '::1', 'tars.localhost', '127.0.0.2']) {
+    assert.equal(previewReachable(host), true, host)
+  }
+  for (const host of ['desk.tailnet.ts.net', '192.168.0.10', 'example.com', 'localhost.example.com']) {
+    assert.equal(previewReachable(host), false, host)
+  }
 })
 
 test('the easy routes', () => {

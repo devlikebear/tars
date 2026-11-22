@@ -161,3 +161,30 @@ export const easyBase = '/console/easy'
 export function easyProjectPath(id: string): string {
   return `${easyBase}/${encodeURIComponent(id)}`
 }
+
+// The result screen's preview (internal/easyproject/preview.go): the
+// person's app, run by the server on this computer's loopback address.
+export type EasyPreviewState = 'stopped' | 'starting' | 'running' | 'failed'
+export type EasyPreview = { state: EasyPreviewState; url?: string; error_code?: string }
+
+// When the result screen reads its preview again: soon while it starts,
+// every half minute while it runs (reading keeps it running; the server
+// stops one nobody read for ten minutes), never once it stopped or failed.
+export function previewPollMs(preview: EasyPreview): number | null {
+  switch (preview.state) {
+    case 'starting':
+      return 1000
+    case 'running':
+      return 30_000
+    default:
+      return null
+  }
+}
+
+// Whether a console at hostname can show the preview: the app answers only
+// on the server's own computer, so a console reached from another one (a
+// remote address) cannot load it.
+export function previewReachable(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '')
+  return host === 'localhost' || host === '::1' || host.endsWith('.localhost') || /^127\./.test(host)
+}

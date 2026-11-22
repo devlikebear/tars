@@ -62,6 +62,13 @@ test.describe.serial('easy mode', () => {
     }
     await expectNoHiddenWords(page, 'finished')
 
+    // The finished app runs on this computer and shows in place
+    // (e2e/fake-preview.sh stands in for its development server).
+    const frame = page.getByTestId('easy-preview-frame')
+    await expect(frame).toHaveAttribute('src', /^http:\/\/127\.0\.0\.1:\d+\/$/, { timeout: 30_000 })
+    await expect(page.frameLocator('[data-testid="easy-preview-frame"]').getByRole('heading', { name: 'Book club sign-up' })).toBeVisible()
+    await expectNoHiddenWords(page, 'result')
+
     // The project is listed on the make screen, and expert mode opens its
     // work in the focus screen.
     await page.getByRole('button', { name: /All projects/ }).click()
@@ -82,6 +89,8 @@ test.describe.serial('easy mode', () => {
       await page.goto(projectPath)
       await expect(page.getByTestId('easy-message')).toHaveText('완성했고, 버전으로 저장했어요.')
       await expect(page.getByTestId('easy-bot-publisher')).toContainText('출판봇')
+      await expect(page.getByTestId('easy-result')).toContainText('내 앱')
+      await expect(page.getByTestId('easy-preview-frame')).toBeVisible()
       await expectNoHiddenWords(page, 'finished (ko)')
     })
   })
