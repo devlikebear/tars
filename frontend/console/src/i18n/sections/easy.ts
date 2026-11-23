@@ -98,6 +98,60 @@ export const easyEn = {
     loadFailed: 'Could not read the versions.',
     failed: 'Could not go back. Try again.',
   },
+  start: {
+    title: 'Before the first project',
+    subtitle: 'TARS needs two things on this computer. Here is the next one to do.',
+    checks: {
+      engine: (name: string) => `The AI that does the work (${name})`,
+      tools: 'The tools that build and run your app (Node.js)',
+    },
+    state: {
+      ok: 'Ready',
+      missing: 'Not installed',
+      signed_out: 'Not signed in',
+      not_set: 'Not chosen',
+    } as Record<string, string>,
+    next: 'Next',
+    install_engine: {
+      title: (name: string) => `Install ${name}`,
+      body: 'The team runs on Claude Code. It needs a paid Claude plan (Pro or Max).',
+      steps: [
+        'Open the Terminal app: press ⌘ Space, type Terminal and press Return.',
+        'Copy this line into it and press Return:',
+        'When it has finished, come back here.',
+      ],
+      other: (name: string) => `Install ${name} on this computer, then come back here.`,
+    },
+    sign_in: {
+      title: (name: string) => `Sign in to ${name}`,
+      body: 'Claude Code is installed. It needs your Claude account before it can work.',
+      steps: [
+        'Open the Terminal app and type this, then press Return:',
+        'Follow the sign-in it opens in your browser, with your Claude account.',
+        'When it says you are signed in, come back here.',
+      ],
+    },
+    install_tools: {
+      title: 'Install Node.js',
+      body: 'TARS uses Node.js to build the app and run it on this computer.',
+      steps: [
+        'Download the installer marked LTS from nodejs.org.',
+        'Open it and follow its steps.',
+        'When it has finished, come back here.',
+      ],
+      link: 'Open nodejs.org',
+    },
+    choose_engine: {
+      title: 'Choose the AI',
+      body: 'No AI is set up for TARS yet. Choose one in the settings.',
+      open: 'Open the settings',
+    },
+    copy: 'Copy',
+    copied: 'Copied',
+    watching: 'TARS checks again by itself every few seconds.',
+    checkNow: 'Check now',
+    checking: 'Checking…',
+  },
   errors: {
     node_missing: 'This computer needs Node.js before TARS can make a web app. Install it from nodejs.org, then try again.',
     scaffold_failed: 'Setting up the project did not work. Check the internet connection and try again.',
@@ -206,6 +260,60 @@ export const easyKo: EasyTranslations = {
     backTo: (title: string) => `되돌림: ${title}`,
     loadFailed: '버전 목록을 읽지 못했어요.',
     failed: '돌아가지 못했어요. 다시 시도해 주세요.',
+  },
+  start: {
+    title: '첫 프로젝트를 만들기 전에',
+    subtitle: 'TARS가 일하려면 이 컴퓨터에 두 가지가 필요해요. 지금 할 일은 하나뿐이에요.',
+    checks: {
+      engine: (name: string) => `일을 하는 AI (${name})`,
+      tools: '앱을 만들고 실행하는 도구 (Node.js)',
+    },
+    state: {
+      ok: '준비됨',
+      missing: '설치 안 됨',
+      signed_out: '로그인 안 됨',
+      not_set: '선택 안 됨',
+    },
+    next: '다음 할 일',
+    install_engine: {
+      title: (name: string) => `${name} 설치하기`,
+      body: '봇 팀은 Claude Code로 일해요. 유료 Claude 요금제(Pro 또는 Max)가 필요해요.',
+      steps: [
+        '터미널 앱을 여세요: ⌘ Space를 누르고 "터미널"을 입력한 뒤 Return을 누르세요.',
+        '아래 줄을 복사해 붙여 넣고 Return을 누르세요:',
+        '설치가 끝나면 이 화면으로 돌아오세요.',
+      ],
+      other: (name: string) => `이 컴퓨터에 ${name}을(를) 설치한 뒤 이 화면으로 돌아오세요.`,
+    },
+    sign_in: {
+      title: (name: string) => `${name}에 로그인하기`,
+      body: 'Claude Code는 설치돼 있어요. 일하려면 Claude 계정으로 로그인해야 해요.',
+      steps: [
+        '터미널 앱을 열고 아래를 입력한 뒤 Return을 누르세요:',
+        '브라우저에 열리는 화면에서 Claude 계정으로 로그인하세요.',
+        '로그인됐다고 나오면 이 화면으로 돌아오세요.',
+      ],
+    },
+    install_tools: {
+      title: 'Node.js 설치하기',
+      body: 'TARS는 Node.js로 앱을 만들고 이 컴퓨터에서 실행해요.',
+      steps: [
+        'nodejs.org에서 LTS라고 적힌 설치 파일을 내려받으세요.',
+        '파일을 열고 안내를 따라 설치하세요.',
+        '설치가 끝나면 이 화면으로 돌아오세요.',
+      ],
+      link: 'nodejs.org 열기',
+    },
+    choose_engine: {
+      title: 'AI 고르기',
+      body: '아직 TARS에 연결된 AI가 없어요. 설정에서 하나를 골라 주세요.',
+      open: '설정 열기',
+    },
+    copy: '복사',
+    copied: '복사됨',
+    watching: 'TARS가 몇 초마다 다시 확인해요.',
+    checkNow: '지금 확인',
+    checking: '확인하는 중…',
   },
   errors: {
     node_missing: '웹앱을 만들려면 이 컴퓨터에 Node.js가 필요해요. nodejs.org에서 설치한 뒤 다시 시도해 주세요.',

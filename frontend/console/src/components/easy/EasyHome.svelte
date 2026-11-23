@@ -3,11 +3,17 @@
   // box to say what to make, and the projects made so far. Starting a
   // project is POST /v1/easy/projects; the server picks the folder, sets the
   // stack up and opens the team's work, so the next screen is the project.
+  //
+  // While this computer lacks what a project needs (GET /v1/easy/readiness),
+  // the Start screen takes the make box's place and the answer is read again
+  // every few seconds, and whenever the tab comes back into view, until it
+  // is ready. A server that cannot answer leaves the make box as it was.
   import { onMount } from 'svelte'
   import { t } from '../../i18n'
-  import { createEasyProject, listEasyProjects } from '../../lib/api/easy'
+  import { createEasyProject, getEasyReadiness, listEasyProjects } from '../../lib/api/easy'
   import { APIRequestError } from '../../lib/api/client'
-  import { easyProjectPath, type EasyProject } from '../../lib/easy'
+  import { easyProjectPath, startPollMs, type EasyProject, type EasyReadiness } from '../../lib/easy'
+  import EasyStart from './EasyStart.svelte'
 
   let { onNavigate }: { onNavigate: (path: string) => void } = $props()
 
@@ -16,12 +22,41 @@
   let errorCode = $state('')
   let projects = $state<EasyProject[]>([])
   let loadFailed = $state(false)
+  let readiness = $state<EasyReadiness | null>(null)
+  let checking = $state(false)
+  let pollTimer: ReturnType<typeof setTimeout> | undefined
 
-  onMount(async () => {
+  async function check() {
+    if (checking) return
+    checking = true
+    clearTimeout(pollTimer)
     try {
-      projects = await listEasyProjects()
+      readiness = await getEasyReadiness()
     } catch {
-      loadFailed = true
+      readiness = null
+    } finally {
+      checking = false
+    }
+    if (readiness && !readiness.ready) pollTimer = setTimeout(check, startPollMs)
+  }
+
+  function onVisible() {
+    if (document.visibilityState === 'visible' && readiness && !readiness.ready) void check()
+  }
+
+  onMount(() => {
+    void check()
+    void (async () => {
+      try {
+        projects = await listEasyProjects()
+      } catch {
+        loadFailed = true
+      }
+    })()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearTimeout(pollTimer)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   })
 
@@ -43,6 +78,8 @@
     } catch (err) {
       const code = err instanceof APIRequestError ? String((err.payload as { code?: string } | undefined)?.code ?? '') : ''
       errorCode = code || 'unknown'
+      // Node went away since the last answer: show the Start screen again.
+      if (code === 'node_missing') void check()
     } finally {
       starting = false
     }
@@ -50,6 +87,9 @@
 </script>
 
 <div class="easy" data-testid="easy-root">
+  {#if readiness && !readiness.ready}
+    <EasyStart {readiness} {checking} onCheck={check} {onNavigate} />
+  {:else}
   <section class="make">
     <h1>{$t.easy.home.title}</h1>
     <p class="subtitle">{$t.easy.home.subtitle}</p>
@@ -75,6 +115,7 @@
       {/each}
     </div>
   </section>
+  {/if}
 
   <section class="projects">
     <h2>{$t.easy.home.projectsTitle}</h2>

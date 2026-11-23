@@ -226,3 +226,40 @@ export function versionLabel(v: EasyVersion, words: { start: string; backTo: (ti
       return v.title
   }
 }
+
+// The Start screen's answer (internal/easyproject/readiness.go): whether
+// this computer has what a project needs, and the one next thing to do.
+export type EasyCheckState = 'ok' | 'missing' | 'signed_out' | 'not_set'
+export type EasyNextStep = 'choose_engine' | 'install_engine' | 'sign_in' | 'install_tools'
+export type EasyReadiness = {
+  ready: boolean
+  next?: EasyNextStep
+  engine: EasyCheckState
+  engine_kind?: string
+  tools: EasyCheckState
+}
+
+// How often the Start screen reads the answer again while the person
+// installs or signs in.
+export const startPollMs = 5000
+
+// The commands the Start screen asks the person to type in Terminal: Claude
+// Code's own installer and its first run, which signs in. Not words to
+// translate.
+export const START_COMMANDS = {
+  installClaude: 'curl -fsSL https://claude.ai/install.sh | bash',
+  signIn: 'claude',
+} as const
+
+// The engine's name as the person knows it.
+export function engineName(kind: string | undefined): string {
+  switch (kind ?? '') {
+    case 'claude-code-cli':
+    case '':
+      return 'Claude Code'
+    case 'antigravity-cli':
+      return 'Antigravity'
+    default:
+      return 'AI'
+  }
+}
