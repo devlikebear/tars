@@ -1,5 +1,11 @@
 import { requestJSON } from './client.ts'
-import type { EasyPreview, EasyProject, EasyVersion } from '../easy.ts'
+import type { EasyPreview, EasyProject, EasyReadiness, EasyVersion } from '../easy.ts'
+
+// What this computer still needs before a project can be made
+// (internal/tarsserver/easy_readiness.go).
+export async function getEasyReadiness(): Promise<EasyReadiness> {
+  return (await requestJSON<{ readiness: EasyReadiness }>('/v1/easy/readiness')).readiness
+}
 
 // Easy-mode projects (internal/tarsserver/easy_projects.go).
 

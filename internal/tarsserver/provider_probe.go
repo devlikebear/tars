@@ -178,26 +178,40 @@ func (s *providerModelsService) probeClaudeCodeCLI(ctx context.Context, result p
 	if out, err := s.runCLI(ctx, result.CLIPath, "--version"); err == nil {
 		result.Version = parseCLIVersion(string(out))
 	}
-	out, err := s.runCLI(ctx, result.CLIPath, "auth", "status", "--json")
-	var status struct {
-		LoggedIn   *bool  `json:"loggedIn"`
-		AuthMethod string `json:"authMethod"`
-	}
-	// A logged-out CLI exits non-zero but still prints the JSON.
-	if jsonErr := json.Unmarshal(bytes.TrimSpace(out), &status); jsonErr != nil || status.LoggedIn == nil {
+	out, err := s.runCLI(ctx, result.CLIPath, claudeAuthStatusArgs...)
+	loggedIn, method := parseClaudeAuthStatus(out)
+	if loggedIn == nil {
 		result.Status, result.Problem = providerProbeInfo, providerProbeAuthUnknown
 		if err != nil {
 			result.Detail = clipProbeOutput(err.Error())
 		}
 		return result
 	}
-	result.AuthMethod = strings.TrimSpace(status.AuthMethod)
-	if !*status.LoggedIn {
+	result.AuthMethod = method
+	if !*loggedIn {
 		result.Status, result.Problem = providerProbeError, providerProbeNotLoggedIn
 		return result
 	}
 	result.Status = providerProbeOK
 	return result
+}
+
+// claudeAuthStatusArgs reads Claude Code's local login without a model call.
+var claudeAuthStatusArgs = []string{"auth", "status", "--json"}
+
+// parseClaudeAuthStatus reads `claude auth status --json`. A logged-out CLI
+// exits non-zero but still prints the JSON, so the exit code is not read;
+// loggedIn is nil when the output says nothing (a CLI too old to have the
+// subcommand, a timeout).
+func parseClaudeAuthStatus(out []byte) (loggedIn *bool, method string) {
+	var status struct {
+		LoggedIn   *bool  `json:"loggedIn"`
+		AuthMethod string `json:"authMethod"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(out), &status); err != nil {
+		return nil, ""
+	}
+	return status.LoggedIn, strings.TrimSpace(status.AuthMethod)
 }
 
 // probeAntigravityCLI checks the version floor and runs `agy models`, which

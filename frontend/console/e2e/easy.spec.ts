@@ -129,3 +129,36 @@ test.describe.serial('easy mode', () => {
     })
   })
 })
+
+// The Start screen (phase 4): while the computer lacks what a project needs,
+// it takes the make box's place and explains only the next thing to do. The
+// e2e server itself is ready (a mock engine, the stand-in scaffold), so the
+// not-ready answers are played by the browser.
+test('the Start screen shows the next step until the computer is ready', async ({ page }) => {
+  const real = await page.request.get('/v1/easy/readiness')
+  expect((await real.json()).readiness).toMatchObject({ ready: true, engine: 'ok', tools: 'ok' })
+
+  const answers = [
+    { ready: false, next: 'install_engine', engine: 'missing', engine_kind: 'claude-code-cli', tools: 'missing' },
+    { ready: false, next: 'sign_in', engine: 'signed_out', engine_kind: 'claude-code-cli', tools: 'ok' },
+    { ready: true, engine: 'ok', engine_kind: 'claude-code-cli', tools: 'ok' },
+  ]
+  await page.route('**/v1/easy/readiness', (route) => route.fulfill({ json: { readiness: answers.shift() ?? { ready: true, engine: 'ok', tools: 'ok' } } }))
+  await page.goto('/console/easy')
+
+  const next = page.getByTestId('easy-start-next')
+  await expect(next).toHaveAttribute('data-next', 'install_engine')
+  await expect(next).toContainText('Install Claude Code')
+  await expect(page.getByTestId('easy-start-command')).toHaveText('curl -fsSL https://claude.ai/install.sh | bash')
+  await expect(page.getByTestId('easy-start-tools')).toHaveAttribute('data-state', 'missing')
+  await expect(page.getByTestId('easy-idea')).toHaveCount(0)
+  await expectNoHiddenWords(page, 'start screen')
+
+  await page.getByTestId('easy-start-check').click()
+  await expect(next).toHaveAttribute('data-next', 'sign_in')
+  await expect(page.getByTestId('easy-start-engine')).toHaveAttribute('data-state', 'signed_out')
+
+  // The next answer is read by itself, without a click.
+  await expect(page.getByTestId('easy-idea')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('easy-start-screen')).toHaveCount(0)
+})

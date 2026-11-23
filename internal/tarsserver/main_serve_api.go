@@ -111,6 +111,7 @@ type apiRouteHandlers struct {
 	focusRelease      http.Handler
 	focusReads        http.Handler
 	focusReadiness    http.Handler
+	easyReadiness     http.Handler
 	focusEvents       http.Handler
 	remoteChat        http.Handler
 	permissionMode    http.Handler
@@ -837,6 +838,7 @@ func buildAPIMux(
 		focusRelease:      newFocusReleaseHandler(sessionStore, logger),
 		focusReads:        apihandlers.NewFocusReadsHandler(sessionStore, checkpointStore, logger),
 		focusReadiness:    newFocusReadinessHandler(cfg),
+		easyReadiness:     newEasyReadinessHandler(cfg),
 		focusEvents:       newFocusEventsHandler(focusEvents),
 		remoteChat:        remoteChatHandler,
 		checkpoints:       newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
@@ -1007,6 +1009,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	if handlers.focusReadiness != nil {
 		mux.Handle("/v1/focus/readiness", handlers.focusReadiness)
+	}
+	if handlers.easyReadiness != nil {
+		mux.Handle("/v1/easy/readiness", handlers.easyReadiness)
 	}
 	if handlers.focusEvents != nil {
 		mux.Handle("/v1/focus/events", handlers.focusEvents)

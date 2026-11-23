@@ -1,8 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { EASY_BOTS, easyCanChange, easyLive, easyView, hiddenWordsIn, previewPollMs, previewReachable, versionLabel, type EasyProject } from '../src/lib/easy.ts'
+import { EASY_BOTS, easyCanChange, easyLive, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, versionLabel, type EasyProject } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
+
+test('the Start screen names the engine as the person knows it', () => {
+  assert.equal(engineName('claude-code-cli'), 'Claude Code')
+  assert.equal(engineName(undefined), 'Claude Code')
+  assert.equal(engineName('antigravity-cli'), 'Antigravity')
+  assert.equal(engineName('anthropic'), 'AI')
+  for (const state of ['ok', 'missing', 'signed_out', 'not_set']) {
+    assert.ok(easyEn.start.state[state] && easyKo.start.state[state], state)
+  }
+})
 import { resolveRoute } from '../src/lib/router.ts'
 import type { FocusCard, FocusPipeline } from '../src/lib/types.ts'
 
