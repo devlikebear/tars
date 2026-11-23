@@ -28,7 +28,9 @@ func readFile(t *testing.T, path string) string {
 	if err != nil {
 		return "<missing>"
 	}
-	return string(raw)
+	// git on Windows may write the files it restores with CRLF line
+	// endings (core.autocrlf); the content is what the test compares.
+	return strings.ReplaceAll(string(raw), "\r\n", "\n")
 }
 
 // versionedProject is a project with three versions: the start, a sign-up
