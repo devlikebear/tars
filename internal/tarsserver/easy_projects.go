@@ -36,8 +36,10 @@ type easyProjectsAPI struct {
 	// pipelines reads the projects' focus pipelines; now stamps changes.
 	pipelines func() *focuspipeline.Store
 	now       func() time.Time
-	// changeMu makes a change one step (easy_change.go).
+	// changeMu makes a change, or a going back, one step (easy_change.go,
+	// easy_versions.go): one thing works in a project's folder at a time.
 	changeMu sync.Mutex
+	logger   zerolog.Logger
 }
 
 // registerEasyProjects adds the routes to the focus API's mux: opening the
@@ -64,6 +66,7 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 		canRun:    func() bool { return api.driver != nil && api.driver.canRunTurns() },
 		pipelines: api.store,
 		now:       api.now,
+		logger:    logger,
 	}
 	previews, stopPreviews := newEasyPreviews(api.sessions.WorkspaceDir())
 	easy.previews = previews
@@ -78,6 +81,8 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 	mux.HandleFunc("POST /v1/easy/projects/{id}/preview", easy.previewStart)
 	mux.HandleFunc("DELETE /v1/easy/projects/{id}/preview", easy.previewStop)
 	mux.HandleFunc("POST /v1/easy/projects/{id}/changes", easy.change)
+	mux.HandleFunc("GET /v1/easy/projects/{id}/versions", easy.versions)
+	mux.HandleFunc("POST /v1/easy/projects/{id}/versions/{commit}/restore", easy.restore)
 }
 
 // easyOpenPipeline opens a project's pipeline through the focus API's

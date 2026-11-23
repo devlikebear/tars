@@ -11,7 +11,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { hiddenWordsIn } from '../src/lib/easy.ts'
 
-const idea = '[e2e:focus-template] A sign-up page for a book club'
+const idea = '[e2e:focus-template] [e2e:easy-write] A sign-up page for a book club'
 
 // The hidden words on the easy screen right now, read from its own root (the
 // header and CASE around it are not easy mode's to word).
@@ -74,7 +74,7 @@ test.describe.serial('easy mode', () => {
     // the person again and shows what they asked for.
     await page.getByTestId('easy-change-submit').click()
     await expect(page.getByTestId('easy-change-error')).toHaveText('Write what you want to change first.')
-    await page.getByTestId('easy-change-input').fill('[e2e:focus-template] Make the sign-up button green')
+    await page.getByTestId('easy-change-input').fill('[e2e:focus-template] [e2e:easy-write] Make the sign-up button green')
     await page.getByTestId('easy-change-submit').click()
     await expect(page.getByTestId('easy-change')).toHaveCount(0)
     await expect(page.getByTestId('easy-asked')).toContainText('Make the sign-up button green')
@@ -86,10 +86,24 @@ test.describe.serial('easy mode', () => {
     await expect(page.getByTestId('easy-change')).toBeVisible()
     await expectNoHiddenWords(page, 'change finished')
 
+    // Versions: the change, the first version, the empty start — newest
+    // first. Going back to the first version saves it again as the newest,
+    // keeps the others, and starts the preview again.
+    const versions = page.getByTestId('easy-version')
+    await expect(versions).toHaveCount(3)
+    await expect(versions.nth(0)).toHaveAttribute('data-current', 'true')
+    await expect(versions.nth(2)).toContainText('The empty starting project')
+    await versions.nth(1).getByTestId('easy-version-restore').click()
+    await expect(versions).toHaveCount(4)
+    await expect(versions.nth(0)).toHaveAttribute('data-current', 'true')
+    await expect(versions.nth(0)).toContainText('Back to: Write a short story')
+    await expect(page.getByTestId('easy-preview-frame')).toBeVisible({ timeout: 30_000 })
+    await expectNoHiddenWords(page, 'went back')
+
     // The project is listed on the make screen, and expert mode opens its
     // work in the focus screen.
     await page.getByRole('button', { name: /All projects/ }).click()
-    await expect(page.getByTestId('easy-project-item')).toContainText('A sign-up page for a book club')
+    await expect(page.getByTestId('easy-project-item')).toContainText('A sign-up page for a')
     await page.goto(projectPath)
     await page.getByTestId('easy-expert').click()
     await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
@@ -109,6 +123,8 @@ test.describe.serial('easy mode', () => {
       await expect(page.getByTestId('easy-result')).toContainText('내 앱')
       await expect(page.getByTestId('easy-preview-frame')).toBeVisible()
       await expect(page.getByTestId('easy-change')).toContainText('이렇게 고쳐 줘')
+      await expect(page.getByTestId('easy-version').first()).toContainText('되돌림: Write a short story')
+      await expect(page.getByTestId('easy-versions')).toContainText('처음 만든 빈 프로젝트')
       await expectNoHiddenWords(page, 'finished (ko)')
     })
   })

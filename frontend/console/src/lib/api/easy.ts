@@ -1,5 +1,5 @@
 import { requestJSON } from './client.ts'
-import type { EasyPreview, EasyProject } from '../easy.ts'
+import type { EasyPreview, EasyProject, EasyVersion } from '../easy.ts'
 
 // Easy-mode projects (internal/tarsserver/easy_projects.go).
 
@@ -30,6 +30,22 @@ export async function changeEasyProject(id: string, request: string): Promise<Ea
     body: JSON.stringify({ request }),
   })
   return res.project
+}
+
+// A project's saved versions, newest first (internal/tarsserver/easy_versions.go).
+export async function listEasyVersions(id: string): Promise<EasyVersion[]> {
+  const res = await requestJSON<{ versions: EasyVersion[] }>(`/v1/easy/projects/${encodeURIComponent(id)}/versions`)
+  return res.versions ?? []
+}
+
+// Going back saves the old version's files as a new version and answers the
+// list after it.
+export async function restoreEasyVersion(id: string, commit: string): Promise<EasyVersion[]> {
+  const res = await requestJSON<{ versions: EasyVersion[] }>(
+    `/v1/easy/projects/${encodeURIComponent(id)}/versions/${encodeURIComponent(commit)}/restore`,
+    { method: 'POST' },
+  )
+  return res.versions ?? []
 }
 
 // A project's preview (internal/tarsserver/easy_preview.go): reading it keeps

@@ -218,6 +218,17 @@ function focusBuildTool(text) {
   return stage === 'build' && text.includes(FOCUS_REPORT) && !typed.includes('→') && !typed.includes(FOCUS_ASK)
 }
 
+// [e2e:easy-write] (easy.spec.ts): the make stage of the webapp template
+// first writes a file in the project folder, so the finished run saves a
+// version of its own and the version list has something to go back to.
+const EASY_WRITE = '[e2e:easy-write]'
+
+function easyMakeTool(text) {
+  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z][a-z0-9_]*)/)?.[1]
+  const typed = stage ? text.slice(0, text.indexOf('<focus-stage>')) : ''
+  return stage === 'make' && text.includes(EASY_WRITE) && !typed.startsWith('Fix these findings')
+}
+
 // focus_template_edit.go's draft route sends no <focus-stage> wrapper, just
 // the json payload {request, existing_ids, base?, previous_draft?} as the
 // whole user message. [e2e:focus-template-edit] in the request text (see
@@ -388,6 +399,15 @@ async function handleCompletion(req, res) {
       id: 'call_e2e_focus',
       type: 'function',
       function: { name: 'write_file', arguments: JSON.stringify({ path: focusLongPath, content: 'export const greet = () => "Hello"\n' }) },
+    }])
+    return
+  }
+  if (toolResults === 0 && easyMakeTool(lastUserText(messages)) && offersTool(body, 'write_file')) {
+    // A different page every time, so every run's work is a new version.
+    sendToolCalls(res, model, body.stream, [{
+      id: 'call_e2e_easy',
+      type: 'function',
+      function: { name: 'write_file', arguments: JSON.stringify({ path: 'page.txt', content: `made at ${Date.now()}\n` }) },
     }])
     return
   }
