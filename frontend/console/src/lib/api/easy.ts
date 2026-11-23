@@ -1,5 +1,17 @@
-import { requestJSON } from './client.ts'
+import { APIRequestError, requestJSON } from './client.ts'
 import type { EasyPreview, EasyProject, EasyReadiness, EasyVersion } from '../easy.ts'
+
+// Easy mode's first run (internal/apihandlers/setup_easy.go): Claude Code
+// on every tier, then a restart. A server already set up (409) is fine:
+// there is nothing left to do but wait for it.
+export async function setUpEasy(): Promise<void> {
+  try {
+    await requestJSON('/v1/admin/setup/easy', { method: 'POST' })
+  } catch (err) {
+    if (err instanceof APIRequestError && err.status === 409) return
+    throw err
+  }
+}
 
 // What this computer still needs before a project can be made
 // (internal/tarsserver/easy_readiness.go).

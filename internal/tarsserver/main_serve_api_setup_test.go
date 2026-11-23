@@ -37,6 +37,7 @@ func TestRegisterSetupOnlyRoutes_ServesAllowedEndpoints(t *testing.T) {
 		"/v1/admin/config/values",
 		"/v1/admin/config/schema",
 		"/v1/admin/restart",
+		"/v1/admin/setup/easy",
 		"/v1/auth/whoami",
 		"/v1/auth/login",
 		"/v1/auth/pairing-login",

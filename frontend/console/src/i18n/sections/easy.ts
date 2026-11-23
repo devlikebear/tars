@@ -98,6 +98,14 @@ export const easyEn = {
     loadFailed: 'Could not read the versions.',
     failed: 'Could not go back. Try again.',
   },
+  setup: {
+    title: 'Getting TARS ready',
+    working: 'Setting TARS up to work with Claude Code. This takes a few seconds.',
+    failed: 'TARS could not finish setting itself up.',
+    timeout: 'TARS is taking longer than usual to start again.',
+    retry: 'Try again',
+    byHand: 'Set it up by hand',
+  },
   start: {
     title: 'Before the first project',
     subtitle: 'TARS needs two things on this computer. Here is the next one to do.',
@@ -260,6 +268,14 @@ export const easyKo: EasyTranslations = {
     backTo: (title: string) => `되돌림: ${title}`,
     loadFailed: '버전 목록을 읽지 못했어요.',
     failed: '돌아가지 못했어요. 다시 시도해 주세요.',
+  },
+  setup: {
+    title: 'TARS 준비하는 중',
+    working: 'TARS가 Claude Code로 일하도록 설정하고 있어요. 몇 초면 끝나요.',
+    failed: 'TARS가 스스로 설정을 마치지 못했어요.',
+    timeout: 'TARS가 다시 시작하는 데 평소보다 오래 걸리고 있어요.',
+    retry: '다시 시도',
+    byHand: '직접 설정하기',
   },
   start: {
     title: '첫 프로젝트를 만들기 전에',

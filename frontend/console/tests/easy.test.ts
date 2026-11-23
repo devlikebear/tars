@@ -1,8 +1,40 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { EASY_BOTS, easyCanChange, easyLive, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, versionLabel, type EasyProject } from '../src/lib/easy.ts'
+import { EASY_BOTS, easyCanChange, easyLive, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, runEasySetup, versionLabel, type EasyProject } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
+
+test('the first run sets TARS up and waits for it to come back set up', async () => {
+  const answers: Array<Error | { needs_setup?: boolean }> = [{ needs_setup: true }, new Error('refused'), { needs_setup: false }]
+  let setUps = 0
+  const sleeps: number[] = []
+  const result = await runEasySetup({
+    setUp: async () => { setUps++ },
+    health: async () => {
+      const next = answers.shift()!
+      if (next instanceof Error) throw next
+      return next
+    },
+    sleep: async (ms) => { sleeps.push(ms) },
+  })
+  assert.equal(result, 'ready')
+  assert.equal(setUps, 1)
+  assert.equal(sleeps.length, 3, 'one wait before each read')
+
+  const refused = await runEasySetup({
+    setUp: async () => { throw new Error('500') },
+    health: async () => { throw new Error('not reached') },
+    sleep: async () => {},
+  })
+  assert.equal(refused, 'failed')
+
+  const slow = await runEasySetup({
+    setUp: async () => {},
+    health: async () => ({ needs_setup: true }),
+    sleep: async () => {},
+  }, 3)
+  assert.equal(slow, 'timeout')
+})
 
 test('the Start screen names the engine as the person knows it', () => {
   assert.equal(engineName('claude-code-cli'), 'Claude Code')

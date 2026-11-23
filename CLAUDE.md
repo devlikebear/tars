@@ -303,7 +303,7 @@ Missing/invalid `llm_providers` or tiers → boots in setup-only mode. Detection
 Setup-only mux: only wizard routes; all other `/v1/*` returns JSON 503.
 
 Frontend wizard (`Onboarding.svelte`): 4 steps — Provider → Tiers → Review → Restarting.
-`App.svelte` force-pushes `/console/onboarding` when `needs_setup=true`.
+`App.svelte` force-pushes `/console/onboarding` when `needs_setup=true` — except on `/console/easy`, which sets itself up (phase 4-2, `EasySetup.svelte`). It calls `POST /v1/admin/setup/easy` (`apihandlers/setup_easy.go`, setup-only mux, admin path like the wizard's), which writes `EasySetupUpdates` (alias `claude`, kind `claude-code-cli`, tiers opus/sonnet/haiku) with `PatchYAML` and restarts. Only a config that still `NeedsSetup` is written — 409 `already_set_up` otherwise. The screen then polls `/v1/healthz` and reloads, and the Start screen covers installing and signing in to Claude Code. The setup-only banner is hidden on the easy route.
 Re-entry via `?reentry=1`: prefills form, masks api_key, adds [Save only] option.
 
 ## Session-scoped overrides (`.tars/` in active cwd)

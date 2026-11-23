@@ -162,3 +162,34 @@ test('the Start screen shows the next step until the computer is ready', async (
   await expect(page.getByTestId('easy-idea')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('easy-start-screen')).toHaveCount(0)
 })
+
+// Easy mode's first run (phase 4-2): a server that still needs setup does
+// not send easy mode to the wizard. The screen sets Claude Code up itself
+// and waits for the restart. The e2e server is already set up, so the
+// browser plays one that is not until the setup call arrives.
+test('easy mode sets TARS up on its first run instead of opening the wizard', async ({ page }) => {
+  let phase: 'needs' | 'restarting' | 'done' = 'needs'
+  let setUps = 0
+  await page.route('**/v1/healthz', async (route) => {
+    const real = await route.fetch()
+    const body = await real.json()
+    if (phase === 'done') return route.fulfill({ response: real, json: body })
+    // One more answer that still needs setup, as a restart would give.
+    if (phase === 'restarting') phase = 'done'
+    return route.fulfill({ response: real, json: { ...body, needs_setup: true } })
+  })
+  await page.route('**/v1/admin/setup/easy', (route) => {
+    setUps++
+    phase = 'restarting'
+    return route.fulfill({ json: { ok: 'true', mode: 'exec', info: 're-executing process' } })
+  })
+
+  await page.goto('/console/easy')
+  await expect(page).toHaveURL(/\/console\/easy$/)
+  await expect(page.getByTestId('easy-setup')).toBeVisible()
+  await expect(page.getByText('Setup-only mode')).toHaveCount(0)
+  await expectNoHiddenWords(page, 'first-run setup')
+  await expect(page.getByRole('heading', { name: 'What do you want to make?' })).toBeVisible({ timeout: 15_000 })
+  expect(setUps).toBe(1)
+  await expect(page).not.toHaveURL(/onboarding/)
+})

@@ -100,6 +100,8 @@ func registerSetupOnlyRoutes(mux *http.ServeMux, handlers setupOnlyHandlers) {
 	mux.Handle("/v1/admin/config/values", handlers.config)
 	mux.Handle("/v1/admin/config/schema", handlers.config)
 	mux.Handle("/v1/admin/restart", handlers.config)
+	// Easy mode's first run: Claude Code on every tier, then a restart.
+	mux.Handle("/v1/admin/setup/easy", handlers.config)
 	mux.Handle("/v1/auth/whoami", handlers.auth)
 	mux.Handle("/v1/auth/login", handlers.auth)
 	mux.Handle("/v1/auth/pairing-login", handlers.auth)
