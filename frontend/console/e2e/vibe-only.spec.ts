@@ -87,7 +87,7 @@ test('a stuck project offers no expert mode', async ({ page }) => {
   )
   await page.goto(`/console/easy/${id}`)
   await expect(page.getByTestId('easy-phase')).toHaveAttribute('data-phase', 'stuck')
-  await expect(page.getByTestId('easy-message')).toHaveText('The team stopped and could not go on by itself. Your idea and what is made so far are kept.')
+  await expect(page.getByTestId('easy-message')).toHaveText('It could not go on by itself. Your idea and what is made so far are kept.')
   await expectNoWayOut(page)
   await expect(page.getByTestId('easy-root')).not.toContainText(/expert/i)
 })

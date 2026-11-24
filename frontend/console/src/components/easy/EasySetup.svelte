@@ -3,12 +3,15 @@
   // TARS has no AI set up yet, so instead of the setup wizard (a choice of
   // provider and tiers a beginner cannot make) the server sets Claude Code
   // up and restarts. The page then loads again and the Start screen says
-  // whether Claude Code still has to be installed or signed in to.
+  // whether Claude Code still has to be installed or signed in to. Both are
+  // drawn in the same frame (EasyStartFrame, screens/D-Start): the three
+  // steps on the left are all still to come while TARS sets itself up.
   import { onMount } from 'svelte'
   import { t } from '../../i18n'
   import { setUpEasy } from '../../lib/api/easy'
   import { getHealthz } from '../../lib/api/system'
   import { runEasySetup, type EasySetupResult } from '../../lib/easy'
+  import EasyStartFrame from './EasyStartFrame.svelte'
   import { consoleMode } from '../../lib/stores/consoleMode.svelte'
 
   let { onNavigate }: { onNavigate: (path: string) => void } = $props()
@@ -29,39 +32,48 @@
   onMount(() => {
     void run()
   })
+
+  const steps = { install: 'next', signIn: 'next', tools: 'next' } as const
 </script>
 
 <div class="easy" data-testid="easy-root">
-  <section class="setup" data-testid="easy-setup" data-state={result}>
-    <h1>{$t.easy.setup.title}</h1>
-    {#if result === 'working' || result === 'ready'}
-      <p class="line"><span class="dot"></span>{$t.easy.setup.working}</p>
-    {:else}
-      <p class="error" role="alert">{result === 'timeout' ? $t.easy.setup.timeout : $t.easy.setup.failed}</p>
-      <div class="actions">
-        <button type="button" class="btn btn-primary" onclick={run}>{$t.easy.setup.retry}</button>
-        {#if consoleMode.expert}
-          <button type="button" class="btn btn-ghost" onclick={() => onNavigate('/console/onboarding')}>{$t.easy.setup.byHand}</button>
-        {/if}
-      </div>
-    {/if}
-  </section>
+  <EasyStartFrame {steps}>
+    <section class="setup" data-testid="easy-setup" data-state={result}>
+      <h2>{$t.easy.setup.title}</h2>
+      {#if result === 'working' || result === 'ready'}
+        <p class="line"><span class="dot"></span>{$t.easy.setup.working}</p>
+        <p class="muted">{$t.easy.setup.then}</p>
+      {:else}
+        <p class="error" role="alert">{result === 'timeout' ? $t.easy.setup.timeout : $t.easy.setup.failed}</p>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" onclick={run}>{$t.easy.setup.retry}</button>
+          {#if consoleMode.expert}
+            <button type="button" class="btn btn-ghost" onclick={() => onNavigate('/console/onboarding')}>{$t.easy.setup.byHand}</button>
+          {/if}
+        </div>
+      {/if}
+    </section>
+  </EasyStartFrame>
 </div>
 
 <style>
   .easy {
-    max-width: 720px;
+    max-width: 1100px;
     margin: 0 auto;
-    padding: var(--space-10) var(--space-6);
+    padding: var(--space-8) var(--space-6);
   }
   .setup {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
   }
-  h1 {
-    font-family: var(--font-display);
+  h2 {
     font-size: var(--text-2xl);
+    font-weight: 600;
+    margin: 0;
+  }
+  .muted {
+    color: var(--text-secondary);
     margin: 0;
   }
   .line {

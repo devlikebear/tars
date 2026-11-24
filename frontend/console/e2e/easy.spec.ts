@@ -56,7 +56,10 @@ test.describe.serial('easy mode', () => {
     await expectNoHiddenWords(page, 'being made')
 
     await expect(phase).toHaveAttribute('data-phase', 'finished', { timeout: 120_000 })
-    await expect(page.getByTestId('easy-message')).toHaveText('Finished, and saved as a version.')
+    const saved = 'Only on this computer for now. Going back never removes a version. What people entered into your app does not go back.'
+    await expect(page.getByTestId('easy-message')).toHaveText(saved)
+    // Publishing comes later: the button is there, and says so.
+    await expect(page.getByTestId('easy-publish')).toBeDisabled()
     for (const bot of ['leader', 'maker', 'reviewer', 'checker']) {
       await expect(page.getByTestId(`easy-bot-${bot}`)).toHaveAttribute('data-state', 'done')
     }
@@ -67,6 +70,14 @@ test.describe.serial('easy mode', () => {
     const frame = page.getByTestId('easy-preview-frame')
     await expect(frame).toHaveAttribute('src', /^http:\/\/127\.0\.0\.1:\d+\/$/, { timeout: 30_000 })
     await expect(page.frameLocator('[data-testid="easy-preview-frame"]').getByRole('heading', { name: 'Book club sign-up' })).toBeVisible()
+    await expect(page.getByTestId('easy-result-version')).toHaveText('Version 1')
+    // The app as on a phone, and back.
+    await page.getByTestId('easy-preview-width-phone').click()
+    await expect(frame).toHaveAttribute('data-width', 'phone')
+    expect((await frame.boundingBox())?.width).toBeLessThanOrEqual(392)
+    await page.getByTestId('easy-preview-width-pc').click()
+    await expect(frame).toHaveAttribute('data-width', 'pc')
+    await expect(page.getByTestId('easy-preview-open')).toHaveAttribute('target', '_blank')
     await expectNoHiddenWords(page, 'result')
 
     // "Change it like this": an empty request is refused in plain words; a
@@ -82,21 +93,43 @@ test.describe.serial('easy mode', () => {
     await expectNoHiddenWords(page, 'change plan to approve')
     await page.getByTestId('easy-approve').click()
     await expect(phase).toHaveAttribute('data-phase', 'finished', { timeout: 120_000 })
-    await expect(page.getByTestId('easy-message')).toHaveText('Finished, and saved as a version.')
+    await expect(page.getByTestId('easy-message')).toHaveText(saved)
     await expect(page.getByTestId('easy-change')).toBeVisible()
+    await expect(page.getByTestId('easy-result-version')).toHaveText('Version 2')
     await expectNoHiddenWords(page, 'change finished')
 
     // Versions: the change, the first version, the empty start — newest
-    // first. Going back to the first version saves it again as the newest,
-    // keeps the others, and starts the preview again.
+    // first. Going back asks first; a refusal while the team works is told
+    // in plain words; going back to the first version saves it again as the
+    // newest, keeps the others, and starts the preview again.
     const versions = page.getByTestId('easy-version')
     await expect(versions).toHaveCount(3)
     await expect(versions.nth(0)).toHaveAttribute('data-current', 'true')
+    await expect(versions.nth(0)).toContainText('Version 2')
+    await expect(versions.nth(1)).toContainText('Version 1')
     await expect(versions.nth(2)).toContainText('The empty starting project')
+
+    await page.route('**/versions/*/restore', (route) => route.fulfill({ status: 409, json: { code: 'busy', error: 'the team is still working on this project' } }), { times: 1 })
     await versions.nth(1).getByTestId('easy-version-restore').click()
-    await expect(versions).toHaveCount(4)
+    await expect(page.getByTestId('easy-restore-confirm')).toContainText('Go back to Version 1?')
+    await page.getByTestId('easy-restore-go').click()
+    await expect(page.getByTestId('easy-version-error')).toHaveText('The team is working on this project right now. Try again when it has finished.')
+    await expect(versions).toHaveCount(3)
+
+    // Keeping this one changes nothing.
+    await versions.nth(1).getByTestId('easy-version-restore').click()
+    await page.getByRole('button', { name: 'Keep this one' }).click()
+    await expect(page.getByTestId('easy-restore-confirm')).toHaveCount(0)
+
+    await versions.nth(1).getByTestId('easy-version-restore').click()
+    await page.getByTestId('easy-restore-go').click()
+    await expect(page.getByTestId('easy-restore-confirm')).toHaveCount(0)
     await expect(versions.nth(0)).toHaveAttribute('data-current', 'true')
     await expect(versions.nth(0)).toContainText('Back to: Write a short story')
+    await expect(page.getByTestId('easy-result-version')).toHaveText('Version 3')
+    await expect(versions).toHaveCount(3)
+    await page.getByTestId('easy-versions-all').click()
+    await expect(versions).toHaveCount(4)
     await expect(page.getByTestId('easy-preview-frame')).toBeVisible({ timeout: 30_000 })
     await expectNoHiddenWords(page, 'went back')
 
@@ -118,12 +151,15 @@ test.describe.serial('easy mode', () => {
       await expectNoHiddenWords(page, 'make screen (ko)')
       expect(projectPath, 'the English test made a project').not.toBe('')
       await page.goto(projectPath)
-      await expect(page.getByTestId('easy-message')).toHaveText('완성했고, 버전으로 저장했어요.')
+      await expect(page.getByTestId('easy-message')).toHaveText('아직 이 컴퓨터에서만 보여요. 되돌려도 버전은 사라지지 않아요. 앱에 쌓인 정보는 되돌아가지 않아요.')
       await expect(page.getByTestId('easy-bot-publisher')).toContainText('출판봇')
       await expect(page.getByTestId('easy-result')).toContainText('내 앱')
       await expect(page.getByTestId('easy-preview-frame')).toBeVisible()
-      await expect(page.getByTestId('easy-change')).toContainText('이렇게 고쳐 줘')
+      await expect(page.getByTestId('easy-change')).toContainText('이렇게 바꿔 줘')
+      await expect(page.getByTestId('easy-result-version')).toHaveText('버전 3')
       await expect(page.getByTestId('easy-version').first()).toContainText('되돌림: Write a short story')
+      await expect(page.getByTestId('easy-publish')).toHaveText('공개하기')
+      await page.getByTestId('easy-versions-all').click()
       await expect(page.getByTestId('easy-versions')).toContainText('처음 만든 빈 프로젝트')
       await expectNoHiddenWords(page, 'finished (ko)')
     })
@@ -152,14 +188,15 @@ test('a spent usage limit pauses the project until the person continues', async 
 
   await expect(phase).toHaveAttribute('data-phase', 'limit', { timeout: 60_000 })
   await expect(phase).toHaveText('Paused')
-  const message = page.getByTestId('easy-message')
-  await expect(message).toContainText('used up what your plan allows')
-  await expect(message).toContainText('2:40pm (Asia/Seoul)')
+  await expect(page.getByTestId('easy-state')).toHaveAttribute('data-state', 'limit')
+  await expect(page.getByTestId('easy-message')).toHaveText('Your AI plan is used up for now. Everything made so far is kept.')
+  await expect(page.getByTestId('easy-limit-time')).toHaveText('2:40pm (Asia/Seoul)')
+  await expect(page.getByTestId('easy-state')).toContainText('Stopped at: Make · Maker')
   await expect(page.getByTestId('easy-root')).not.toContainText('session limit')
   await expectNoHiddenWords(page, 'usage limit')
 
   await page.getByTestId('easy-continue').click()
-  await expect(page.getByTestId('easy-limit')).toHaveCount(0)
+  await expect(page.getByTestId('easy-continue')).toHaveCount(0)
   // Nothing else is clicked: the team goes on by itself to the end.
   await expect(phase).toHaveAttribute('data-phase', 'finished', { timeout: 120_000 })
 })
@@ -180,13 +217,22 @@ test('the Start screen shows the next step until the computer is ready', async (
   await expect(next).toHaveAttribute('data-next', 'install_engine')
   await expect(next).toContainText('Install Claude Code')
   await expect(page.getByTestId('easy-start-command')).toHaveText('curl -fsSL https://claude.ai/install.sh | bash')
-  await expect(page.getByTestId('easy-start-tools')).toHaveAttribute('data-state', 'missing')
+  await expect(page.getByTestId('easy-start-step-install')).toHaveAttribute('data-state', 'now')
+  await expect(page.getByTestId('easy-start-step-tools')).toHaveAttribute('data-state', 'next')
+  await expect(next).toContainText('One thing to do now · 1 / 3')
+  await expect(page.getByTestId('easy-start-paid')).toContainText('You need a paid Claude plan (Pro or Max).')
   await expect(page.getByTestId('easy-idea')).toHaveCount(0)
   await expectNoHiddenWords(page, 'start screen')
 
   await page.getByTestId('easy-start-check').click()
   await expect(next).toHaveAttribute('data-next', 'sign_in')
-  await expect(page.getByTestId('easy-start-engine')).toHaveAttribute('data-state', 'signed_out')
+  await expect(page.getByTestId('easy-start-step-install')).toHaveAttribute('data-state', 'done')
+  await expect(page.getByTestId('easy-start-step-signIn')).toHaveAttribute('data-state', 'now')
+  await expect(next).toContainText('One thing to do now · 2 / 3')
+  // The line to type sits in the folded help.
+  await next.getByText('If it does not work').click()
+  await expect(next.getByTestId('easy-start-command')).toHaveText('claude')
+  await expectNoHiddenWords(page, 'start screen, signing in')
 
   // The next answer is read by itself, without a click.
   await expect(page.getByTestId('easy-idea')).toBeVisible({ timeout: 15_000 })

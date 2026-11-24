@@ -8,20 +8,23 @@
   // by goal mode's policy (GoalAfterPlan) and saves the finished version,
   // so the screen only reads: the project, then its pipeline, every two
   // seconds while it still changes on its own. Everything shown comes from
-  // easyView; the result, versions and the paused and stuck states are the
-  // screens they were (unit 5 redraws them).
+  // easyView. When the team is done the right side is the result (unit 5):
+  // the app running, its versions, and "change it like this" in the team
+  // column; when it is not at work, the state it is in (EasyState) with
+  // the one thing to press in the bar.
   import { onDestroy, onMount } from 'svelte'
-  import { locale, t } from '../../i18n'
-  import { changeEasyProject, getEasyProject } from '../../lib/api/easy'
+  import { t } from '../../i18n'
+  import { changeEasyProject, createEasyProject, deleteEasyProject, getEasyProject } from '../../lib/api/easy'
   import { focusCard, focusGate, getFocusPipeline } from '../../lib/api/focus'
   import { APIRequestError } from '../../lib/api/client'
-  import { easyCanChange, easyLimitResets, easyLive, easyView, type EasyProject } from '../../lib/easy'
+  import { easyCanChange, easyLive, easyProjectPath, easyRetryAction, easyView, recreateEasyProject, type EasyProject } from '../../lib/easy'
   import type { FocusPipeline } from '../../lib/types'
   import { consoleMode } from '../../lib/stores/consoleMode.svelte'
   import EasyBlueprint from './EasyBlueprint.svelte'
   import EasyChecks from './EasyChecks.svelte'
   import EasyMaking from './EasyMaking.svelte'
   import EasyPreview from './EasyPreview.svelte'
+  import EasyState from './EasyState.svelte'
   import EasySteps from './EasySteps.svelte'
   import EasyTeam from './EasyTeam.svelte'
   import EasyVersions from './EasyVersions.svelte'
@@ -159,7 +162,51 @@
 
   // The sentence above the step's content, for the steps the workspace
   // does not draw a pane of its own for.
-  const leadPhases = new Set(['creating', 'failed', 'planning', 'questions', 'stuck', 'limit', 'finished'])
+  const leadPhases = new Set(['planning', 'questions'])
+  // The phases EasyState draws.
+  const statePhases = new Set(['creating', 'failed', 'limit', 'stuck'])
+
+  // Try again on a stuck project: the blocked step again, with the person's
+  // words when they explained again; the server puts the team back to work
+  // on its own (GoalDueOnApproval). A gate answered elsewhere meanwhile
+  // (409) only means the screen is behind: it reads again.
+  let stuckNote = $state('')
+  let retrying = $state(false)
+  async function retryStuck() {
+    if (!project?.session_id || !view?.retry || retrying) return
+    retrying = true
+    actionFailed = false
+    try {
+      const { action, note } = easyRetryAction(stuckNote)
+      await focusGate(project.session_id, 'blocked', action, { note, card_id: view.retry.cardId })
+      stuckNote = ''
+    } catch (err) {
+      if (!(err instanceof APIRequestError && err.status === 409)) actionFailed = true
+    } finally {
+      clearTimeout(timer)
+      await loop()
+      retrying = false
+    }
+  }
+
+  // Try again on a project that could not be set up: the same idea as a new
+  // project, which the screen then follows.
+  let recreating = $state(false)
+  async function recreate() {
+    if (!project || recreating) return
+    recreating = true
+    actionFailed = false
+    try {
+      const id = await recreateEasyProject({ create: createEasyProject, remove: deleteEasyProject }, project)
+      onNavigate(easyProjectPath(id))
+    } catch {
+      actionFailed = true
+      recreating = false
+    }
+  }
+
+  // The number of the version the folder holds, for the result's header.
+  let currentNumber = $state<number | undefined>(undefined)
 
   let previewKey = $state(0)
   let changeRequest = $state('')
@@ -190,21 +237,21 @@
   function phaseText(): string {
     if (!view) return ''
     switch (view.phase) {
-      case 'failed':
-        return $t.easy.errors[view.errorCode ?? 'unknown'] ?? $t.easy.errors.unknown
-      case 'finished':
-        if (view.saved === undefined) return $t.easy.project.finishedSaving
-        return view.saved ? $t.easy.project.finished : $t.easy.project.finishedNotSaved
-      case 'approve':
-        return $t.easy.project.approveIntro
-      case 'stuck':
-        return consoleMode.expert ? $t.easy.project.stuck : $t.easy.project.stuckAlone
-      case 'limit':
-        return $t.easy.project.limitPaused(view.limit ? easyLimitResets(view.limit, $locale) : '')
-      default:
+      case 'planning':
+      case 'questions':
         return $t.easy.project[view.phase]
+      default:
+        return ''
     }
   }
+
+  // The result bar's sentence: still saving, not saved, or where the app is.
+  function resultText(): string {
+    if (!view || view.saved === undefined) return $t.easy.project.finishedSaving
+    return view.saved ? $t.easy.result.bar : $t.easy.project.finishedNotSaved
+  }
+
+  const barPhases = new Set(['approve', 'questions', 'building', 'finished', 'limit', 'stuck', 'failed'])
 </script>
 
 <div class="ws" data-testid="easy-root">
@@ -245,6 +292,26 @@
           </form>
           {#if sayError}<p class="error say-error" role="alert" data-testid="easy-say-error">{sayError}</p>{/if}
         {/if}
+        {#if easyCanChange(view)}
+          <section class="change" data-testid="easy-change">
+            <label for="easy-change-input">{$t.easy.change.title}</label>
+            <textarea
+              id="easy-change-input"
+              rows="3"
+              data-testid="easy-change-input"
+              placeholder={$t.easy.change.placeholder}
+              bind:value={changeRequest}
+              disabled={changing}
+            ></textarea>
+            <div class="change-row">
+              <span class="hint">{$t.easy.change.hint}</span>
+              <button type="button" class="btn btn-secondary" data-testid="easy-change-submit" disabled={changing} onclick={submitChange}>
+                {changing ? $t.easy.change.submitting : $t.easy.change.submit}
+              </button>
+            </div>
+            {#if changeError}<p class="error" role="alert" data-testid="easy-change-error">{changeError}</p>{/if}
+          </section>
+        {/if}
       </aside>
 
       <main class="ws-stage">
@@ -273,70 +340,68 @@
             <EasyChecks {view} />
           {/if}
 
+          {#if statePhases.has(view.phase)}
+            <EasyState {view} bind:note={stuckNote} busy={retrying} />
+          {/if}
+
           {#if view.phase === 'finished'}
             <!-- Going back stops the preview on the server; a new key starts it
                  again on the files the folder holds now. -->
             {#key previewKey}
-              <EasyPreview projectId={project.id} />
+              <EasyPreview projectId={project.id} version={currentNumber} />
             {/key}
-          {/if}
-
-          {#if easyCanChange(view)}
-            <section class="change" data-testid="easy-change">
-              <h2>{$t.easy.change.title}</h2>
-              <p class="muted">{$t.easy.change.hint}</p>
-              <textarea
-                rows="3"
-                data-testid="easy-change-input"
-                placeholder={$t.easy.change.placeholder}
-                aria-label={$t.easy.change.title}
-                bind:value={changeRequest}
-              ></textarea>
-              <button type="button" class="btn btn-primary" data-testid="easy-change-submit" disabled={changing} onclick={submitChange}>
-                {changing ? $t.easy.change.submitting : $t.easy.change.submit}
-              </button>
-              {#if changeError}<p class="error" role="alert" data-testid="easy-change-error">{changeError}</p>{/if}
-            </section>
-            <EasyVersions projectId={project.id} onRestored={() => (previewKey += 1)} />
-          {/if}
-
-          {#if view.phase === 'limit' && view.limit}
-            <section class="your-turn" data-testid="easy-limit">
-              <button type="button" class="btn btn-primary" data-testid="easy-continue" disabled={continuing} onclick={continueAfterLimit}>
-                {continuing ? $t.easy.project.continuing : $t.easy.project.continue}
-              </button>
-              {#if actionFailed}<p class="error" role="alert">{$t.easy.project.actionFailed}</p>{/if}
-            </section>
-          {/if}
-
-          {#if view.phase === 'stuck'}
-            {#if view.checks.some((c) => c.state !== 'not_run')}
-              <EasyChecks {view} />
-            {:else if view.check}
-              <p class="check" data-testid="easy-check">{$t.easy.project.checkFailed(view.check.screen ?? '', view.check.expected, view.check.seen)}</p>
+            {#if easyCanChange(view)}
+              <EasyVersions projectId={project.id} onRestored={() => (previewKey += 1)} onCurrent={(n) => (currentNumber = n)} />
             {/if}
-          {:else if view.check && view.phase === 'building' && view.checks.length === 0}
+          {/if}
+
+          {#if view.check && view.phase === 'building' && view.checks.length === 0}
             <p class="check" data-testid="easy-check">{$t.easy.project.checkFailed(view.check.screen ?? '', view.check.expected, view.check.seen)}</p>
           {/if}
         </div>
 
-        {#if view.phase === 'approve' || view.phase === 'questions' || view.phase === 'building'}
+        {#if barPhases.has(view.phase)}
           <footer class="ws-bar" data-testid="easy-bar">
-            <span class="hint">
+            <span class="hint" data-testid={view.phase === 'finished' ? 'easy-message' : undefined}>
               {#if view.phase === 'questions'}
                 {$t.easy.workspace.bar.questions}
               {:else if view.phase === 'approve'}
                 {$t.easy.workspace.bar.plan}
+              {:else if view.phase === 'finished'}
+                {resultText()}
+              {:else if view.phase === 'limit'}
+                {$t.easy.states.limit.early}
+              {:else if view.phase === 'stuck'}
+                {view.retry ? $t.easy.states.stuck.bar : $t.easy.states.stuck.noRetry}
+              {:else if view.phase === 'failed'}
+                {$t.easy.states.failed.hint}
               {:else if view.step === 'make'}
                 {$t.easy.workspace.bar.making}
               {:else}
                 {$t.easy.workspace.bar.checking}
               {/if}
             </span>
+            {#if actionFailed && view.phase !== 'questions'}<span class="error" role="alert">{$t.easy.project.actionFailed}</span>{/if}
             {#if view.phase === 'approve'}
-              {#if actionFailed}<span class="error" role="alert">{$t.easy.project.actionFailed}</span>{/if}
               <button type="button" class="btn btn-primary go" data-testid="easy-approve" disabled={approving || saying} onclick={approve}>
                 {approving ? $t.easy.project.approving : $t.easy.project.approve}
+              </button>
+            {:else if view.phase === 'limit' && view.limit}
+              <button type="button" class="btn btn-primary go" data-testid="easy-continue" disabled={continuing} onclick={continueAfterLimit}>
+                {continuing ? $t.easy.project.continuing : $t.easy.project.continue}
+              </button>
+            {:else if view.phase === 'stuck' && view.retry}
+              <button type="button" class="btn btn-primary go" data-testid="easy-retry" disabled={retrying} onclick={retryStuck}>
+                {retrying ? $t.easy.states.stuck.retrying : $t.easy.states.stuck.retry}
+              </button>
+            {:else if view.phase === 'failed'}
+              <button type="button" class="btn btn-primary go" data-testid="easy-recreate" disabled={recreating} onclick={recreate}>
+                {recreating ? $t.easy.states.failed.retrying : $t.easy.states.failed.retry}
+              </button>
+            {:else if view.phase === 'finished'}
+              <span class="later" id="easy-publish-later">{$t.easy.result.publishLater}</span>
+              <button type="button" class="btn btn-primary go" data-testid="easy-publish" disabled aria-describedby="easy-publish-later">
+                {$t.easy.result.publish}
               </button>
             {/if}
           </footer>
@@ -519,12 +584,6 @@
     background: var(--success-muted);
     color: var(--success);
   }
-  .your-turn {
-    border: 1px solid rgba(var(--primary-rgb), 0.45);
-    border-radius: var(--radius-lg);
-    padding: var(--space-5);
-    background: var(--surface);
-  }
   .error {
     color: var(--error);
   }
@@ -539,27 +598,52 @@
     font-size: var(--text-xs);
     color: var(--text-tertiary);
   }
+  /* "Change it like this" closes the team column on the result. */
   .change {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-3);
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
   }
-  .change h2,
-  .change .muted {
-    margin: 0;
+  .change label {
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
   .change textarea {
     width: 100%;
     box-sizing: border-box;
     padding: var(--space-3);
     border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     background: var(--surface-inset);
     color: var(--text-primary);
     font: inherit;
-    font-size: var(--text-md);
+    font-size: var(--text-base);
     resize: vertical;
+  }
+  .change-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .change-row .hint {
+    flex: 1;
+    font-size: var(--text-xs);
+  }
+  .change .error {
+    margin: 0;
+  }
+  .later {
+    margin-left: auto;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+  .later + .go {
+    margin-left: 0;
   }
   .check {
     border-left: 3px solid var(--warning);
