@@ -132,3 +132,49 @@ func (s *Store) MarkInterrupted(now time.Time) (int, error) {
 	}
 	return n, s.write(list)
 }
+
+// Update replaces the project with id by what change answers, in one step.
+func (s *Store) Update(id string, change func(Project) (Project, error)) (Project, error) {
+	if !validID(id) {
+		return Project{}, ErrNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list, err := s.read()
+	if err != nil {
+		return Project{}, err
+	}
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		next, err := change(list[i])
+		if err != nil {
+			return Project{}, err
+		}
+		next.ID = id
+		list[i] = next
+		return next, s.write(list)
+	}
+	return Project{}, ErrNotFound
+}
+
+// Remove drops the project with id from the record. Its folder is not the
+// store's: DeleteFolder moves it away first.
+func (s *Store) Remove(id string) error {
+	if !validID(id) {
+		return ErrNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list, err := s.read()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if list[i].ID == id {
+			return s.write(append(list[:i:i], list[i+1:]...))
+		}
+	}
+	return ErrNotFound
+}

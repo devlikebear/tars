@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -17,8 +18,11 @@ import (
 // Easy-mode projects (docs/decisions/vibe-coder-identity.md, phase 2):
 //
 //	POST /v1/easy/projects        {idea} → 202 {project}; 400 idea_required|idea_too_long, 503 node_missing|cannot_run
-//	GET  /v1/easy/projects        → {projects} newest first
-//	GET  /v1/easy/projects/{id}   → {project}; 404
+//	GET  /v1/easy/projects[?state=&limit=&cursor=&archived=1]
+//	     → {projects: [project + board], next_cursor?, counts, archived}; 400 bad_state|bad_cursor|bad_limit
+//	GET  /v1/easy/projects/{id}   → {project, board}; 404
+//	PATCH  /v1/easy/projects/{id} {name?, archived?} → {project, board} (easy_manage.go)
+//	DELETE /v1/easy/projects/{id} → {deleted_to?} (easy_manage.go)
 //
 // One sentence is all the caller sends. The server picks the folder
 // (~/TARS Projects/<name>), sets the web app stack up in it, starts version
@@ -35,7 +39,11 @@ type easyProjectsAPI struct {
 	previews *easyproject.Previews
 	// pipelines reads the projects' focus pipelines; now stamps changes.
 	pipelines func() *focuspipeline.Store
-	now       func() time.Time
+	// turnRunning reports a turn holding a session (a person's own turn
+	// in the project's pipeline session, say), so it is not deleted under
+	// it.
+	turnRunning func(string) bool
+	now         func() time.Time
 	// changeMu makes a change, or a going back, one step (easy_change.go,
 	// easy_versions.go): one thing works in a project's folder at a time.
 	changeMu sync.Mutex
@@ -63,10 +71,11 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 				logger.Warn().Err(err).Str("project_id", p.ID).Str("code", p.ErrorCode).Msg("easy projects: creation failed")
 			},
 		},
-		canRun:    func() bool { return api.driver != nil && api.driver.canRunTurns() },
-		pipelines: api.store,
-		now:       api.now,
-		logger:    logger,
+		canRun:      func() bool { return api.driver != nil && api.driver.canRunTurns() },
+		pipelines:   api.store,
+		turnRunning: api.driver.turnRunning,
+		now:         api.now,
+		logger:      logger,
 	}
 	previews, stopPreviews := newEasyPreviews(api.sessions.WorkspaceDir())
 	easy.previews = previews
@@ -77,6 +86,8 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 	mux.HandleFunc("POST /v1/easy/projects", easy.create)
 	mux.HandleFunc("GET /v1/easy/projects", easy.list)
 	mux.HandleFunc("GET /v1/easy/projects/{id}", easy.get)
+	mux.HandleFunc("PATCH /v1/easy/projects/{id}", easy.update)
+	mux.HandleFunc("DELETE /v1/easy/projects/{id}", easy.remove)
 	mux.HandleFunc("GET /v1/easy/projects/{id}/preview", easy.previewStatus)
 	mux.HandleFunc("POST /v1/easy/projects/{id}/preview", easy.previewStart)
 	mux.HandleFunc("DELETE /v1/easy/projects/{id}/preview", easy.previewStop)
@@ -140,16 +151,56 @@ func (e *easyProjectsAPI) create(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (e *easyProjectsAPI) list(w http.ResponseWriter, _ *http.Request) {
+// boardOf reads the project's current pipeline and gives its board. A
+// pipeline that cannot be read counts as gone.
+func (e *easyProjectsAPI) boardOf(p easyproject.Project) easyproject.Board {
+	if p.SessionID == "" || p.Status != easyproject.StatusReady {
+		return easyproject.BoardOf(p, nil)
+	}
+	pipe, ok, err := e.pipelines().Get(p.SessionID)
+	if err != nil || !ok {
+		return easyproject.BoardOf(p, nil)
+	}
+	return easyproject.BoardOf(p, &pipe)
+}
+
+// list answers the board: every project with its state, read in this one
+// request. Without a limit it lists every project on the board (the
+// console's first easy screens read the whole list).
+func (e *easyProjectsAPI) list(w http.ResponseWriter, r *http.Request) {
+	q := easyproject.ListQuery{
+		State:    easyproject.State(r.URL.Query().Get("state")),
+		Archived: r.URL.Query().Get("archived") == "1",
+		Cursor:   r.URL.Query().Get("cursor"),
+	}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "bad_limit", "limit is a positive number")
+			return
+		}
+		q.Limit = n
+	}
 	list, err := e.creator.Store.List()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "read_failed", "the project list could not be read")
 		return
 	}
-	if list == nil {
-		list = []easyproject.Project{}
+	all := make([]easyproject.Listed, 0, len(list))
+	for _, p := range list {
+		all = append(all, easyproject.Listed{Project: p, Board: e.boardOf(p)})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"projects": list})
+	page, err := easyproject.Page(all, q)
+	switch {
+	case errors.Is(err, easyproject.ErrBadState):
+		writeError(w, http.StatusBadRequest, "bad_state", err.Error())
+	case errors.Is(err, easyproject.ErrBadCursor):
+		writeError(w, http.StatusBadRequest, "bad_cursor", err.Error())
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "read_failed", "the project list could not be read")
+	default:
+		writeJSON(w, http.StatusOK, page)
+	}
 }
 
 func (e *easyProjectsAPI) get(w http.ResponseWriter, r *http.Request) {
@@ -162,5 +213,5 @@ func (e *easyProjectsAPI) get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "read_failed", "the project could not be read")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"project": p})
+	writeJSON(w, http.StatusOK, map[string]any{"project": p, "board": e.boardOf(p)})
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/easyproject"
 	"github.com/devlikebear/tars/internal/focuspipeline"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
@@ -252,4 +253,68 @@ func TestSessionRetentionKeepsAnArchivedSessionUsedSince(t *testing.T) {
 	off.start(context.Background())()
 	var none *sessionRetention
 	none.start(context.Background())()
+}
+
+// An easy project's pipeline finishes and nobody touches it for weeks: the
+// project is still on the board, so its session (and the pipeline file the
+// board reads) must outlive the retention ages. A finished pipeline of
+// nobody's project still goes.
+func TestSessionRetentionKeepsEasyProjectSessions(t *testing.T) {
+	store := session.NewStore(filepath.Join(t.TempDir(), "sessions"))
+	attachSessionDeleteHooks(store, focusPipelineCleanup(store, zerolog.Nop()))
+	focus := focusStoreFor(store)
+	mk := func(title string) session.Session {
+		t.Helper()
+		sess, err := store.Create(title)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := focus.Save(focuspipeline.New(sess.ID, title, time.Now())); err != nil {
+			t.Fatal(err)
+		}
+		finishPipeline(t, store, sess.ID)
+		return sess
+	}
+	current, earlier, orphan := mk("easy: current"), mk("easy: an earlier change"), mk("a finished task")
+	putEasyProject(t, store.WorkspaceDir(), easyproject.Project{ID: "0123456789abcdef", Status: easyproject.StatusReady,
+		SessionID: current.ID, Changes: []easyproject.Change{{Request: "x", SessionID: earlier.ID}}})
+	for _, s := range []session.Session{current, earlier, orphan} {
+		if err := store.Touch(s.ID, time.Now().Add(-8*24*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clock := time.Now()
+	r := &sessionRetention{store: store, policy: sessionRetentionPolicyFromDays(7, 30), logger: zerolog.Nop(), now: func() time.Time { return clock }}
+	if got := r.sweep(context.Background()); got.Archived != 1 {
+		t.Fatalf("first sweep = %+v, want only the orphan archived", got)
+	}
+	clock = clock.Add(31 * 24 * time.Hour)
+	if got := r.sweep(context.Background()); got.Deleted != 1 {
+		t.Fatalf("sweep a month later = %+v, want only the orphan deleted", got)
+	}
+	for _, s := range []session.Session{current, earlier} {
+		got, err := store.Get(s.ID)
+		if err != nil || got.ArchivedAt != nil {
+			t.Fatalf("easy session %s: archived %v err %v", s.Title, got.ArchivedAt != nil, err)
+		}
+		if _, ok, _ := focus.Get(s.ID); !ok {
+			t.Fatalf("easy pipeline %s deleted", s.Title)
+		}
+	}
+	// The board still reads the month-old project as done.
+	p, _ := easyproject.NewStore(store.WorkspaceDir()).Get("0123456789abcdef")
+	pipe, _, _ := focus.Get(current.ID)
+	if b := easyproject.BoardOf(p, &pipe); b.State != easyproject.StateDone {
+		t.Fatalf("board = %+v", b)
+	}
+
+	// An unreadable project list keeps every session: nothing is known to
+	// be nobody's.
+	if err := os.WriteFile(filepath.Join(store.WorkspaceDir(), filepath.FromSlash(easyproject.StoreFile)), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(60 * 24 * time.Hour)
+	if got := r.sweep(context.Background()); got.Archived+got.Deleted != 0 {
+		t.Fatalf("sweep with an unreadable list = %+v", got)
+	}
 }

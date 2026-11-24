@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/devlikebear/tars/internal/easyproject"
 	"github.com/devlikebear/tars/internal/focuspipeline"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
@@ -70,7 +71,9 @@ type sessionRetentionPlan struct {
 //
 //   - A pinned session, the main session (the always-on chat, by kind or by
 //     the configured default id), and a session keep reports as still in
-//     use are never touched.
+//     use are never touched. The sweep's keep covers a pipeline still
+//     driven without a person and every session of an easy-mode project
+//     that still exists (easyProjectSessions).
 //   - Archive: not archived, and not updated for ArchiveAfter.
 //   - Delete: archived for DeleteAfter and not updated since it was
 //     archived. A session used after it was archived is somebody's, whatever
@@ -150,6 +153,27 @@ func pipelineDrivenWithoutPerson(p focuspipeline.Pipeline) bool {
 	return p.GoalActive() || (p.PRWait != "" && p.Active())
 }
 
+// easyProjectSessions are the sessions of the easy-mode projects that
+// exist: each project's current pipeline and the pipelines of its changes.
+func easyProjectSessions(workspaceDir string) (map[string]bool, error) {
+	list, err := easyproject.NewStore(workspaceDir).List()
+	if err != nil {
+		return nil, err
+	}
+	ids := map[string]bool{}
+	for _, p := range list {
+		if p.SessionID != "" {
+			ids[p.SessionID] = true
+		}
+		for _, c := range p.Changes {
+			if c.SessionID != "" {
+				ids[c.SessionID] = true
+			}
+		}
+	}
+	return ids, nil
+}
+
 func (r *sessionRetention) sweep(ctx context.Context) sessionRetentionResult {
 	var result sessionRetentionResult
 	if r == nil || r.store == nil || !r.policy.enabled() {
@@ -164,7 +188,17 @@ func (r *sessionRetention) sweep(ctx context.Context) sessionRetentionResult {
 	if r.now != nil {
 		now = r.now()
 	}
-	plan := planSessionRetention(sessions, r.policy, now, r.defaultID, r.pipelineInUse)
+	// An easy project's finished pipeline is not in use, but the project
+	// board reads it for as long as the project exists: archiving and then
+	// deleting its session took the pipeline file with it, and a month-old
+	// project lost its state. A list that cannot be read keeps everything.
+	easy, err := easyProjectSessions(r.store.WorkspaceDir())
+	if err != nil {
+		r.logger.Warn().Err(err).Msg("session retention: read the easy project list failed; skipping the sweep")
+		return result
+	}
+	keep := func(sess session.Session) bool { return easy[sess.ID] || r.pipelineInUse(sess) }
+	plan := planSessionRetention(sessions, r.policy, now, r.defaultID, keep)
 	// Deletion that has only just been switched on (an upgrade, or the
 	// setting) warns first: a session archived months ago is due at once,
 	// and nobody has been told it would go.
