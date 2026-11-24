@@ -256,4 +256,6 @@ test('the easy routes', () => {
   assert.deepEqual(resolveRoute('/console/easy'), { view: 'easy' })
   assert.deepEqual(resolveRoute('/console/easy/'), { view: 'easy' })
   assert.deepEqual(resolveRoute('/console/easy/0123456789abcdef'), { view: 'easy', projectId: '0123456789abcdef' })
+  assert.deepEqual(resolveRoute('/console/easy/projects'), { view: 'easy', page: 'projects' })
+  assert.deepEqual(resolveRoute('/console/easy/archive'), { view: 'easy', page: 'archive' })
 })

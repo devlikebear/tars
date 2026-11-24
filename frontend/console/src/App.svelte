@@ -659,7 +659,7 @@
         <div class="route-loading">Loading...</div>
       {:then module}
         {@const EasyRoute = module.default}
-        <EasyRoute projectId={route.projectId} {needsSetup} onNavigate={navigate} />
+        <EasyRoute projectId={route.projectId} page={route.page} {needsSetup} onNavigate={navigate} />
       {:catch}
         <div class="route-error">Could not load console page.</div>
       {/await}

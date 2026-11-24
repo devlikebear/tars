@@ -1,5 +1,6 @@
 import { APIRequestError, requestJSON } from './client.ts'
 import type { EasyPreview, EasyProject, EasyReadiness, EasyVersion } from '../easy.ts'
+import { listQueryString, type EasyListed, type EasyListPage, type EasyListQuery } from '../easyBoard.ts'
 
 // Easy mode's first run (internal/apihandlers/setup_easy.go): Claude Code
 // on every tier, then a restart. A server already set up (409) is fine:
@@ -78,4 +79,33 @@ export async function getEasyPreview(id: string): Promise<EasyPreview> {
 
 export async function startEasyPreview(id: string): Promise<EasyPreview> {
   return (await requestJSON<{ preview: EasyPreview }>(previewPath(id), { method: 'POST' })).preview
+}
+
+// The project board (internal/tarsserver/easy_projects.go, easy_manage.go):
+// a page of projects with the server's board state, newest change first,
+// and the count of each state.
+export async function listEasyBoard(query: EasyListQuery = {}): Promise<EasyListPage> {
+  const res = await requestJSON<Partial<EasyListPage>>(`/v1/easy/projects${listQueryString(query)}`)
+  return { projects: res.projects ?? [], next_cursor: res.next_cursor, counts: res.counts ?? {}, archived: res.archived ?? 0 }
+}
+
+// Renaming, archiving and restoring answer the project and its board.
+export async function updateEasyProject(id: string, change: { name?: string; archived?: boolean }): Promise<EasyListed> {
+  const res = await requestJSON<{ project: EasyProject; board: EasyListed['board'] }>(`/v1/easy/projects/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(change),
+  })
+  return { ...res.project, board: res.board }
+}
+
+// Deleting moves the project's folder aside (into .deleted beside the
+// projects) and drops the record.
+export async function deleteEasyProject(id: string): Promise<void> {
+  await requestJSON(`/v1/easy/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+// The error code of a refused request, or ''.
+export function easyErrorCode(err: unknown): string {
+  return err instanceof APIRequestError ? String((err.payload as { code?: string } | undefined)?.code ?? '') : ''
 }
