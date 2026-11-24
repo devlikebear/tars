@@ -60,6 +60,7 @@ export const ko = {
       system: '시스템',
     },
     items: {
+      easy: '바이브코드 모드',
       board: '세션',
       focus: '포커스',
       overview: '개요',

@@ -60,6 +60,7 @@ export const en = {
       system: 'System',
     },
     items: {
+      easy: 'Vibe code mode',
       board: 'Sessions',
       focus: 'Focus',
       overview: 'Overview',

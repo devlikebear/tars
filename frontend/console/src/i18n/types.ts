@@ -63,6 +63,7 @@ export type Translations = {
       system: string
     }
     items: {
+      easy: string
       board: string
       focus: string
       overview: string

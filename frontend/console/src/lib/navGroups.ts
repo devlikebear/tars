@@ -13,6 +13,7 @@ export type NavGroupId = 'work' | 'build' | 'system'
 
 // Label keys under `nav.items`.
 export type NavItemLabel =
+  | 'easy'
   | 'board'
   | 'focus'
   | 'overview'
@@ -45,6 +46,7 @@ const groupViews: { id: NavGroupId; items: { view: PageView; label: NavItemLabel
   {
     id: 'work',
     items: [
+      { view: 'easy', label: 'easy', icon: '✦' },
       { view: 'board', label: 'board', icon: '▦' },
       { view: 'focus', label: 'focus', icon: '◉' },
       { view: 'chat', label: 'chat', icon: '◎' },
