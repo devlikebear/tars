@@ -256,7 +256,7 @@ This describes the target. Each item names the phase that delivers it.
 
   | Group | Items |
   |---|---|
-  | Work | Sessions (the board), Chat |
+  | Work | Vibe code mode (easy mode), Sessions (the board), Focus, Chat |
   | Build | Agent Runtime, Memory, Extensions, System Prompt |
   | System | Overview, Approvals, Pulse, Reflection, Cron, Logs, Analytics, Settings |
 
@@ -766,7 +766,7 @@ Reverting (P1 PR6) happens in the panel, never in the thread's card:
 
 ### Easy mode (`docs/decisions/vibe-coder-identity.md` §4–§5, phase 2)
 
-For someone who cannot read code. Routes `/console/easy` (make) and `/console/easy/<project>` (progress); components in `src/components/easy/`, the whole view decided by the pure `easyView` in `lib/easy.ts`, strings in `src/i18n/sections/easy.ts`. The workbench navigation is hidden (`focusChromeHidden`); the screen's own **expert mode** link is the way out. It is where `/console` lands for a new install (phase 4-4, `console_default_mode: easy`): the landing follows the mode, and the expert mode link reaches the board without leaving it again. A workspace that set no mode opens on the board as before.
+For someone who cannot read code. Routes `/console/easy` (make) and `/console/easy/<project>` (progress); components in `src/components/easy/`, the whole view decided by the pure `easyView` in `lib/easy.ts`, strings in `src/i18n/sections/easy.ts`. The workbench navigation is hidden (`focusChromeHidden`); the screen's own **expert mode** link is the way out, and the way back is the **Vibe code mode** item (바이브코드 모드) first in the sidebar's Work group, as Focus is reached from the same group. It is where `/console` lands for a new install (phase 4-4, `console_default_mode: easy`): the landing follows the mode, and the expert mode link reaches the board without leaving it again. A workspace that set no mode opens on the board as before.
 
 - **Words**: no easy-mode string may contain a word in `EASY_HIDDEN_WORDS` (git, commit, branch, worktree, pull request, PR, merge, tier, permission mode, verify, triage, gate, pipeline, and their Korean forms). `tests/easy.test.ts` checks every string in the section; `e2e/easy.spec.ts` checks the rendered `easy-root` on every screen of a real run. Content the team writes (the plan's goal and task titles, a check's screen/expected/seen) is shown as written — the webapp template asks for plain words.
 - **First run** (phase 4-2, `EasySetup.svelte`): on a server with no AI set up, easy mode shows **Getting TARS ready** with one dim line and a pulsing `primary` dot (static under reduced motion). The setup-only banner is hidden here. The screen sets Claude Code up and reloads once the server is back. If setup fails or the restart takes longer than 90 seconds, an `error` line appears with **Try again** (`button-primary`) and a ghost **Set it up by hand**, which opens the wizard.

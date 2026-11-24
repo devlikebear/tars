@@ -263,4 +263,8 @@ test('a server set to easy mode lands /console in easy mode', async ({ page }) =
   await expect(page.getByRole('heading', { name: 'What do you want to make?' })).toBeVisible()
   await page.getByTestId('easy-expert').click()
   await expect(page).toHaveURL(/\/console$/)
+  // And back: easy mode is an item in the sidebar, like focus.
+  await page.getByRole('link', { name: 'Vibe code mode' }).click()
+  await expect(page).toHaveURL(/\/console\/easy$/)
+  await expect(page.getByRole('heading', { name: 'What do you want to make?' })).toBeVisible()
 })
