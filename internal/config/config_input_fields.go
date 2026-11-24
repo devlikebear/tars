@@ -155,6 +155,7 @@ var configInputFields = []configInputField{
 	boolField("channels_telegram_polling_enabled", []string{"CHANNELS_TELEGRAM_POLLING_ENABLED", "TARS_CHANNELS_TELEGRAM_POLLING_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramPollingEnabled }),
 	stringField("telegram_bot_token", []string{"TELEGRAM_BOT_TOKEN", "TARS_TELEGRAM_BOT_TOKEN"}, func(cfg *Config) *string { return &cfg.TelegramBotToken }, strings.TrimSpace),
 	withYAMLPath(stringField("console_default_mode", []string{"CONSOLE_DEFAULT_MODE", "TARS_CONSOLE_DEFAULT_MODE"}, func(cfg *Config) *string { return &cfg.Console.DefaultMode }, consoleModeString), "console.default_mode"),
+	withYAMLPath(boolField("console_expert_mode", []string{"CONSOLE_EXPERT_MODE", "TARS_CONSOLE_EXPERT_MODE"}, func(cfg *Config) *bool { return &cfg.Console.ExpertMode }), "console.expert_mode"),
 	withYAMLPath(companionEnabledField("companion_enabled", []string{"COMPANION_ENABLED", "TARS_COMPANION_ENABLED"}), "companion.enabled"),
 	withYAMLPath(boolField("embodiment_enabled", []string{"EMBODIMENT_ENABLED", "TARS_EMBODIMENT_ENABLED"}, func(cfg *Config) *bool { return &cfg.Embodiment.Enabled }), "embodiment.enabled"),
 	withYAMLPath(embodimentProvidersField("embodiment_providers_json", []string{"EMBODIMENT_PROVIDERS_JSON", "TARS_EMBODIMENT_PROVIDERS_JSON"}), "embodiment.providers"),

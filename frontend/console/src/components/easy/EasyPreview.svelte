@@ -7,6 +7,7 @@
   import { t } from '../../i18n'
   import { getEasyPreview, startEasyPreview } from '../../lib/api/easy'
   import { previewPollMs, previewReachable, type EasyPreview } from '../../lib/easy'
+  import { consoleMode } from '../../lib/stores/consoleMode.svelte'
 
   let { projectId }: { projectId: string } = $props()
 
@@ -82,7 +83,7 @@
     {/key}
   {:else if preview?.state === 'failed'}
     <p class="error" data-testid="easy-preview-failed">
-      {preview.error_code === 'node_missing' ? $t.easy.result.nodeMissing : $t.easy.result.failed}
+      {preview.error_code === 'node_missing' ? $t.easy.result.nodeMissing : consoleMode.expert ? $t.easy.result.failed : $t.easy.result.failedAlone}
     </p>
     <button type="button" class="btn btn-secondary btn-sm" onclick={start}>{$t.easy.result.retry}</button>
   {:else if preview?.state === 'stopped'}

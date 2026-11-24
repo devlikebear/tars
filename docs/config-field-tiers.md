@@ -8,12 +8,12 @@ Where the console shows each field of `/console/config` (#1240). The schema
 
 | Tier | Meaning | Fields |
 |---|---|---|
-| basic | Most people touch it at least once; shown up front | 32 |
+| basic | Most people touch it at least once; shown up front | 33 |
 | advanced | Inside a collapsed Advanced group | 95 |
 | file | Not in the console; YAML and `config/tars.config.example.yaml` only | 66 |
 | remove | Nothing reads it or it was replaced; to be removed, hidden until then | 0 |
 
-Total: 193 fields in 19 sections.
+Total: 194 fields in 19 sections.
 
 `show_when` lists conditions on other fields; the field shows when any one holds
 and the field it names is itself shown.
@@ -242,6 +242,7 @@ and the field it names is itself shown.
 | Key | YAML path | Tier | Shown when | Why |
 |---|---|---|---|---|
 | `console_default_mode` | `console.default_mode` | basic |  |  |
+| `console_expert_mode` | `console.expert_mode` | basic |  |  |
 
 ## Companion
 

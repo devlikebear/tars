@@ -367,6 +367,11 @@ type ConsoleConfig struct {
 	// "advanced". Empty means advanced, so existing installs keep the
 	// workbench until they opt in.
 	DefaultMode string
+	// ExpertMode makes the workbench and focus mode reachable. Off (the
+	// default, also when the field is absent) the console is vibe mode only:
+	// every other route opens /console/easy and nothing links out of it
+	// (vibe-coder-identity.md, owner decision 2026-11-24).
+	ExpertMode bool
 }
 
 type CompanionConfig struct {

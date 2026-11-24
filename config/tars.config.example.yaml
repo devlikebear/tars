@@ -288,6 +288,13 @@ console:
   # Empty means advanced. Completing the onboarding wizard writes focus when
   # no mode is set.
   # default_mode: advanced
+  # Whether the workbench and focus mode are reachable at all. Off (the
+  # default, also when this line is absent) the console is vibe mode only:
+  # /console and every workbench or focus address open /console/easy, and
+  # no screen links out of it. Turn it on to use the workbench as before;
+  # default_mode then picks where /console lands.
+  # (docs/decisions/vibe-coder-identity.md, 2026-11-24)
+  # expert_mode: true
 
 companion:
   # Shows CASE, the always-floating Console companion: it badges and opens

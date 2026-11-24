@@ -14,6 +14,9 @@
     zenActive?: boolean
     // Focus mode hides the app sidebar (ADR §3); the header stays.
     hideNav?: boolean
+    // Expert mode off: the header leaves out everything that leads into
+    // the workbench (Header.svelte).
+    vibeOnly?: boolean
     onNavigate: (path: string) => void
     onUnreadChange?: (count: number) => void
     onLogout?: () => void
@@ -37,6 +40,7 @@
     authRole = '',
     zenActive = false,
     hideNav = false,
+    vibeOnly = false,
     onNavigate,
     onUnreadChange,
     onLogout,
@@ -77,7 +81,7 @@
   {/if}
   <div class="shell-main" class:no-nav={needsSetup || zenActive || hideNav}>
     {#if !zenActive}
-      <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} {navOpen} {authRole} {onLogout} onToggleNav={toggleNav} />
+      <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} {navOpen} {authRole} {onLogout} {vibeOnly} onToggleNav={toggleNav} />
     {/if}
     {#if needsSetup}
       <div class="setup-only-banner" role="alert">

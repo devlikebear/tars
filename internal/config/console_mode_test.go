@@ -74,3 +74,40 @@ func TestConfigSchemaIncludesConsoleDefaultMode(t *testing.T) {
 	}
 	t.Fatal("expected console_default_mode schema field")
 }
+
+func TestConsoleExpertMode(t *testing.T) {
+	if defaultConfigValues().Console.ExpertMode {
+		t.Fatal("expert mode on by default, want off")
+	}
+	for _, tt := range []struct {
+		yaml string
+		want bool
+	}{
+		{"console:\n  expert_mode: true\n", true},
+		{"console:\n  expert_mode: false\n", false},
+		{"console:\n  default_mode: advanced\n", false},
+	} {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Console.ExpertMode != tt.want {
+			t.Fatalf("%q: expert mode = %v, want %v", tt.yaml, cfg.Console.ExpertMode, tt.want)
+		}
+	}
+	t.Setenv("TARS_CONSOLE_EXPERT_MODE", "true")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Console.ExpertMode {
+		t.Fatal("env did not turn expert mode on")
+	}
+	if got := extractValue("console_expert_mode", cfg); got != true {
+		t.Fatalf("schema value = %v", got)
+	}
+}

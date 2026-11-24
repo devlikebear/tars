@@ -14,6 +14,10 @@
     onToggleNav?: () => void
     authRole?: string
     onLogout?: () => void
+    // Vibe mode only (expert mode off): the header keeps the language,
+    // signing out and nothing that leads into the workbench — no menu
+    // button, budget chip, status pill or notification list.
+    vibeOnly?: boolean
   }
 
   let {
@@ -25,6 +29,7 @@
     onToggleNav,
     authRole = '',
     onLogout,
+    vibeOnly = false,
   }: Props = $props()
 
   let panelOpen = $state(false)
@@ -88,6 +93,7 @@
   }
 
   async function loadUsageToday() {
+    if (vibeOnly) return
     try {
       usageToday = await getTodayUsage()
     } catch {
@@ -161,6 +167,7 @@
 
 <header class="header">
   <div class="header-left">
+    {#if !vibeOnly}
     <button
       type="button"
       class="hamburger-btn"
@@ -173,6 +180,7 @@
       <span class="hamburger-line"></span>
       <span class="hamburger-line"></span>
     </button>
+    {/if}
     <h1 class="header-title">{$t.header.title}</h1>
   </div>
 
@@ -191,7 +199,7 @@
       {/each}
     </div>
 
-    {#if budgetVisible && usageToday}
+    {#if !vibeOnly && budgetVisible && usageToday}
       {@const usedTokens = formatTokenCount(usageToday.total_tokens)}
       {@const budgetTokens = formatTokenCount(usageToday.budget_tokens)}
       <button
@@ -208,11 +216,13 @@
       </button>
     {/if}
 
-    <StatusPill {serverHealth} {onNavigate} />
+    {#if !vibeOnly}
+      <StatusPill {serverHealth} {onNavigate} />
+    {/if}
 
     {#if authRole}
       <div class="auth-chip">
-        <span>{authRole}</span>
+        {#if !vibeOnly}<span>{authRole}</span>{/if}
         {#if onLogout}
           <button type="button" onclick={onLogout}>{$t.header.auth.signOut}</button>
         {/if}
@@ -220,6 +230,7 @@
     {/if}
 
     <!-- Notification badge + panel -->
+    {#if !vibeOnly}
     <div class="header-notif-wrapper">
       <button class="header-badge-btn" class:has-unread={unreadCount > 0} onclick={togglePanel} title={$t.header.notifications}>
         <span class="badge-icon">{'\u266a'}</span>
@@ -272,6 +283,7 @@
         </div>
       {/if}
     </div>
+    {/if}
   </div>
 </header>
 

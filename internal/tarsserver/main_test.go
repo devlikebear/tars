@@ -2753,7 +2753,7 @@ func TestStatusAPI(t *testing.T) {
 
 func TestHealthzAPI(t *testing.T) {
 	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
-	handler := newHealthzAPIHandler(func() time.Time { return now }, nil, nil, nil, nil)
+	handler := newHealthzAPIHandler(func() time.Time { return now }, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
@@ -2796,7 +2796,7 @@ func TestHealthzAPI(t *testing.T) {
 // the server it shows is older (a Homebrew cask does not upgrade an already
 // installed formula). Only same-machine callers learn it.
 func TestHealthzAPI_ReportsVersionToLoopbackOnly(t *testing.T) {
-	handler := newHealthzAPIHandler(time.Now, nil, nil, nil, nil)
+	handler := newHealthzAPIHandler(time.Now, nil, nil, nil, nil, nil)
 	versionOf := func(req *http.Request) (string, bool) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -2840,7 +2840,7 @@ func TestHealthzAPI_DefaultModeWhileNeedingSetup(t *testing.T) {
 		{true, "", ""},
 		{false, "easy", ""},
 	} {
-		handler := newHealthzAPIHandler(time.Now, nil, func() bool { return tc.needsSetup }, nil, func() string { return tc.mode })
+		handler := newHealthzAPIHandler(time.Now, nil, func() bool { return tc.needsSetup }, nil, func() string { return tc.mode }, nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/healthz", nil))
 		var payload map[string]any
@@ -2857,6 +2857,36 @@ func TestHealthzAPI_DefaultModeWhileNeedingSetup(t *testing.T) {
 	}
 }
 
+// console_expert_mode goes to every caller, set up or not: the console
+// decides before drawing anything whether the workbench exists. Absent
+// config means vibe mode only.
+func TestHealthzAPI_ExpertMode(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		needsSetup bool
+		fn         func() bool
+		want       bool
+	}{
+		{"absent", false, nil, false},
+		{"off", false, func() bool { return false }, false},
+		{"on", false, func() bool { return true }, true},
+		{"on while needing setup", true, func() bool { return true }, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := newHealthzAPIHandler(time.Now, nil, func() bool { return tc.needsSetup }, nil, nil, tc.fn)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/healthz", nil))
+			var payload map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+				t.Fatal(err)
+			}
+			if got, ok := payload["console_expert_mode"].(bool); !ok || got != tc.want {
+				t.Fatalf("console_expert_mode = %v (present %v), want %v", payload["console_expert_mode"], ok, tc.want)
+			}
+		})
+	}
+}
+
 func TestHealthzAPI_ReflectsNeedsSetup(t *testing.T) {
 	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
 	cases := []struct {
@@ -2869,7 +2899,7 @@ func TestHealthzAPI_ReflectsNeedsSetup(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := newHealthzAPIHandler(func() time.Time { return now }, nil, tc.fn, nil, nil)
+			handler := newHealthzAPIHandler(func() time.Time { return now }, nil, tc.fn, nil, nil, nil)
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
 			handler.ServeHTTP(rec, req)
@@ -2895,7 +2925,7 @@ func TestHealthzAPI_IncludesDashboardAuthWarning(t *testing.T) {
 		"mode":          "off",
 		"public_access": "loopback-only",
 		"warning":       "dashboard auth off is restricted to loopback requests",
-	}, nil, nil, nil)
+	}, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
@@ -2923,7 +2953,7 @@ func TestHealthzAPI_IncludesDashboardAuthWarning(t *testing.T) {
 // loopback or remote, so a remotely-accessed console can show the update
 // notice too.
 func TestHealthzAPI_ReportsConsoleBuildToEveryCaller(t *testing.T) {
-	handler := newHealthzAPIHandler(time.Now, nil, nil, func() string { return "abc123def456" }, nil)
+	handler := newHealthzAPIHandler(time.Now, nil, nil, func() string { return "abc123def456" }, nil, nil)
 	consoleBuildOf := func(req *http.Request) (string, bool) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -2952,7 +2982,7 @@ func TestHealthzAPI_ReportsConsoleBuildToEveryCaller(t *testing.T) {
 // visible "" field — the console's own shouldShowUpdateNotice logic
 // treats an absent field the same as dev mode: never show the notice.
 func TestHealthzAPI_OmitsConsoleBuildWhenEmpty(t *testing.T) {
-	handler := newHealthzAPIHandler(time.Now, nil, nil, func() string { return "" }, nil)
+	handler := newHealthzAPIHandler(time.Now, nil, nil, func() string { return "" }, nil, nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
 	req.RemoteAddr = "127.0.0.1:50000"

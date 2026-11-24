@@ -86,6 +86,9 @@ work_ledger:
 console:
   # focus | advanced; empty means advanced.
   default_mode: ""
+  # false shows vibe mode only (/console/easy); true makes the workbench
+  # and focus mode reachable.
+  expert_mode: false
 
 companion:
   enabled: true

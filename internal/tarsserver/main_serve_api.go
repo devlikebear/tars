@@ -741,7 +741,7 @@ func buildAPIMux(
 		ConfigPath: resolvedConfigPath,
 		Logger:     logger,
 	})
-	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) }, consoleBuildTracker.Get, func() string { return cfg.Console.DefaultMode })
+	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) }, consoleBuildTracker.Get, func() string { return cfg.Console.DefaultMode }, func() bool { return cfg.Console.ExpertMode })
 	setupHandler := apihandlers.NewSetupHandler(opts.ConfigPath, cfg, logger)
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
