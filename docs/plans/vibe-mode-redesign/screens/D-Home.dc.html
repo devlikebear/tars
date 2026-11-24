@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>홈</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#9aa4ad}a:hover{color:#e6e9ec}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; background: #0d0f11; color: #e6e9ec; font-family: 'IBM Plex Sans KR', 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+  <header style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 28px; border-bottom: 1px solid #1f2428; background: #14171a">
+    <div style="width: 20px; height: 20px; border: 4px solid #3ee07f; border-radius: 50%; box-sizing: border-box"></div>
+    <b style="font-size: 15px; letter-spacing: 0.04em">TARS</b>
+    <nav style="display: flex; gap: 4px; font-size: 14px; margin-left: 16px">
+      <a href="D-Home.dc.html" style="text-decoration: none; color: #e6e9ec; background: #21262b; border-radius: 4px; padding: 6px 12px">새로 만들기</a>
+      <a href="D-Projects.dc.html" style="text-decoration: none; padding: 6px 12px">내 프로젝트 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: rgba(245,197,66,0.12); color: #f5c542; border-radius: 999px; padding: 1px 7px; margin-left: 2px">1</span></a>
+    </nav>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 18px; font-size: 13px; color: #9aa4ad">
+      <span style="display: flex; align-items: center; gap: 7px"><span style="width: 7px; height: 7px; border-radius: 50%; background: #3ee07f"></span>AI 연결됨</span>
+      <a href="#" style="text-decoration: none">전문가 모드</a>
+    </div>
+  </header>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 30px; padding: 44px 160px 28px">
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <h1 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.01em">무엇을 만들까요?</h1>
+      <div style="background: #14171a; border: 1px solid #3ee07f; border-radius: 6px; box-shadow: 0 0 0 4px rgba(62,224,127,0.08); padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 14px">
+        <label for="idea" style="font-size: 13px; color: #9aa4ad">한두 문장이면 돼요. 빠진 건 리더봇이 물어봐요.</label>
+        <textarea id="idea" style="border: 0; outline: none; resize: none; font: inherit; font-size: 18px; line-height: 1.5; height: 58px; background: transparent; color: #e6e9ec">우리 동네 독서모임 신청 페이지, 신청한 사람 목록도 보이게</textarea>
+        <div style="display: flex; align-items: center; gap: 12px; border-top: 1px solid #1f2428; padding-top: 12px">
+          <span style="font-size: 12px; color: #9aa4ad">지금 만들 수 있는 것: 웹 페이지와 웹 앱 · 보통 10~20분</span>
+          <button style="margin-left: auto; font: inherit; font-size: 15px; font-weight: 600; border: 0; background: #3ee07f; color: #06140c; border-radius: 4px; padding: 11px 20px; min-height: 44px">팀에게 맡기기</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #9aa4ad">
+        <span style="margin-right: 4px">이 팀이 차례로 일해요</span>
+        <span style="display: flex; align-items: center; gap: 6px; background: #14171a; border: 1px solid #2b3137; border-radius: 4px; padding: 4px 10px 4px 5px; color: #e6e9ec"><span style="width: 20px; height: 20px; border-radius: 4px; background: #282e34; display: grid; place-items: center; font-size: 11px; font-weight: 600">리</span>리더봇<span style="color: #9aa4ad; font-size: 12px">계획</span></span>
+        <span style="color: #454d55">›</span>
+        <span style="display: flex; align-items: center; gap: 6px; background: #14171a; border: 1px solid #2b3137; border-radius: 4px; padding: 4px 10px 4px 5px; color: #e6e9ec"><span style="width: 20px; height: 20px; border-radius: 4px; background: #282e34; display: grid; place-items: center; font-size: 11px; font-weight: 600">제</span>제작봇<span style="color: #9aa4ad; font-size: 12px">만들기</span></span>
+        <span style="color: #454d55">›</span>
+        <span style="display: flex; align-items: center; gap: 6px; background: #14171a; border: 1px solid #2b3137; border-radius: 4px; padding: 4px 10px 4px 5px; color: #e6e9ec"><span style="width: 20px; height: 20px; border-radius: 4px; background: #282e34; display: grid; place-items: center; font-size: 11px; font-weight: 600">검</span>검수봇<span style="color: #9aa4ad; font-size: 12px">문제 찾기</span></span>
+        <span style="color: #454d55">›</span>
+        <span style="display: flex; align-items: center; gap: 6px; background: #14171a; border: 1px solid #2b3137; border-radius: 4px; padding: 4px 10px 4px 5px; color: #e6e9ec"><span style="width: 20px; height: 20px; border-radius: 4px; background: #282e34; display: grid; place-items: center; font-size: 11px; font-weight: 600">확</span>확인봇<span style="color: #9aa4ad; font-size: 12px">돌려 보기</span></span>
+        <span style="color: #454d55">›</span>
+        <span style="display: flex; align-items: center; gap: 6px; background: #14171a; border: 1px solid #2b3137; border-radius: 4px; padding: 4px 10px 4px 5px; color: #e6e9ec"><span style="width: 20px; height: 20px; border-radius: 4px; background: #282e34; display: grid; place-items: center; font-size: 11px; font-weight: 600">출</span>출판봇<span style="color: #9aa4ad; font-size: 12px">공개</span></span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #9aa4ad">이런 걸로 시작해 보세요</div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+        <button style="font: inherit; color: #e6e9ec; text-align: left; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 6px; min-height: 76px"><span style="font-size: 14px; font-weight: 500">체크할 수 있는 할 일 목록</span><span style="font-size: 12px; color: #9aa4ad">목록 · 저장</span></button>
+        <button style="font: inherit; color: #e6e9ec; text-align: left; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 6px; min-height: 76px"><span style="font-size: 14px; font-weight: 500">메뉴와 영업시간이 있는 카페 소개</span><span style="font-size: 12px; color: #9aa4ad">소개 페이지</span></button>
+        <button style="font: inherit; color: #e6e9ec; text-align: left; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 6px; min-height: 76px"><span style="font-size: 14px; font-weight: 500">이름 목록을 저장하는 신청 양식</span><span style="font-size: 12px; color: #9aa4ad">양식 · 저장</span></button>
+        <button style="font: inherit; color: #e6e9ec; text-align: left; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 6px; min-height: 76px"><span style="font-size: 14px; font-weight: 500">투표하고 결과를 보는 페이지</span><span style="font-size: 12px; color: #9aa4ad">투표 · 저장</span></button>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; gap: 10px"><span style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #9aa4ad">최근 프로젝트</span><a href="D-Projects.dc.html" style="margin-left: auto; font-size: 13px; text-decoration: none">전체 보기 (23) →</a></div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <a href="D-Plan.dc.html" style="text-decoration: none; color: #e6e9ec; background: #14171a; border: 1px solid #f5c542; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+          <span style="display: flex; align-items: center; gap: 8px"><b style="font-size: 15px; font-weight: 600">동아리 회비 장부</b><span style="margin-left: auto; font-size: 12px; background: rgba(245,197,66,0.12); color: #f5c542; border-radius: 999px; padding: 2px 9px">내 차례</span></span>
+          <span style="font-size: 13px; color: #9aa4ad">설계도를 확인해 주세요</span>
+        </a>
+        <a href="D-Make.dc.html" style="text-decoration: none; color: #e6e9ec; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+          <span style="display: flex; align-items: center; gap: 8px"><b style="font-size: 15px; font-weight: 600">카페 소개</b><span style="margin-left: auto; font-size: 12px; background: rgba(62,224,127,0.12); color: #7cf0a8; border-radius: 999px; padding: 2px 9px">만드는 중</span></span>
+          <span style="font-size: 13px; color: #9aa4ad">제작봇이 일하는 중</span>
+        </a>
+        <a href="D-Result.dc.html" style="text-decoration: none; color: #e6e9ec; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+          <span style="display: flex; align-items: center; gap: 8px"><b style="font-size: 15px; font-weight: 600">독서모임 신청</b><span style="margin-left: auto; font-size: 12px; background: #21262b; color: #e6e9ec; border-radius: 999px; padding: 2px 9px">완성</span></span>
+          <span style="font-size: 13px; color: #9aa4ad">버전 3 · 어제 · 아직 공개 전</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

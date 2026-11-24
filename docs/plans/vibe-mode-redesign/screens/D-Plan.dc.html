@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>계획 — 설계도 확인</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#9aa4ad}a:hover{color:#e6e9ec}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; background: #0d0f11; color: #e6e9ec; font-family: 'IBM Plex Sans KR', 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+  <header style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 20px; border-bottom: 1px solid #1f2428; background: #14171a">
+    <a href="D-Projects.dc.html" style="font-size: 13px; text-decoration: none">← 내 프로젝트</a>
+    <span style="width: 1px; height: 18px; background: #2b3137"></span>
+    <b style="font-size: 15px; font-weight: 600">독서모임 신청</b>
+    <ol style="list-style: none; margin: 0 auto; padding: 0; display: flex; align-items: center; gap: 10px; font-size: 13px">
+      <li style="display: flex; align-items: center; gap: 7px; color: #e6e9ec; font-weight: 600"><span style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #3ee07f; box-sizing: border-box; color: #7cf0a8; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px">1</span>계획</li>
+      <li style="width: 32px; height: 1px; background: #2b3137"></li>
+      <li style="display: flex; align-items: center; gap: 7px; color: #9aa4ad"><span style="width: 20px; height: 20px; border-radius: 50%; border: 1px solid #3a4148; box-sizing: border-box; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px">2</span>만들기</li>
+      <li style="width: 32px; height: 1px; background: #2b3137"></li>
+      <li style="display: flex; align-items: center; gap: 7px; color: #9aa4ad"><span style="width: 20px; height: 20px; border-radius: 50%; border: 1px solid #3a4148; box-sizing: border-box; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px">3</span>확인</li>
+      <li style="width: 32px; height: 1px; background: #2b3137"></li>
+      <li style="display: flex; align-items: center; gap: 7px; color: #9aa4ad"><span style="width: 20px; height: 20px; border-radius: 50%; border: 1px solid #3a4148; box-sizing: border-box; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px">4</span>공개</li>
+    </ol>
+    <span style="font-size: 12px; background: rgba(245,197,66,0.12); color: #f5c542; border-radius: 999px; padding: 3px 10px">내 차례</span>
+  </header>
+
+  <div style="flex-grow: 1; display: flex; min-height: 0">
+    <aside style="width: 360px; flex-shrink: 0; border-right: 1px solid #1f2428; background: #14171a; display: flex; flex-direction: column">
+      <div style="padding: 14px 16px; border-bottom: 1px solid #1f2428; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; text-align: center; font-size: 11px; color: #9aa4ad">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; color: #7cf0a8"><span style="width: 32px; height: 32px; border-radius: 6px; background: rgba(62,224,127,0.12); border: 1.5px solid #3ee07f; box-sizing: border-box; display: grid; place-items: center; font-size: 13px; font-weight: 600">리</span>리더봇</div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px"><span style="width: 32px; height: 32px; border-radius: 6px; background: #21262b; display: grid; place-items: center; font-size: 13px; color: #9aa4ad">제</span>제작봇</div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px"><span style="width: 32px; height: 32px; border-radius: 6px; background: #21262b; display: grid; place-items: center; font-size: 13px; color: #9aa4ad">검</span>검수봇</div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px"><span style="width: 32px; height: 32px; border-radius: 6px; background: #21262b; display: grid; place-items: center; font-size: 13px; color: #9aa4ad">확</span>확인봇</div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px"><span style="width: 32px; height: 32px; border-radius: 6px; background: #21262b; display: grid; place-items: center; font-size: 13px; color: #9aa4ad">출</span>출판봇</div>
+      </div>
+      <div style="flex-grow: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; font-size: 14px; line-height: 1.55">
+        <div style="align-self: flex-end; max-width: 84%; background: #282e34; border-radius: 6px 6px 2px 6px; padding: 9px 12px">우리 동네 독서모임 신청 페이지, 신청한 사람 목록도 보이게</div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <b style="font-size: 12px; font-weight: 600; color: #7cf0a8">리더봇</b>
+          <span>좋아요. 두 가지만 정하면 설계도를 그릴게요.</span>
+          <div style="border: 1px solid #2b3137; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: #0d0f11">
+            <span style="font-size: 13px; color: #9aa4ad">신청할 때 무엇을 받을까요?</span>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px">
+              <button style="font: inherit; font-size: 13px; color: #9aa4ad; border: 1px solid #2b3137; background: transparent; border-radius: 4px; padding: 5px 10px">이름만</button>
+              <button style="font: inherit; font-size: 13px; color: #06140c; font-weight: 600; border: 1px solid #3ee07f; background: #3ee07f; border-radius: 4px; padding: 5px 10px">이름 + 연락처 + 한마디</button>
+              <button style="font: inherit; font-size: 13px; color: #9aa4ad; border: 1px solid #2b3137; background: transparent; border-radius: 4px; padding: 5px 10px">알아서 정해 줘</button>
+            </div>
+          </div>
+          <div style="border: 1px solid #2b3137; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: #0d0f11">
+            <span style="font-size: 13px; color: #9aa4ad">목록에는 무엇을 보여 줄까요?</span>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px">
+              <button style="font: inherit; font-size: 13px; color: #9aa4ad; border: 1px solid #2b3137; background: transparent; border-radius: 4px; padding: 5px 10px">이름만</button>
+              <button style="font: inherit; font-size: 13px; color: #06140c; font-weight: 600; border: 1px solid #3ee07f; background: #3ee07f; border-radius: 4px; padding: 5px 10px">이름과 한마디</button>
+              <button style="font: inherit; font-size: 13px; color: #9aa4ad; border: 1px solid #2b3137; background: transparent; border-radius: 4px; padding: 5px 10px">알아서 정해 줘</button>
+            </div>
+          </div>
+          <span>설계도를 그렸어요. 오른쪽을 보고, 바꾸고 싶은 곳이 있으면 말해 주세요.</span>
+        </div>
+      </div>
+      <div style="padding: 12px; border-top: 1px solid #1f2428; display: flex; gap: 8px">
+        <label for="say" style="position: absolute; left: -9999px">팀에게 말하기</label>
+        <input id="say" placeholder="팀에게 말하기 — 예: 모임 날짜도 보여 줘" style="flex-grow: 1; min-width: 0; font: inherit; font-size: 14px; color: #e6e9ec; background: #0a0c0e; border: 1px solid #2b3137; border-radius: 4px; padding: 11px 12px">
+        <button style="font: inherit; font-size: 14px; color: #e6e9ec; border: 1px solid #3a4148; background: #21262b; border-radius: 4px; padding: 0 14px">보내기</button>
+      </div>
+    </aside>
+
+    <main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0">
+      <div style="flex-grow: 1; padding: 22px 28px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+        <div style="display: flex; align-items: baseline; gap: 10px"><h2 style="margin: 0; font-size: 20px; font-weight: 600">설계도</h2><span style="font-size: 13px; color: #9aa4ad">이렇게 만들 거예요. 그림은 대략의 모양이에요.</span></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+          <figure style="margin: 0; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 10px">
+            <div style="height: 150px; background: #0a0c0e; border: 1px solid #1f2428; border-radius: 4px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box">
+              <div style="height: 12px; width: 50%; background: #3a4148; border-radius: 2px"></div>
+              <div style="height: 7px; width: 78%; background: #21262b; border-radius: 2px"></div>
+              <div style="height: 18px; border: 1px solid #2b3137; border-radius: 3px"></div>
+              <div style="height: 18px; border: 1px solid #2b3137; border-radius: 3px"></div>
+              <div style="height: 18px; border: 1px solid #2b3137; border-radius: 3px"></div>
+              <div style="height: 18px; width: 84px; background: #3ee07f; opacity: 0.55; border-radius: 3px"></div>
+            </div>
+            <figcaption style="font-size: 14px; display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 600">신청 화면</b><span style="font-size: 13px; color: #9aa4ad">모임 소개, 이름·연락처·한마디, 신청 버튼</span></figcaption>
+          </figure>
+          <figure style="margin: 0; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 10px">
+            <div style="height: 150px; background: #0a0c0e; border: 1px solid #1f2428; border-radius: 4px; padding: 14px 18px; display: flex; flex-direction: column; gap: 9px; box-sizing: border-box">
+              <div style="height: 12px; width: 40%; background: #3a4148; border-radius: 2px"></div>
+              <div style="display: flex; gap: 8px; border-bottom: 1px solid #1f2428; padding-bottom: 8px"><span style="height: 7px; width: 18%; background: #3a4148; border-radius: 2px"></span><span style="height: 7px; width: 50%; background: #21262b; border-radius: 2px"></span></div>
+              <div style="display: flex; gap: 8px; border-bottom: 1px solid #1f2428; padding-bottom: 8px"><span style="height: 7px; width: 14%; background: #3a4148; border-radius: 2px"></span><span style="height: 7px; width: 62%; background: #21262b; border-radius: 2px"></span></div>
+              <div style="display: flex; gap: 8px; border-bottom: 1px solid #1f2428; padding-bottom: 8px"><span style="height: 7px; width: 20%; background: #3a4148; border-radius: 2px"></span><span style="height: 7px; width: 38%; background: #21262b; border-radius: 2px"></span></div>
+              <div style="display: flex; gap: 8px"><span style="height: 7px; width: 16%; background: #3a4148; border-radius: 2px"></span><span style="height: 7px; width: 55%; background: #21262b; border-radius: 2px"></span></div>
+            </div>
+            <figcaption style="font-size: 14px; display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 600">신청자 목록</b><span style="font-size: 13px; color: #9aa4ad">이름과 한마디, 최근 신청이 맨 위</span></figcaption>
+          </figure>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.25fr 1fr; gap: 14px; font-size: 14px">
+          <div style="background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 9px">
+            <div style="display: flex; align-items: baseline; gap: 8px"><b style="font-weight: 600">이렇게 확인할게요</b><span style="font-size: 12px; color: #9aa4ad">전부 통과해야 완성이에요</span></div>
+            <span style="display: flex; gap: 9px"><span style="color: #6b757e; font-family: 'IBM Plex Mono', monospace">1</span>이름·연락처·한마디를 넣고 신청하면 "신청됐어요"가 보인다</span>
+            <span style="display: flex; gap: 9px"><span style="color: #6b757e; font-family: 'IBM Plex Mono', monospace">2</span>이름을 비우고 신청하면 "이름을 적어 주세요"가 보인다</span>
+            <span style="display: flex; gap: 9px"><span style="color: #6b757e; font-family: 'IBM Plex Mono', monospace">3</span>방금 신청한 사람이 목록 맨 위에 보인다</span>
+            <span style="display: flex; gap: 9px"><span style="color: #6b757e; font-family: 'IBM Plex Mono', monospace">4</span>앱을 껐다 켜도 신청한 사람이 목록에 남아 있다</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 14px">
+            <div style="background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
+              <b style="font-weight: 600">저장되는 정보</b>
+              <span>이름 · 연락처 · 한마디 · 신청 시각</span>
+              <span style="font-size: 13px; color: #9aa4ad">연락처는 목록에 보이지 않아요</span>
+            </div>
+            <div style="background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
+              <b style="font-weight: 600">이번엔 안 해요</b>
+              <span>로그인 · 결제 · 메일 보내기</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="flex-shrink: 0; border-top: 1px solid #1f2428; background: #14171a; padding: 12px 28px; display: flex; align-items: center; gap: 14px">
+        <span style="font-size: 13px; color: #9aa4ad">보통 10~20분 걸려요. 시작하면 끝날 때까지 물어보지 않아요.</span>
+        <button style="margin-left: auto; font: inherit; font-size: 14px; color: #9aa4ad; border: 0; background: transparent; padding: 11px 8px; min-height: 44px">아이디어부터 다시 말하기</button>
+        <a href="D-Make.dc.html" style="text-decoration: none; font-size: 15px; font-weight: 600; background: #3ee07f; color: #06140c; border-radius: 4px; padding: 12px 22px">이대로 만들어 줘</a>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>첫 실행</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#9aa4ad}a:hover{color:#e6e9ec}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; background: #0d0f11; color: #e6e9ec; font-family: 'IBM Plex Sans KR', 'IBM Plex Sans', system-ui, sans-serif; display: flex">
+  <aside style="width: 400px; flex-shrink: 0; background: #14171a; border-right: 1px solid #1f2428; padding: 52px 36px 36px; display: flex; flex-direction: column; gap: 22px">
+    <div style="display: flex; align-items: center; gap: 10px"><div style="width: 22px; height: 22px; border: 4px solid #3ee07f; border-radius: 50%; box-sizing: border-box"></div><b style="font-size: 16px; letter-spacing: 0.04em">TARS</b></div>
+    <h1 style="margin: 12px 0 0; font-size: 28px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em">세 가지만 준비하면<br>바로 만들 수 있어요</h1>
+    <p style="margin: 0; font-size: 14px; color: #9aa4ad; line-height: 1.65">TARS가 스스로 확인해요. 하나가 끝나면 이 화면이 알아서 다음으로 넘어가요.</p>
+    <ol style="list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 15px">
+      <li style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 6px; color: #9aa4ad"><span style="width: 24px; height: 24px; border-radius: 50%; background: #3ee07f; color: #06140c; display: grid; place-items: center; font-size: 12px; font-weight: 700">✓</span>AI 프로그램 설치<span style="margin-left: auto; font-size: 12px; color: #7cf0a8">끝남</span></li>
+      <li style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 6px; background: #1b1f23; border: 1px solid #3ee07f; font-weight: 600"><span style="width: 24px; height: 24px; border-radius: 50%; border: 2px solid #3ee07f; box-sizing: border-box; color: #7cf0a8; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px">2</span>AI에 로그인<span style="margin-left: auto; font-size: 12px; font-weight: 400; color: #7cf0a8">지금</span></li>
+      <li style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 6px; color: #9aa4ad"><span style="width: 24px; height: 24px; border-radius: 50%; border: 1px solid #3a4148; box-sizing: border-box; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px">3</span>만들기 도구 설치<span style="margin-left: auto; font-size: 12px">다음</span></li>
+    </ol>
+    <div style="margin-top: auto; font-size: 13px; display: flex; flex-direction: column; gap: 8px">
+      <a href="#" style="text-decoration: none">막혔나요? 도움말 보기</a>
+      <a href="#" style="text-decoration: none">직접 설정할게요 (전문가)</a>
+    </div>
+  </aside>
+
+  <main style="flex-grow: 1; padding: 52px 64px 36px; display: flex; flex-direction: column; gap: 18px">
+    <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #7cf0a8">지금 할 일 하나 · 2 / 3</div>
+    <h2 style="margin: 0; font-size: 26px; font-weight: 600">Claude에 로그인해 주세요</h2>
+    <p style="margin: 0; font-size: 15px; color: #9aa4ad; line-height: 1.65; max-width: 640px">TARS의 봇 팀은 내 Claude 구독으로 일해요. 한 번만 로그인하면 돼요.</p>
+    <div style="max-width: 660px; background: rgba(245,197,66,0.08); border: 1px solid rgba(245,197,66,0.35); border-radius: 6px; padding: 12px 14px; font-size: 14px; line-height: 1.6; display: flex; gap: 12px; align-items: center">
+      <span style="flex-grow: 1">Claude 유료 구독(Pro 또는 Max)이 있어야 해요.</span>
+      <a href="#" style="color: #f5c542; white-space: nowrap">아직 없어요 →</a>
+    </div>
+    <div style="max-width: 660px; background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 22px; display: flex; flex-direction: column; gap: 18px; box-sizing: border-box">
+      <div style="display: flex; gap: 14px; align-items: flex-start"><span style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #21262b; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px">1</span><div style="font-size: 15px; display: flex; flex-direction: column; gap: 12px; flex-grow: 1">아래 버튼을 누르면 로그인 창이 열려요
+        <button style="font: inherit; font-size: 15px; font-weight: 600; border: 0; background: #3ee07f; color: #06140c; border-radius: 4px; padding: 12px 20px; align-self: flex-start; min-height: 44px">로그인 창 열기</button></div></div>
+      <div style="display: flex; gap: 14px; align-items: center"><span style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #21262b; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px">2</span><div style="font-size: 15px">열린 창에서 로그인하고 "허용"을 눌러요</div></div>
+      <div style="display: flex; gap: 14px; align-items: center"><span style="width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #21262b; display: grid; place-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px">3</span><div style="font-size: 15px">이 화면으로 돌아오면 끝이에요. 자동으로 다음으로 넘어가요</div></div>
+    </div>
+    <details style="font-size: 13px; color: #9aa4ad; max-width: 660px"><summary>버튼이 안 열리면</summary>
+      <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px; background: #0a0c0e; border: 1px solid #1f2428; border-radius: 4px; padding: 10px 12px"><span style="flex-grow: 1; font-family: 'IBM Plex Mono', monospace; color: #e6e9ec">claude</span><button style="font: inherit; font-size: 12px; color: #e6e9ec; border: 1px solid #3a4148; background: #21262b; border-radius: 4px; padding: 4px 10px">복사</button></div>
+    </details>
+    <div style="margin-top: auto; max-width: 660px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #9aa4ad">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: #3ee07f"></span>
+      <span>로그인됐는지 스스로 확인하는 중이에요</span>
+      <button style="margin-left: auto; font: inherit; font-size: 13px; color: #e6e9ec; border: 1px solid #3a4148; background: transparent; border-radius: 4px; padding: 8px 12px">지금 확인</button>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
