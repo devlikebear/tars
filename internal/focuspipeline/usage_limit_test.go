@@ -114,3 +114,50 @@ func TestGoalComesBackAfterTheUsageLimit(t *testing.T) {
 		t.Fatal("due on a gate the limit did not raise")
 	}
 }
+
+// An easy-mode team that spent goal mode's budget at a blocked gate is
+// stuck; the person's Try again, with or without words of their own, puts
+// goal mode back with a new budget.
+func TestGoalComesBackOnTryAgainAfterTheBudget(t *testing.T) {
+	p := goalBuilding(t, StagePlan, StageBuild)
+	p.GoalAfterPlan = true
+	blocked, _ := FailTurn(p, "provider timeout", t0)
+	if GoalDueOnApproval(blocked, GateBlocked, GateRetry) {
+		t.Fatal("due while goal mode is still on")
+	}
+	spent, _ := EndGoal(blocked, GoalEndExhausted, t0)
+	for _, action := range []string{GateRetry, GateInstruct} {
+		if !GoalDueOnApproval(spent, GateBlocked, action) {
+			t.Fatalf("not due on %s after the budget was spent", action)
+		}
+	}
+	if GoalDueOnApproval(spent, GateBlocked, GateStop) {
+		t.Fatal("due on stop")
+	}
+	asked := spent
+	asked.GoalAfterPlan = false
+	if GoalDueOnApproval(asked, GateBlocked, GateRetry) {
+		t.Fatal("due on a pipeline that never asked")
+	}
+	// The budget ran out somewhere other than a blocked gate.
+	open := spent
+	open.OpenGate = ""
+	if GoalDueOnApproval(open, GateBlocked, GateRetry) {
+		t.Fatal("due with no blocked gate open")
+	}
+	// Ended by a person, or by the usage limit with words: stays off.
+	other, _ := EndGoal(blocked, GoalEndStopped, t0)
+	if GoalDueOnApproval(other, GateBlocked, GateRetry) {
+		t.Fatal("due after the team was stopped")
+	}
+	limited, _ := FailTurn(p, "You've hit your session limit · resets 2:40pm", t0)
+	limitEnded, _ := EndGoal(limited, GoalEndUsageLimit, t0)
+	if GoalDueOnApproval(limitEnded, GateBlocked, GateInstruct) {
+		t.Fatal("due on instruct after the usage limit")
+	}
+	// A blocked gate the usage limit raised but the budget ended goal mode.
+	limitSpent, _ := EndGoal(limited, GoalEndExhausted, t0)
+	if GoalDueOnApproval(limitSpent, GateBlocked, GateRetry) {
+		t.Fatal("due on a usage-limit gate after the budget")
+	}
+}

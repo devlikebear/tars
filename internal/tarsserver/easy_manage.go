@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"errors"
 	"net/http"
+	"path/filepath"
 
 	"github.com/devlikebear/tars/internal/easyproject"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -142,7 +143,7 @@ func (e *easyProjectsAPI) remove(w http.ResponseWriter, r *http.Request) {
 		e.previews.Stop(p.ID)
 	}
 	movedTo := ""
-	if p.Folder != "" {
+	if p.Folder != "" && !e.folderInUse(p) {
 		base, err := e.creator.BaseDir()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "delete_failed", "the project could not be deleted")
@@ -165,4 +166,23 @@ func (e *easyProjectsAPI) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	e.logger.Info().Str("project_id", p.ID).Str("moved_to", movedTo).Msg("easy projects: deleted")
 	writeJSON(w, http.StatusOK, map[string]any{"deleted_to": movedTo})
+}
+
+// folderInUse reports whether another project records p's folder. A failed
+// creation removes its half-made folder but keeps the path on its record;
+// the next project made from the same idea takes the same name. Deleting
+// the failed record must not move that project's folder away. An unreadable
+// list counts as in use: the record goes, the folder stays.
+func (e *easyProjectsAPI) folderInUse(p easyproject.Project) bool {
+	list, err := e.creator.Store.List()
+	if err != nil {
+		return true
+	}
+	folder := filepath.Clean(p.Folder)
+	for _, other := range list {
+		if other.ID != p.ID && other.Folder != "" && filepath.Clean(other.Folder) == folder {
+			return true
+		}
+	}
+	return false
 }
