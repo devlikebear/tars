@@ -368,7 +368,7 @@ function logOf(project: EasyProject, pipeline: FocusPipeline | null | undefined,
   if (questions.length) log.push({ who: 'leader', line: 'asked' })
   const byKind = (kind: string) => pipeline.stages.find((s) => kindOf(s) === kind)
   const plan = byKind('plan')
-  if (plan?.status === 'active' || !plan) {
+  if (!plan || (plan.status !== 'done' && plan.status !== 'skipped')) {
     if (view.phase === 'approve') log.push({ who: 'leader', line: 'drew' })
     else if (view.phase === 'planning') log.push({ who: 'leader', line: 'drawing' })
     return log
