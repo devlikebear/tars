@@ -6,11 +6,11 @@
   // screen only reads: the project, then its pipeline, every two seconds
   // while it still changes on its own.
   import { onDestroy, onMount } from 'svelte'
-  import { t } from '../../i18n'
+  import { locale, t } from '../../i18n'
   import { changeEasyProject, getEasyProject } from '../../lib/api/easy'
   import { focusGate, getFocusPipeline } from '../../lib/api/focus'
   import { APIRequestError } from '../../lib/api/client'
-  import { EASY_BOTS, easyBase, easyCanChange, easyLive, easyView, type EasyProject } from '../../lib/easy'
+  import { EASY_BOTS, easyBase, easyCanChange, easyLimitResets, easyLive, easyView, type EasyProject } from '../../lib/easy'
   import type { FocusPipeline } from '../../lib/types'
   import EasyPreview from './EasyPreview.svelte'
   import EasyVersions from './EasyVersions.svelte'
@@ -77,6 +77,24 @@
     }
   }
 
+  // The usage limit stopped the team: Continue sends the turn it refused
+  // again, and the server puts goal mode back on (GoalDueOnApproval).
+  let continuing = $state(false)
+  async function continueAfterLimit() {
+    if (!project?.session_id || !view?.limit || continuing) return
+    continuing = true
+    actionFailed = false
+    try {
+      await focusGate(project.session_id, 'blocked', 'retry', { card_id: view.limit.cardId })
+      clearTimeout(timer)
+      await loop()
+    } catch {
+      actionFailed = true
+    } finally {
+      continuing = false
+    }
+  }
+
   let previewKey = $state(0)
   let changeRequest = $state('')
   let changing = $state(false)
@@ -113,6 +131,8 @@
         return view.saved ? $t.easy.project.finished : $t.easy.project.finishedNotSaved
       case 'approve':
         return $t.easy.project.approveIntro
+      case 'limit':
+        return $t.easy.project.limitPaused(view.limit ? easyLimitResets(view.limit, $locale) : '')
       default:
         return $t.easy.project[view.phase]
     }
@@ -187,6 +207,15 @@
       </section>
     {/if}
 
+    {#if view.phase === 'limit' && view.limit}
+      <section class="your-turn" data-testid="easy-limit">
+        <button type="button" class="btn btn-primary" data-testid="easy-continue" disabled={continuing} onclick={continueAfterLimit}>
+          {continuing ? $t.easy.project.continuing : $t.easy.project.continue}
+        </button>
+        {#if actionFailed}<p class="error" role="alert">{$t.easy.project.actionFailed}</p>{/if}
+      </section>
+    {/if}
+
     {#if view.check && view.phase !== 'finished'}
       <p class="check" data-testid="easy-check">{$t.easy.project.checkFailed(view.check.screen ?? '', view.check.expected, view.check.seen)}</p>
     {/if}
@@ -248,6 +277,7 @@
     color: var(--text-secondary);
   }
   .phase-approve,
+  .phase-limit,
   .phase-stuck {
     background: var(--warning-muted);
     color: var(--warning);

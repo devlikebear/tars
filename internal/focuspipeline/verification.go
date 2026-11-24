@@ -100,6 +100,14 @@ type BlockedFact struct {
 	SecondOpinion bool   `json:"second_opinion,omitempty"`
 	// Error is why a server turn failed (BlockedTurnFailed).
 	Error string `json:"error,omitempty"`
+	// UsageLimit says the turn failed because the provider's usage
+	// allowance is spent (UsageLimitError), and Resets is when it comes
+	// back, in the provider's own words ("2:40pm (Asia/Seoul)"), or
+	// ResetsAt when the provider gave a time. Easy mode tells the person
+	// to wait instead of showing the error (vibe-coder-identity.md §4).
+	UsageLimit bool       `json:"usage_limit,omitempty"`
+	Resets     string     `json:"resets,omitempty"`
+	ResetsAt   *time.Time `json:"resets_at,omitempty"`
 }
 
 var (
@@ -268,10 +276,15 @@ func FailTurn(p Pipeline, errText string, now time.Time) (Pipeline, bool) {
 	}
 	next := p.clone()
 	stage, _ := next.Stage(next.Current)
-	next.raiseBlocked(TurnFailedTitle, BlockedFact{
+	fact := BlockedFact{
 		Reason: BlockedTurnFailed, Iteration: stage.Iteration, Limit: next.stageLimit(next.Current),
 		Prompt: p.PendingTurn, Error: tailRunes(strings.TrimSpace(errText), excerptRunes),
-	}, 0, now.UTC())
+	}
+	if UsageLimitError(errText) {
+		fact.UsageLimit = true
+		fact.Resets, fact.ResetsAt = UsageLimitResets(errText)
+	}
+	next.raiseBlocked(TurnFailedTitle, fact, 0, now.UTC())
 	next.UpdatedAt = now.UTC()
 	return next, true
 }

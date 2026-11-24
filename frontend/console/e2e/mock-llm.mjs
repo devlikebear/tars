@@ -229,6 +229,20 @@ function easyMakeTool(text) {
   return stage === 'make' && text.includes(EASY_WRITE) && !typed.startsWith('Fix these findings')
 }
 
+// [e2e:easy-limit] (easy.spec.ts): the first make-stage turn that carries
+// it is refused the way Claude Code words a spent session limit, after goal
+// mode has taken over; every later one goes through, as once the limit has
+// lifted.
+const EASY_LIMIT = '[e2e:easy-limit]'
+let easyLimitSpent = false
+
+function easyLimitRefuses(text) {
+  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z][a-z0-9_]*)/)?.[1]
+  if (easyLimitSpent || stage !== 'make' || !text.includes(EASY_LIMIT)) return false
+  easyLimitSpent = true
+  return true
+}
+
 // focus_template_edit.go's draft route sends no <focus-stage> wrapper, just
 // the json payload {request, existing_ids, base?, previous_draft?} as the
 // whole user message. [e2e:focus-template-edit] in the request text (see
@@ -389,6 +403,11 @@ async function handleCompletion(req, res) {
   const model = body.model || 'e2e-model'
   const messages = body.messages ?? []
   if (process.env.TARS_E2E_MOCK_LLM_DEBUG) console.error(JSON.stringify(messages.slice(-1)))
+  if (easyLimitRefuses(lastUserText(messages))) {
+    res.writeHead(400, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ error: { message: "You've hit your session limit · resets 2:40pm (Asia/Seoul)" } }))
+    return
+  }
   const toolResults = trailingToolResults(messages)
   if (toolResults === 0 && lastUserText(messages).includes(WRITE3) && offersTool(body, 'write_file')) {
     sendToolCalls(res, model, body.stream, write3Calls)

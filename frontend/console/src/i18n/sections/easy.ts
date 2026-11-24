@@ -29,6 +29,7 @@ export const easyEn = {
     approve: 'Waiting for you',
     building: 'Being made',
     stuck: 'Needs a look',
+    limit: 'Paused',
     finished: 'Finished',
   },
   bots: {
@@ -59,6 +60,12 @@ export const easyEn = {
     approving: 'Starting…',
     building: 'The team is working. You do not need to do anything until it is done.',
     stuck: 'The team stopped and could not go on by itself. Open it in expert mode to see what happened.',
+    limitPaused: (when: string) =>
+      when
+        ? `The AI has used up what your plan allows for now, so the team is taking a break. It can work again at ${when}. Nothing is lost: press Continue then, and the team picks up where it stopped.`
+        : 'The AI has used up what your plan allows for now, so the team is taking a break. It usually comes back within a few hours. Nothing is lost: press Continue then, and the team picks up where it stopped.',
+    continue: 'Continue',
+    continuing: 'Continuing…',
     finished: 'Finished, and saved as a version.',
     finishedNotSaved: 'Finished, but this version could not be saved.',
     finishedSaving: 'Finished. Saving this version…',
@@ -200,6 +207,7 @@ export const easyKo: EasyTranslations = {
     approve: '확인을 기다려요',
     building: '만드는 중',
     stuck: '살펴봐야 해요',
+    limit: '잠시 쉬는 중',
     finished: '완성',
   },
   bots: {
@@ -230,6 +238,12 @@ export const easyKo: EasyTranslations = {
     approving: '시작하는 중…',
     building: '봇 팀이 일하고 있어요. 끝날 때까지 할 일은 없어요.',
     stuck: '봇 팀이 멈췄고 스스로 이어 가지 못했어요. 전문가 모드로 열어 무슨 일인지 확인하세요.',
+    limitPaused: (when: string) =>
+      when
+        ? `지금 요금제로 AI를 쓸 수 있는 양을 다 써서 봇 팀이 잠시 쉬고 있어요. ${when}부터 다시 일할 수 있어요. 지금까지 한 일은 그대로 있으니, 그때 이어서 하기를 누르면 멈춘 곳부터 다시 시작해요.`
+        : '지금 요금제로 AI를 쓸 수 있는 양을 다 써서 봇 팀이 잠시 쉬고 있어요. 보통 몇 시간 안에 다시 쓸 수 있어요. 지금까지 한 일은 그대로 있으니, 그때 이어서 하기를 누르면 멈춘 곳부터 다시 시작해요.',
+    continue: '이어서 하기',
+    continuing: '이어 가는 중…',
     finished: '완성했고, 버전으로 저장했어요.',
     finishedNotSaved: '완성했지만 이번 버전을 저장하지 못했어요.',
     finishedSaving: '완성했어요. 이번 버전을 저장하는 중…',

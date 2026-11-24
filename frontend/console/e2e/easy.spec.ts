@@ -134,6 +134,36 @@ test.describe.serial('easy mode', () => {
 // it takes the make box's place and explains only the next thing to do. The
 // e2e server itself is ready (a mock engine, the stand-in scaffold), so the
 // not-ready answers are played by the browser.
+// The AI's usage limit (phase 4): once the plan is approved and goal mode
+// works on its own, the mock refuses the first make turn the way Claude
+// Code words a spent session limit. Goal mode stops instead of retrying; the
+// screen says so in plain words with the time it comes back, never the
+// error, and Continue sends the turn again and lets the team finish.
+test('a spent usage limit pauses the project until the person continues', async ({ page }) => {
+  test.setTimeout(180_000)
+  await page.goto('/console/easy')
+  await page.getByTestId('easy-idea').fill('[e2e:focus-template] [e2e:easy-limit] A guest book for my website')
+  await page.getByTestId('easy-start').click()
+  await expect(page).toHaveURL(/\/console\/easy\/[0-9a-f]{16}$/)
+
+  const phase = page.getByTestId('easy-phase')
+  await expect(phase).toHaveAttribute('data-phase', 'approve', { timeout: 60_000 })
+  await page.getByTestId('easy-approve').click()
+
+  await expect(phase).toHaveAttribute('data-phase', 'limit', { timeout: 60_000 })
+  await expect(phase).toHaveText('Paused')
+  const message = page.getByTestId('easy-message')
+  await expect(message).toContainText('used up what your plan allows')
+  await expect(message).toContainText('2:40pm (Asia/Seoul)')
+  await expect(page.getByTestId('easy-root')).not.toContainText('session limit')
+  await expectNoHiddenWords(page, 'usage limit')
+
+  await page.getByTestId('easy-continue').click()
+  await expect(page.getByTestId('easy-limit')).toHaveCount(0)
+  // Nothing else is clicked: the team goes on by itself to the end.
+  await expect(phase).toHaveAttribute('data-phase', 'finished', { timeout: 120_000 })
+})
+
 test('the Start screen shows the next step until the computer is ready', async ({ page }) => {
   const real = await page.request.get('/v1/easy/readiness')
   expect((await real.json()).readiness).toMatchObject({ ready: true, engine: 'ok', tools: 'ok' })

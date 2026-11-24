@@ -2670,6 +2670,11 @@ export type FocusBlocked = {
   // interrupted: the second opinion review the round waited for.
   second_opinion?: boolean
   error?: string
+  // turn_failed: the provider's usage limit refused the turn, and when it
+  // comes back — in the provider's words, or as a time.
+  usage_limit?: boolean
+  resets?: string
+  resets_at?: string
 }
 // excerpt: the diff around file:line since the pipeline's base commit, set
 // by the server (P3). key and url are set on findings from the PR's checks

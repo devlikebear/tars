@@ -222,15 +222,33 @@ func GoalApplied(p Pipeline, step GoalStep, now time.Time) Pipeline {
 	return next
 }
 
+// GoalDueOnApproval reports whether answering gate with action on p turns
+// goal mode on, on a pipeline that asked for it after the plan
+// (GoalAfterPlan, an easy-mode project):
+//
+//   - the plan's approval, when the pipeline has never been in goal mode;
+//   - a retry of a turn the provider's usage limit stopped, when that limit
+//     is what ended goal mode (GoalEndUsageLimit): the person waited for
+//     the limit to lift and asks the team to go on as it was.
+//
+// Goal mode turned off by a person, or ended for any other reason, stays
+// off.
+func GoalDueOnApproval(p Pipeline, gate, action string) bool {
+	if !p.GoalAfterPlan {
+		return false
+	}
+	switch {
+	case gate == GatePlan && action == GateApprove:
+		return p.GoalMode == nil
+	case gate == GateBlocked && action == GateRetry:
+		g := p.GoalMode
+		return g != nil && !g.Enabled && g.EndReason == GoalEndUsageLimit && p.UsageLimitStop() != nil
+	}
+	return false
+}
+
 // NextGoalStep decides what goal mode does next for a pipeline nothing is
 // running on (no turn, no verification, no driver run). It never changes p.
-// GoalDueOnApproval reports whether approving gate with action on p turns
-// goal mode on: the plan's approval, on a pipeline that asked for it
-// (GoalAfterPlan) and has never been in goal mode. Goal mode turned off by
-// a person stays off.
-func GoalDueOnApproval(p Pipeline, gate, action string) bool {
-	return p.GoalAfterPlan && p.GoalMode == nil && gate == GatePlan && action == GateApprove
-}
 
 func NextGoalStep(p Pipeline, now time.Time) GoalStep {
 	wait := GoalStep{Kind: GoalWait}
@@ -337,7 +355,7 @@ func goalBlockedStep(p Pipeline, g GoalMode, spent bool, now time.Time) GoalStep
 	if fact.Failure != nil && fact.Failure.E2E {
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndE2EFailed}
 	}
-	if fact.Reason == BlockedTurnFailed && UsageLimitError(fact.Error) {
+	if p.UsageLimitStop() != nil {
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndUsageLimit}
 	}
 	if spent {
