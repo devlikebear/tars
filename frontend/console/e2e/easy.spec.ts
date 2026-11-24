@@ -103,7 +103,7 @@ test.describe.serial('easy mode', () => {
     // The project is listed on the make screen, and expert mode opens its
     // work in the focus screen.
     await page.getByRole('button', { name: /All projects/ }).click()
-    await expect(page.getByTestId('easy-project-item')).toContainText('A sign-up page for a')
+    await expect(page.getByTestId('easy-project-item').filter({ hasText: 'A sign-up page for a' }).first()).toBeVisible()
     await page.goto(projectPath)
     await page.getByTestId('easy-expert').click()
     await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
@@ -261,7 +261,7 @@ test('a server set to easy mode lands /console in easy mode', async ({ page }) =
   await page.goto('/console')
   await expect(page).toHaveURL(/\/console\/easy$/)
   await expect(page.getByRole('heading', { name: 'What do you want to make?' })).toBeVisible()
-  await page.getByTestId('easy-expert').click()
+  await page.getByTestId('vibe-expert').click()
   await expect(page).toHaveURL(/\/console$/)
   // And back: easy mode is an item in the sidebar, like focus.
   await page.getByRole('link', { name: 'Vibe code mode' }).click()

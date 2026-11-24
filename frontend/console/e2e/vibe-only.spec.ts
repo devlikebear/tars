@@ -19,6 +19,7 @@ async function vibeOnly(page: Page) {
 async function expectNoWayOut(page: Page) {
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0)
   await expect(page.getByTestId('easy-expert')).toHaveCount(0)
+  await expect(page.getByTestId('vibe-expert')).toHaveCount(0)
   await expect(page.locator('.status-pill')).toHaveCount(0)
   await expect(page.locator('.header-notif-wrapper')).toHaveCount(0)
   await expect(page.locator('.hamburger-btn')).toHaveCount(0)
