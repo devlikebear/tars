@@ -28,6 +28,10 @@ func TestSkeletonConfigLoadsAsLocalOnlySetup(t *testing.T) {
 	if cfg.APIAuthMode != "off" || !cfg.APIAllowInsecureLocalAuth {
 		t.Fatalf("auth mode = %q, allow insecure local = %v", cfg.APIAuthMode, cfg.APIAllowInsecureLocalAuth)
 	}
+	// A new install opens in easy mode (vibe-coder-identity.md §4).
+	if cfg.Console.DefaultMode != config.ConsoleModeEasy {
+		t.Fatalf("default mode = %q, want easy", cfg.Console.DefaultMode)
+	}
 	if cfg.WorkspaceDir != workspace {
 		t.Fatalf("workspace = %q, want %q", cfg.WorkspaceDir, workspace)
 	}

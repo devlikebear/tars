@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +22,7 @@ func TestConsoleDefaultMode(t *testing.T) {
 		{"  Focus ", "focus"},
 		{"advanced", "advanced"},
 		{"ADVANCED", "advanced"},
+		{"easy", "easy"},
 		{"simple", ""},
 		{"", ""},
 	}
@@ -60,7 +62,7 @@ func TestConfigSchemaIncludesConsoleDefaultMode(t *testing.T) {
 		if field.Section != "Console" || field.Path != "console.default_mode" || field.Type != "select" {
 			t.Fatalf("field = %+v", field)
 		}
-		if len(field.Options) != 2 || field.Options[0] != "advanced" || field.Options[1] != "focus" {
+		if strings.Join(field.Options, ",") != "advanced,focus,easy" {
 			t.Fatalf("options = %v", field.Options)
 		}
 		cfg := defaultConfigValues()

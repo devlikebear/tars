@@ -1920,6 +1920,9 @@ export type HealthzResponse = {
   // /console/ index.html. Absent for the Vite dev proxy and the unbuilt
   // placeholder (see lib/consoleUpdate.ts's shouldShowUpdateNotice).
   console_build?: string
+  // console_default_mode, sent only while the server needs setup (the
+  // console cannot read the config then): easy on a new install.
+  console_default_mode?: string
 }
 
 export type SetupTierStatus = {

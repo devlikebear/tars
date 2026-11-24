@@ -45,5 +45,11 @@ api:
 
 agentruntime:
   enabled: true
+
+# A new install opens in easy mode: say what to make, and TARS builds it.
+# Set "advanced" (the workbench) or "focus" (the development pipeline) to
+# open there instead.
+console:
+  default_mode: easy
 `+"\n", workspaceDir, apiAddr))
 }

@@ -216,7 +216,7 @@ func Schema() []FieldMeta {
 		fs("telegram_bot_token", "Channels", "Telegram Bot Token", "Bot token from @BotFather", true),
 
 		// ── Console ──────────────────────────────
-		fsel("console_default_mode", "Console", "Default Mode", "Console mode /console opens in: focus (development pipeline) or advanced (workbench); empty means advanced", []string{ConsoleModeAdvanced, ConsoleModeFocus}),
+		fsel("console_default_mode", "Console", "Default Mode", "Console mode /console opens in: easy (say what to make), focus (development pipeline) or advanced (workbench); empty means advanced", []string{ConsoleModeAdvanced, ConsoleModeFocus, ConsoleModeEasy}),
 
 		// ── Companion ────────────────────────────
 		f("companion_enabled", "Companion", "bool", "Enabled", "Show the floating TARS companion in the Console"),

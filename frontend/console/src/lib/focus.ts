@@ -560,10 +560,22 @@ export function planEdits(plan: FocusPlan, edits: { skipped: ReadonlySet<string>
 // --- Default mode ---
 
 // defaultModeRedirect is where the console lands instead of the board when
-// console_default_mode is focus. Only the landing redirects: the board stays
-// reachable from the nav.
+// console_default_mode is focus or easy. Only the landing redirects: the
+// board stays reachable from the nav.
 export function defaultModeRedirect(mode: unknown, route: { view: string }): string | null {
-  return mode === 'focus' && route.view === 'board' ? '/console/focus' : null
+  if (route.view !== 'board') return null
+  if (mode === 'focus') return '/console/focus'
+  if (mode === 'easy') return '/console/easy'
+  return null
+}
+
+// setupRedirect is where a server that still needs setup sends the console:
+// a new install (console_default_mode easy, from the skeleton config) to
+// easy mode, which sets itself up; anything else to the wizard. Easy mode
+// and the wizard themselves stay where they are.
+export function setupRedirect(mode: unknown, route: { view: string }): string | null {
+  if (route.view === 'onboarding' || route.view === 'easy') return null
+  return mode === 'easy' ? '/console/easy' : '/console/onboarding'
 }
 
 // --- Deck cursor ---

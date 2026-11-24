@@ -64,7 +64,13 @@ func handleEasySetup(w http.ResponseWriter, configPath string, restart RestartFu
 		httpapi.WriteJSON(w, http.StatusConflict, map[string]string{"error": "already set up", "code": "already_set_up"})
 		return
 	}
-	if err := config.PatchYAML(configPath, EasySetupUpdates()); err != nil {
+	updates := EasySetupUpdates()
+	// Set up from easy mode, it opens in easy mode — unless a mode was
+	// already chosen.
+	if current.Console.DefaultMode == "" {
+		updates["console_default_mode"] = config.ConsoleModeEasy
+	}
+	if err := config.PatchYAML(configPath, updates); err != nil {
 		logger.Error().Err(err).Str("path", configPath).Msg("easy setup: write config")
 		httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "config could not be written"})
 		return

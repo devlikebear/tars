@@ -326,7 +326,7 @@ Every route must map to a pillar. Rows marked *(target)* describe the #967 workb
 | Changes panel (dock, in chat) *(target, P1)* | Conversation | Turn/session checkpoint diffs, file and hunk revert, hunk comments |
 | Inline approval cards (in chat) *(P2)* | Conversation + Control | Approve/deny tool calls without leaving the session; `/console/approvals` stays for unattended runs |
 | `/console/focus`, `/console/focus/<session>`, `/console/focus/release` | Conversation | Focus mode (#1068): pipelines, one task's stepper, card deck and graph over the same session, and the release train |
-| `/console/easy`, `/console/easy/<project>` | Conversation | Easy mode (`vibe-coder-identity.md` §4): say what to make, watch the bot team, approve the plan. Not the default route yet |
+| `/console/easy`, `/console/easy/<project>` | Conversation | Easy mode (`vibe-coder-identity.md` §4): say what to make, watch the bot team, approve the plan. Where `/console` lands for a new install (`console_default_mode: easy`) |
 | `/console/chat`, `/console/sessions` | Conversation | Chat transcript, session list |
 | `/console/tasks` | Conversation | Work timeline / task contracts |
 | `/console/sysprompt`, `/console/workspace` | Conversation | System-prompt authoring (adjacent to chat behavior) |
@@ -766,7 +766,7 @@ Reverting (P1 PR6) happens in the panel, never in the thread's card:
 
 ### Easy mode (`docs/decisions/vibe-coder-identity.md` §4–§5, phase 2)
 
-For someone who cannot read code. Routes `/console/easy` (make) and `/console/easy/<project>` (progress); components in `src/components/easy/`, the whole view decided by the pure `easyView` in `lib/easy.ts`, strings in `src/i18n/sections/easy.ts`. The workbench navigation is hidden (`focusChromeHidden`); the screen's own **expert mode** link is the way out. It is not the console's default yet — that waits for onboarding (phase 4).
+For someone who cannot read code. Routes `/console/easy` (make) and `/console/easy/<project>` (progress); components in `src/components/easy/`, the whole view decided by the pure `easyView` in `lib/easy.ts`, strings in `src/i18n/sections/easy.ts`. The workbench navigation is hidden (`focusChromeHidden`); the screen's own **expert mode** link is the way out. It is where `/console` lands for a new install (phase 4-4, `console_default_mode: easy`): the landing follows the mode, and the expert mode link reaches the board without leaving it again. A workspace that set no mode opens on the board as before.
 
 - **Words**: no easy-mode string may contain a word in `EASY_HIDDEN_WORDS` (git, commit, branch, worktree, pull request, PR, merge, tier, permission mode, verify, triage, gate, pipeline, and their Korean forms). `tests/easy.test.ts` checks every string in the section; `e2e/easy.spec.ts` checks the rendered `easy-root` on every screen of a real run. Content the team writes (the plan's goal and task titles, a check's screen/expected/seen) is shown as written — the webapp template asks for plain words.
 - **First run** (phase 4-2, `EasySetup.svelte`): on a server with no AI set up, easy mode shows **Getting TARS ready** with one dim line and a pulsing `primary` dot (static under reduced motion). The setup-only banner is hidden here. The screen sets Claude Code up and reloads once the server is back. If setup fails or the restart takes longer than 90 seconds, an `error` line appears with **Try again** (`button-primary`) and a ghost **Set it up by hand**, which opens the wizard.

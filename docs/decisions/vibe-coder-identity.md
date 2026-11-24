@@ -154,7 +154,7 @@ The easy screens are added beside the existing ones throughout.
 6. **Bots.** Bot records with their own model, instructions, skills, tools and memory; adding a bot by describing it; a template stage naming its bot (`bot-mode.md` phase 2 and the editor of its phase 3). Done when a bot the user added runs a stage of the user's own template with its own model and memory.
 7. **Expert switch and handoff.** The mode switch, "open this folder in another tool", and `claude-code-handoff.md` phase 1.
 
-Easy mode becomes the default for new installs after phase 4.
+Easy mode becomes the default for new installs after phase 4. Done in phase 4-4: the config a new install starts from names easy as the console's mode (`console.default_mode: easy`), so `/console` opens easy mode, and a server that still needs setup opens it instead of the wizard. A workspace that set no mode keeps opening in the workbench (§4: current use does not change).
 
 ## Consequences
 

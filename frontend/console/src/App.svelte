@@ -14,7 +14,7 @@
   import { loadRouteComponent } from './lib/routeComponents'
   import { canSignOut, loginRequiredFor } from './lib/authGate'
   import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, patchConfigValues, streamEvents } from './lib/api'
-  import { defaultModeRedirect, focusChromeHidden, focusOwnsShortcut, onboardingModeUpdate } from './lib/focus'
+  import { defaultModeRedirect, focusChromeHidden, focusOwnsShortcut, onboardingModeUpdate, setupRedirect } from './lib/focus'
   import { getOwnConsoleBuild, shouldShowUpdateNotice } from './lib/consoleUpdate'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
@@ -230,11 +230,10 @@
     try {
       const health = await getHealthz()
       needsSetup = !!health.needs_setup
-      // Easy mode sets itself up (EasySetup.svelte); every other screen
-      // goes to the wizard.
-      if (needsSetup && route.view !== 'onboarding' && route.view !== 'easy') {
-        navigate('/console/onboarding')
-      }
+      // Easy mode sets itself up (EasySetup.svelte), and a new install
+      // opens there; every other screen goes to the wizard.
+      const redirect = needsSetup ? setupRedirect(health.console_default_mode, route) : null
+      if (redirect) navigate(redirect)
     } catch {
       // healthz fetch failed — let the SSE stream surface the disconnect
     }
@@ -269,7 +268,8 @@
 
   // Console settings from the server config: the companion, and the mode
   // /console lands in (console_default_mode; focus sends it to the focus
-  // home). A user-role console cannot read the config and stays advanced.
+  // home, easy to easy mode). A user-role console cannot read the config
+  // and stays advanced.
   async function loadCompanionSetting() {
     if (needsSetup || loginRequired) {
       companionEnabled = false

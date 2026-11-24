@@ -1312,7 +1312,11 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionI
 	})
 }
 
-func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any, needsSetupFn func() bool, consoleBuildFn func() string) http.Handler {
+// defaultModeFn is console_default_mode. It is sent only while the server
+// needs setup: the console cannot read the config then, and a new install
+// (easy) sets itself up from easy mode instead of the wizard. Once set up,
+// the console reads the mode from the config like every other setting.
+func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any, needsSetupFn func() bool, consoleBuildFn func() string, defaultModeFn func() string) http.Handler {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
@@ -1329,6 +1333,11 @@ func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string
 			"component":   "tars",
 			"time":        nowFn().UTC().Format(time.RFC3339),
 			"needs_setup": needsSetup,
+		}
+		if needsSetup && defaultModeFn != nil {
+			if mode := defaultModeFn(); mode != "" {
+				body["console_default_mode"] = mode
+			}
 		}
 		if dashboardAuthStatus != nil {
 			body["dashboard_auth"] = dashboardAuthStatus
