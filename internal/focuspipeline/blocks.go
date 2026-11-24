@@ -44,6 +44,9 @@ type Decision struct {
 	ID       string   `json:"id"`
 	Question string   `json:"question"`
 	Options  []string `json:"options"`
+	// YouDecide marks a question the screen answers with a "you decide"
+	// choice besides Options (blueprint.go), set by the server.
+	YouDecide bool `json:"you_decide,omitempty"`
 }
 
 // PRDraft is the pull request the pr stage drafts.
@@ -117,6 +120,9 @@ func ParseBlocks(text string) Blocks {
 				continue
 			}
 			report.Summary = strings.TrimSpace(report.Summary)
+			for i := range report.Decisions {
+				report.Decisions[i].YouDecide = false // the server's alone
+			}
 			out.Report = &report
 		case TagPR:
 			var draft PRDraft
@@ -208,6 +214,7 @@ func normalizePlan(plan Plan) (Plan, error) {
 	plan.E2E = cleanStrings(plan.E2E)
 	plan.E2ESetup = cleanStrings(plan.E2ESetup)
 	plan.E2ETeardown = cleanStrings(plan.E2ETeardown)
+	plan = normalizeBlueprint(plan)
 	for i := range plan.Tasks {
 		plan.Tasks[i].Stage = StageID(strings.TrimSpace(string(plan.Tasks[i].Stage)))
 	}

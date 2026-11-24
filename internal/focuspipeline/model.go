@@ -183,6 +183,13 @@ type Plan struct {
 	E2ESetup    []string       `json:"e2e_setup,omitempty"`
 	E2ETeardown []string       `json:"e2e_teardown,omitempty"`
 	Limits      map[string]int `json:"limits,omitempty"`
+	// Checks, Screens, Saved and NotNow are the blueprint (blueprint.go):
+	// kept only in a pipeline whose template is marked Blueprint. Every
+	// check's command is in Verify.
+	Checks  []PlanCheck  `json:"checks,omitempty"`
+	Screens []PlanScreen `json:"screens,omitempty"`
+	Saved   []string     `json:"saved,omitempty"`
+	NotNow  []string     `json:"not_now,omitempty"`
 }
 
 // PlanTask is one task of a plan and what "done" means for it.
@@ -333,6 +340,12 @@ type Pipeline struct {
 	// WebUI copies the template's WebUI: the work is a web page someone
 	// uses, so the browser-check teaching applies without a pr stage.
 	WebUI bool `json:"web_ui,omitempty"`
+	// Blueprint copies the template's Blueprint: the plan carries a
+	// blueprint for someone who cannot read code, and the leader may ask
+	// questions before it (blueprint.go). CheckResults are the approved
+	// blueprint's checks with their latest results; nil without checks.
+	Blueprint    bool          `json:"blueprint,omitempty"`
+	CheckResults []CheckResult `json:"check_results,omitempty"`
 	// SaveVersion has the server save the work as a version once the
 	// pipeline finishes (saved.go): set by the server for an easy-mode
 	// project, which has no pull request. Saved is how that went.
@@ -388,6 +401,7 @@ func NewFromTemplate(sessionID, goal string, tpl Template, now time.Time) Pipeli
 		p.Template = tpl.ID
 	}
 	p.WebUI = tpl.WebUI
+	p.Blueprint = tpl.Blueprint
 	return p
 }
 
@@ -501,6 +515,7 @@ func (p Pipeline) clone() Pipeline {
 	out := p
 	out.Stages = append([]Stage(nil), p.Stages...)
 	out.Cards = append([]Card{}, p.Cards...)
+	out.CheckResults = append([]CheckResult(nil), p.CheckResults...)
 	if p.Plan != nil {
 		plan := clonePlan(*p.Plan)
 		out.Plan = &plan
@@ -607,5 +622,12 @@ func clonePlan(p Plan) Plan {
 	out.E2ESetup = append([]string(nil), p.E2ESetup...)
 	out.E2ETeardown = append([]string(nil), p.E2ETeardown...)
 	out.Limits = maps.Clone(p.Limits)
+	out.Checks = append([]PlanCheck(nil), p.Checks...)
+	out.Screens = append([]PlanScreen(nil), p.Screens...)
+	for i := range out.Screens {
+		out.Screens[i].Parts = append([]ScreenPart(nil), p.Screens[i].Parts...)
+	}
+	out.Saved = append([]string(nil), p.Saved...)
+	out.NotNow = append([]string(nil), p.NotNow...)
 	return out
 }

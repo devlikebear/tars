@@ -123,6 +123,7 @@ func stageInstruction(p Pipeline) string {
 	if stage.KindOf() == StagePlan {
 		text += p.browserCheckPlanInstructions()
 		text += p.pinnedPlanInstructions()
+		text += p.blueprintStageInstructions()
 	}
 	if stage.KindOf() == StageBuild {
 		text += p.browserCheckBuildNote()
@@ -231,6 +232,7 @@ func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
 			fmt.Fprintf(b, "- %s\n", cmd)
 		}
 	}
+	writeChecks(b, plan.Checks)
 	if p.E2E && len(plan.E2E) > 0 {
 		writeCommands(b, "End-to-end setup (shell, run by the server in this folder before the goals):\n", plan.E2ESetup)
 		b.WriteString("End-to-end goals (run by the server after verification: a @Browser goal in the developer's browser, " +
@@ -283,6 +285,9 @@ const blockTail = "Put the block at the very end of your reply, outside any code
 // task belongs to.
 func (p Pipeline) planBlockFormat() string {
 	format := p.planBlockBase()
+	if p.Blueprint {
+		format = strings.Replace(format, `"limits":`, blueprintPlanFields+`"limits":`, 1)
+	}
 	if !p.E2E {
 		return format
 	}
@@ -319,6 +324,9 @@ func (p Pipeline) requiredBlocks(kind StageID) string {
 	const tail = blockTail
 	switch kind {
 	case StagePlan:
+		if p.Blueprint && !p.planQuestionsAsked() {
+			return p.blueprintPlanBlockRequest()
+		}
 		return "End your reply with exactly one plan block in this format:\n" + p.planBlockFormat() + "\n" + tail
 	case StageReview, StagePRReview:
 		return "End your reply with a findings block (an empty array when there are none) and a report block:\n" +

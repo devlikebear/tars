@@ -139,12 +139,50 @@ function secondOpinionReply(text) {
 // is answered by the block its guidance asks for — a done report for a work
 // stage, findings (one high, one low, then none) for a review stage.
 const FOCUS_TEMPLATE = '[e2e:focus-template]'
+// [e2e:easy-ask] (with [e2e:focus-template] on a blueprint template): the
+// first plan-stage turn asks the leader's questions instead of planning.
+const EASY_ASK = '[e2e:easy-ask]'
+
+// A blueprint (focuspipeline/blueprint.go) for a plan format that has one:
+// plain-language checks whose commands pass in any project folder, a
+// sketched screen, what is saved and what is left out.
+const blueprint = {
+  checks: [
+    { label: 'The page opens', command: 'git status --short' },
+    { label: 'Signing up shows your name in the list', command: 'test -d .' },
+  ],
+  screens: [
+    {
+      name: 'Sign-up',
+      line: 'Where a member joins the club',
+      parts: [
+        { kind: 'heading', text: 'Join the book club' },
+        { kind: 'field', text: 'Your name' },
+        { kind: 'field', text: 'Your email' },
+        { kind: 'button', text: 'Sign up' },
+        { kind: 'list', text: 'Members' },
+      ],
+    },
+  ],
+  saved: ['The names and emails of members'],
+  not_now: ['Sending emails to members'],
+}
+
+const blueprintQuestions = [
+  { id: 'q1', question: 'Who can see the member list?', options: ['Everyone', 'Only members'] },
+  { id: 'q2', question: 'Ask for a phone number too?', options: ['Yes', 'No'] },
+]
 
 function templateReply(stage, typed, guidance) {
   const report = (summary, extra = {}) => `${summary}\n\n<focus-report>${JSON.stringify({ summary, risks: [], ...extra })}</focus-report>`
   if (stage === 'plan') {
+    const hasBlueprint = guidance.includes('"checks":[')
+    if (hasBlueprint && typed.includes(EASY_ASK) && guidance.includes('or exactly one plan block')) {
+      return report('A couple of questions before the plan.', { decisions: blueprintQuestions })
+    }
     const stages = JSON.parse(`[${guidance.match(/"stages":\[([^\]]*)\]/)?.[1] ?? '"plan"'}]`)
     const plan = { goal: 'Write a short story', tasks: [{ title: 'Write chapter one', done: 'chapter-1.md holds the scene' }], stages, verify: ['git status --short'] }
+    if (hasBlueprint) Object.assign(plan, blueprint)
     return `Here is the outline.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
   }
   if (typed.startsWith('Fix these findings')) return report('Revised the passages.')

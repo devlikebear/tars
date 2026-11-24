@@ -253,11 +253,13 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		p.GoalMode.Failures = 0
 	}
 	priorNotice := lastCardIsFormatNotice(p)
+	asking := p.asksBeforePlan(b)
 	if p.Current == StagePlan && b.Plan != nil {
 		supersedeOpenGate(&p)
 		plan := clonePlan(*b.Plan)
 		plan = p.fitPlan(plan)
 		p.Plan = &plan
+		p.resetCheckResults()
 		p.addCard(CardGate, ev.Turn, PlanGateTitle, plan, now)
 		p.OpenGate = GatePlan
 		if p.hasStageKind(StagePR) {
@@ -267,8 +269,10 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		}
 	}
 	if b.Report != nil {
-		p.addCard(CardReport, ev.Turn, reportTitle(*b.Report), *b.Report, now)
-		for _, d := range b.Report.Decisions {
+		report := *b.Report
+		report.Decisions = p.planDecisions(report)
+		p.addCard(CardReport, ev.Turn, reportTitle(report), report, now)
+		for _, d := range report.Decisions {
 			p.addCard(CardDecision, ev.Turn, d.Question, d, now)
 		}
 	}
@@ -283,7 +287,7 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	case b.PR != nil:
 		p.addCard(CardReport, ev.Turn, PRDraftTitle, *b.PR, now)
 	}
-	missing := missingRequiredBlock(p, b)
+	missing := !asking && missingRequiredBlock(p, b)
 	if kind == StageBuild && !missing {
 		act = buildTurnAction(&p, b)
 		if build, _ := p.Stage(p.Current); act.Kind == ActionNone && build.Turns >= buildTurnCap(p) {
@@ -500,6 +504,7 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 			}
 			plan = p.fitPlan(plan)
 			p.Plan = &plan
+			p.resetCheckResults()
 		}
 		if p.Plan == nil {
 			return p, noAction, fmt.Errorf("%w: no plan to approve", ErrInvalidEdits)
@@ -551,6 +556,7 @@ func (p Pipeline) fitPlan(plan Plan) Plan {
 	if !p.E2E {
 		plan.E2E, plan.E2ESetup, plan.E2ETeardown = nil, nil, nil
 	}
+	plan = p.fitBlueprint(plan)
 	plan = p.pinPlan(plan)
 	want := map[StageID]bool{StagePlan: true}
 	for _, id := range plan.Stages {

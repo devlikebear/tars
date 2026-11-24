@@ -175,6 +175,7 @@ func applyVerification(p Pipeline, ev Event, now time.Time) (Pipeline, Action, e
 	next.AwaitingVerification = false
 	next.UpdatedAt = now
 	v := *ev.Verification
+	next.recordCheckResults(v, now)
 	if checks := passedE2EChecks(v); len(checks) > 0 {
 		// A failed goal leaves its failure card; a passed one left nothing,
 		// so the pipeline could not show that its end-to-end goals ever ran.

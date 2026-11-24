@@ -26,6 +26,9 @@ const webAppPlanInstructions = "Do not edit files. Read what the folder already 
 	"technical detail in each task's \"done\" text. Keep the tasks few and in order. " + webAppStack + " " +
 	"Verification commands, judged by their exit code, prove the app works without anyone reading the code: always " +
 	"`npm run build`, and a check of the running page for every task that changes what the page shows or does. " +
+	"Write each such check as one of the plan's checks: a script a task writes that builds the app, starts it, drives the " +
+	"page (as a scripted browser check when that is described below, otherwise by requesting the running app with `curl` " +
+	"and reading what it returns) and compares what the page shows with what is expected. " + browserCheckReportFormat + " " +
 	webAppNoGit + " The person approves the plan before anything is made."
 
 const webAppBuildInstructions = "Make the approved tasks in order in this folder. " + webAppStack + " " +
@@ -41,10 +44,12 @@ const webAppFixInstructions = "Fix only what the listed findings name, in the sa
 
 // WebAppTemplate is plan, make, review, with no pull request: the work
 // stays in the folder TARS made for it. It is marked WebUI, so a desk with
-// the scripted-browser CLI teaches its plan to prove the page in verify.
+// the scripted-browser CLI teaches its plan to prove the page in verify,
+// and Blueprint, so its plan is shown to the person as a blueprint and the
+// leader may ask a few questions before it (blueprint.go).
 func WebAppTemplate() Template {
 	return Template{
-		ID: WebAppTemplateID, Name: "Web app", Builtin: true, WebUI: true,
+		ID: WebAppTemplateID, Name: "Web app", Builtin: true, WebUI: true, Blueprint: true,
 		Description: "Make a web app from one sentence: plan, make, review. No pull request.",
 		Stages: []TemplateStage{
 			{ID: StagePlan, Label: "Plan", Instructions: webAppPlanInstructions},

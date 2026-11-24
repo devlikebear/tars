@@ -70,6 +70,24 @@ A plan's end-to-end checks (`e2e`, re-run after verification in the review stage
 
 `computer_use` drives only what is on screen. When a goal checks the work's own changes, the plan also lists `e2e_setup` — shell commands run in the working folder before the goals, every time, that build it and open that build — and `e2e_teardown` to stop it afterwards. Without them a goal checks whatever copy of the app is already running. After approval the goal and these lists can still be changed: ask in the chat (the agent uses `focus_plan_edit` or a `<focus-plan-edit>` block) or `POST /v1/focus/pipelines/{id}/plan`. In goal mode the agent can change only the goal; the check lists change only through that endpoint.
 
+### Blueprints
+
+A template may set `blueprint: true` (the built-in `webapp` template does). Its plan is shown to someone who cannot read code, so the plan block may also carry:
+
+```json
+"checks": [{"label": "Adding a book shows it in the list", "command": "sh checks/add.sh"}],
+"screens": [{"name": "Books", "line": "Your reading list", "parts": [{"kind": "heading", "text": "My books"}, {"kind": "button", "text": "Add"}]}],
+"saved": ["Books you added"],
+"not_now": ["Sharing the list"]
+```
+
+- A check is a plain-language label on a verification command. Every check's command is added to the plan's `verify` (once: a command the plan also lists on its own is the same command, and the check labels it), so it runs and decides the stage by its exit code like any other. After approval no plan edit removes a check's command, in or out of goal mode, and an edit cannot change the checks themselves.
+- The pipeline's `check_results` lists each approved check with its latest result: `not_run`, `passed` or `failed`, and for a failure the check's own `CHECK FAILED` report (`check: {screen, expected, seen}`) when its command printed one.
+- A screen's parts are one of `heading`, `text`, `field`, `button`, `list`, `image`, `link`; others are dropped. At most 8 checks, 6 screens, 12 parts a screen and 8 items in `saved` and `not_now`; longer lists and values are cut.
+- Before the plan the leader may ask at most three multiple-choice questions, once, as a report with decisions and no plan block. They become decision cards marked `you_decide`, where the screen adds a "you decide" choice whose answer reads `You decide`; the answers go back to the leader as one turn, as for any decision.
+
+A template without `blueprint` drops these fields from its plans.
+
 A pipeline copies its template when it starts, so editing the file changes new tasks only.
 
 ## Goal mode
