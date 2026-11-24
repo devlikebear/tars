@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>준비 중, 쉬는 중, 막힘</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#9aa4ad}a:hover{color:#e6e9ec}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; background: #0d0f11; color: #e6e9ec; font-family: 'IBM Plex Sans KR', 'IBM Plex Sans', system-ui, sans-serif; padding: 30px 32px; display: flex; flex-direction: column; gap: 18px">
+  <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-size: 22px; font-weight: 600">작업공간 오른쪽에 뜨는 세 가지 상태</h2><span style="font-size: 13px; color: #9aa4ad">왼쪽 팀 대화는 그대로 남고, 누를 것은 항상 아래 오른쪽에 하나예요.</span></div>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; flex-grow: 1">
+
+    <section style="background: #14171a; border: 1px solid #2b3137; border-radius: 6px; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+      <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: #9aa4ad">A · 준비 중 — "팀에게 맡기기"를 누른 직후</div>
+      <h3 style="margin: 0; font-size: 21px; font-weight: 600; line-height: 1.35">프로젝트를 준비하고 있어요</h3>
+      <p style="margin: 0; font-size: 14px; line-height: 1.65; color: #9aa4ad">보통 30초 안에 끝나요. 끝나면 리더봇이 바로 계획을 시작해요.</p>
+      <ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; font-size: 14px">
+        <li style="display: flex; align-items: center; gap: 12px"><span style="width: 22px; height: 22px; border-radius: 50%; background: #3ee07f; color: #06140c; display: grid; place-items: center; font-size: 11px; font-weight: 700">✓</span>내 컴퓨터에 프로젝트 자리 만들기</li>
+        <li style="display: flex; align-items: center; gap: 12px; font-weight: 600"><span style="width: 22px; height: 22px; border-radius: 50%; border: 2px solid #3ee07f; border-top-color: transparent; box-sizing: border-box"></span>웹 앱의 기본 틀 놓기</li>
+        <li style="display: flex; align-items: center; gap: 12px; color: #9aa4ad"><span style="width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3a4148; box-sizing: border-box"></span>리더봇 부르기</li>
+      </ol>
+      <div style="margin-top: auto; background: #0d0f11; border: 1px solid rgba(255,93,93,0.4); border-radius: 4px; padding: 12px; font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; color: #ff8a8a">실패했을 때는 이렇게</span>
+        <span>기본 틀을 받지 못했어요. 인터넷 연결을 확인하고 다시 해 주세요.</span>
+        <button style="font: inherit; font-size: 13px; font-weight: 600; border: 0; background: #3ee07f; color: #06140c; border-radius: 4px; padding: 8px 14px; align-self: flex-end">다시 하기</button>
+      </div>
+    </section>
+
+    <section style="background: #14171a; border: 1px solid rgba(245,197,66,0.5); border-radius: 6px; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+      <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: #f5c542">B · 쉬는 중 — AI 사용량을 다 썼을 때</div>
+      <h3 style="margin: 0; font-size: 21px; font-weight: 600; line-height: 1.35">팀이 잠깐 쉬고 있어요</h3>
+      <p style="margin: 0; font-size: 14px; line-height: 1.65; color: #9aa4ad">내 AI 구독의 사용량을 지금은 다 썼어요. 지금까지 만든 것은 그대로예요.</p>
+      <div style="background: #0d0f11; border: 1px solid #1f2428; border-radius: 4px; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; color: #9aa4ad">다시 일할 수 있는 시각</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 500">오후 2:40</span>
+        <span style="font-size: 13px; color: #9aa4ad">멈춘 곳: 만들기 · 제작봇</span>
+      </div>
+      <div style="font-size: 13px; color: #9aa4ad; line-height: 1.6; border-left: 2px solid #2b3137; padding-left: 12px">시각을 모를 때는 큰 숫자 대신<br><span style="color: #e6e9ec">"보통 몇 시간 안에 다시 일할 수 있어요"</span></div>
+      <label style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.5"><input type="checkbox" style="width: 18px; height: 18px; margin-top: 2px; accent-color: #3ee07f">그 시각이 되면 알아서 이어서 하기<br><span style="color: #9aa4ad; font-size: 12px">한 번만 자동으로 이어요. 켜지 않으면 내가 누를 때까지 기다려요.</span></label>
+      <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px">
+        <button style="font: inherit; font-size: 15px; font-weight: 600; border: 0; background: #3ee07f; color: #06140c; border-radius: 4px; padding: 12px 20px; align-self: flex-end; min-height: 44px">이어서 하기</button>
+        <span style="font-size: 12px; color: #9aa4ad; text-align: right">너무 일찍 누르면 같은 안내가 다시 보여요.</span>
+      </div>
+    </section>
+
+    <section style="background: #14171a; border: 1px solid rgba(255,93,93,0.5); border-radius: 6px; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+      <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: #ff8a8a">C · 막힘 — 팀이 스스로 못 넘어갈 때</div>
+      <h3 style="margin: 0; font-size: 21px; font-weight: 600; line-height: 1.35">팀이 여기서 막혔어요</h3>
+      <p style="margin: 0; font-size: 14px; line-height: 1.65; color: #9aa4ad">확인 한 가지를 여러 번 고쳐도 통과시키지 못했어요.</p>
+      <div style="background: #0d0f11; border: 1px solid #1f2428; border-radius: 4px; padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+        <span style="display: flex; gap: 10px"><span style="color: #ff8a8a" aria-hidden="true">✕</span>방금 신청한 사람이 목록 맨 위에 보인다</span>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 13px">
+          <div style="background: #14171a; border-radius: 4px; padding: 8px 10px"><span style="font-size: 12px; color: #9aa4ad">기대</span><br>맨 위에 보임</div>
+          <div style="background: #14171a; border-radius: 4px; padding: 8px 10px"><span style="font-size: 12px; color: #9aa4ad">실제</span><br>맨 아래에 보임</div>
+        </div>
+        <span style="font-size: 12px; color: #9aa4ad">확인 4가지 중 3가지는 통과</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="hint" style="font-size: 13px; color: #9aa4ad">원하는 걸 다시 설명해 주면 도움이 돼요 (안 적어도 돼요)</label>
+        <textarea id="hint" placeholder="예: 목록은 새로 신청한 사람이 위로 오게" style="font: inherit; font-size: 14px; height: 64px; resize: none; color: #e6e9ec; background: #0a0c0e; border: 1px solid #2b3137; border-radius: 4px; padding: 10px 12px; box-sizing: border-box"></textarea>
+      </div>
+      <div style="margin-top: auto; display: flex; align-items: center; gap: 12px">
+        <a href="#" style="font-size: 13px; text-decoration: none">전문가 모드에서 보기</a>
+        <button style="margin-left: auto; font: inherit; font-size: 15px; font-weight: 600; border: 0; background: #3ee07f; color: #06140c; border-radius: 4px; padding: 12px 20px; min-height: 44px">다시 해 봐</button>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

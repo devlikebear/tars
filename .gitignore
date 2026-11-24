@@ -67,6 +67,7 @@ node_modules/
 docs/plans/*
 !docs/plans/case-companion/
 !docs/plans/second-opinion-review/
+!docs/plans/vibe-mode-redesign/
 docs/code-review/
 
 # for tars: local .tars state stays untracked; the shared session settings
