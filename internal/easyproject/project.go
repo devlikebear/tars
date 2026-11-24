@@ -54,9 +54,13 @@ type Project struct {
 	SessionID string `json:"session_id,omitempty"`
 	// Changes are what the person asked to change after the first version,
 	// oldest first (phase 3, "change it like this").
-	Changes   []Change  `json:"changes,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Changes []Change `json:"changes,omitempty"`
+	// ArchivedAt is when the person put the project away: it leaves the
+	// board and is listed only with the archived ones. Nil when it is on
+	// the board.
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // Change is one "change it like this": the person's words and the pipeline
@@ -124,6 +128,24 @@ func CleanIdea(idea string) (string, error) {
 
 // nameRunes caps a project's display name, the idea's first line.
 const nameRunes = 60
+
+// ErrNameRequired and ErrNameTooLong reject a rename.
+var (
+	ErrNameRequired = errors.New("a name is required")
+	ErrNameTooLong  = fmt.Errorf("a name is at most %d characters", nameRunes)
+)
+
+// CleanName trims a new display name to one line and checks its length.
+func CleanName(name string) (string, error) {
+	name = strings.Join(strings.Fields(name), " ")
+	if name == "" {
+		return "", ErrNameRequired
+	}
+	if len([]rune(name)) > nameRunes {
+		return "", ErrNameTooLong
+	}
+	return name, nil
+}
 
 // NameOf is the project's display name: the idea's first line, clipped.
 func NameOf(idea string) string {
