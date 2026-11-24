@@ -4,7 +4,7 @@
 // project record (POST /v1/easy/projects) and its focus pipeline; nothing
 // decides a transition. The screens only render what easyView answers.
 
-import type { FocusBlocked, FocusCard, FocusPipeline, FocusStage } from './types'
+import type { FocusBlocked, FocusCard, FocusCheckResult, FocusDecision, FocusPipeline, FocusPlan, FocusStage } from './types'
 
 export type EasyProjectStatus = 'creating' | 'ready' | 'failed'
 
@@ -39,6 +39,7 @@ export type EasyPhase =
   | 'creating' // the folder and stack are being set up
   | 'failed' // creation failed (errorCode says why)
   | 'planning' // the leader is writing the plan
+  | 'questions' // the leader asks the person a few questions before the plan
   | 'approve' // the plan waits for the person
   | 'building' // the team is making, reviewing and checking it
   | 'stuck' // something stopped the team and needs the person
@@ -65,7 +66,74 @@ export type EasyView = {
   // When the AI's usage limit lifts (phase 'limit'), and the card the
   // "Continue" answer goes to.
   limit?: EasyLimit
+  // The workspace (docs/plans/vibe-mode-redesign unit 4): which of the four
+  // steps the project is in, the bot at work, the leader's questions, the
+  // blueprint, the checks with their results and the team's log.
+  step: EasyStep
+  steps: Record<EasyStep, EasyStepState>
+  working?: EasyBot
+  questions: EasyQuestion[]
+  blueprint?: EasyBlueprint
+  checks: EasyCheckRow[]
+  log: EasyLogEntry[]
 }
+
+// The four steps of the workspace header. Publishing comes with a later
+// phase; until then it is never the step a project is in.
+export const EASY_STEPS = ['plan', 'make', 'check', 'publish'] as const
+export type EasyStep = (typeof EASY_STEPS)[number]
+export type EasyStepState = 'done' | 'now' | 'next'
+
+// The answer of a question's "you decide" choice
+// (focuspipeline.DecisionYouDecide): the leader reads it as "leave it to
+// you". The screen shows it in the person's language.
+export const EASY_YOU_DECIDE = 'You decide'
+
+// One of the leader's questions before the plan (a decision card): its
+// choices, whether the server offers "you decide", and the answer once
+// given.
+export type EasyQuestion = { cardId: string; question: string; options: string[]; youDecide: boolean; answer?: string }
+
+// A rough sketch of one screen of the blueprint: its parts are a fixed
+// vocabulary the console draws as simple shapes.
+export const EASY_SCREEN_PARTS = ['heading', 'text', 'field', 'button', 'list', 'image', 'link'] as const
+export type EasyScreenPartKind = (typeof EASY_SCREEN_PARTS)[number]
+export type EasyScreen = { name: string; line: string; parts: { kind: EasyScreenPartKind; text: string }[] }
+
+// The plan as the person reads it. A plan without blueprint fields (a
+// project from before them) has only its goal and tasks.
+export type EasyBlueprint = {
+  goal: string
+  tasks: string[]
+  screens: EasyScreen[]
+  checks: string[]
+  saved: string[]
+  notNow: string[]
+}
+
+// A check of the blueprint with the server's latest result. The console
+// never judges a check: the state and the report are the server's.
+export type EasyCheckResult = FocusCheckResult['state']
+export type EasyCheckRow = { label: string; state: EasyCheckResult; timedOut?: boolean; report?: EasyCheckFailure }
+
+// One line of the team's log, built from facts the server keeps (cards,
+// stages, results), never from the model's own words: who says it and
+// which fixed sentence. The person's own words come first.
+export type EasyLogLine =
+  | 'idea' // the person's idea (text)
+  | 'change' // what the person asked to change (text)
+  | 'asked' // the leader asks its questions (they follow this line)
+  | 'drawing' // the leader is drawing the blueprint
+  | 'drew' // the blueprint is ready for the person
+  | 'handed' // the approved blueprint went to the maker
+  | 'making' // the maker is making it
+  | 'made' // the maker finished making it
+  | 'reviewing' // the reviewer looks for problems
+  | 'fixing' // the maker fixes what the reviewer found
+  | 'checked' // the checker ran the checks (passed of total)
+  | 'fixingCheck' // a check failed; the maker is fixing it
+  | 'finished' // all done
+export type EasyLogEntry = { who: EasyBot | 'you'; line: EasyLogLine; text?: string; passed?: number; total?: number }
 
 // A spent usage limit (FocusBlocked.usage_limit): resets is the provider's
 // own words for when it comes back, resetsAt a time when it gave one.
@@ -132,6 +200,13 @@ function lastCheckFailure(cards: FocusCard[]): EasyCheckFailure | undefined {
 type SavedField = { saved?: { commit?: string; error?: string } }
 
 export function easyView(project: EasyProject, pipeline: (FocusPipeline & SavedField) | null | undefined): EasyView {
+  const view = phaseView(project, pipeline)
+  return { ...view, ...workspace(project, pipeline, view) }
+}
+
+type PhaseView = Omit<EasyView, 'step' | 'steps' | 'working' | 'questions' | 'blueprint' | 'checks' | 'log'>
+
+function phaseView(project: EasyProject, pipeline: (FocusPipeline & SavedField) | null | undefined): PhaseView {
   const bots: Record<EasyBot, EasyBotState> = { leader: 'waiting', maker: 'waiting', reviewer: 'waiting', checker: 'waiting', publisher: 'later' }
   if (project.status === 'failed') return { phase: 'failed', bots, errorCode: project.error_code || 'unknown' }
   if (project.status === 'creating' || !pipeline) {
@@ -147,7 +222,7 @@ export function easyView(project: EasyProject, pipeline: (FocusPipeline & SavedF
   // round; it is at work while the server runs them.
   if (pipeline.awaiting_verification) bots.checker = 'working'
 
-  const view: EasyView = { phase: 'building', bots, check: lastCheckFailure(pipeline.cards) }
+  const view: PhaseView = { phase: 'building', bots, check: lastCheckFailure(pipeline.cards) }
   const change = project.changes?.findLast((c) => c.session_id === project.session_id)
   if (change) view.change = change.request
   if (pipeline.finished_at) {
@@ -173,10 +248,167 @@ export function easyView(project: EasyProject, pipeline: (FocusPipeline & SavedF
     if (limit) view.limit = limit
     return view
   }
+  // The leader's questions before the plan wait for the person's answers.
+  if (openQuestions(pipeline) > 0) {
+    bots.leader = 'needs_you'
+    view.phase = 'questions'
+    return view
+  }
   if (pipeline.current === 'plan' || kindOf(pipeline.stages.find((s) => s.id === pipeline.current) ?? ({ id: 'plan' } as FocusStage)) === 'plan') {
     view.phase = 'planning'
   }
   return view
+}
+
+
+// The plan stage's decision cards: the leader's questions before the plan.
+function questionCards(pipeline: FocusPipeline): FocusCard[] {
+  const planStages = new Set(pipeline.stages.filter((s) => kindOf(s) === 'plan').map((s) => s.id))
+  return pipeline.cards.filter((c) => c.kind === 'decision' && planStages.has(c.stage))
+}
+
+function openQuestions(pipeline: FocusPipeline): number {
+  if (pipeline.finished_at || pipeline.open_gate === 'plan') return 0
+  return questionCards(pipeline).filter((c) => c.state !== 'decided').length
+}
+
+function questionsOf(pipeline: FocusPipeline): EasyQuestion[] {
+  return questionCards(pipeline).map((card) => {
+    const d = (card.payload ?? {}) as Partial<FocusDecision>
+    const q: EasyQuestion = {
+      cardId: card.id,
+      question: d.question || card.title,
+      options: Array.isArray(d.options) ? d.options.filter((o) => typeof o === 'string' && o.trim() !== '') : [],
+      youDecide: Boolean(d.you_decide),
+    }
+    if (card.state === 'decided' && card.decision) q.answer = card.decision
+    return q
+  })
+}
+
+function isPartKind(kind: string): kind is EasyScreenPartKind {
+  return (EASY_SCREEN_PARTS as readonly string[]).includes(kind)
+}
+
+function blueprintOf(plan: FocusPlan): EasyBlueprint {
+  const words = (list: string[] | undefined) => (list ?? []).filter((w) => typeof w === 'string' && w.trim() !== '')
+  return {
+    goal: plan.goal,
+    tasks: (plan.tasks ?? []).map((t) => t.title),
+    screens: (plan.screens ?? []).map((s) => ({
+      name: s.name,
+      line: s.line ?? '',
+      parts: (s.parts ?? []).filter((p) => isPartKind(p.kind)).map((p) => ({ kind: p.kind as EasyScreenPartKind, text: p.text ?? '' })),
+    })),
+    checks: (plan.checks ?? []).map((c) => c.label),
+    saved: words(plan.saved),
+    notNow: words(plan.not_now),
+  }
+}
+
+// The checks with their latest results: the server's check_results, or,
+// before it recorded any, the plan's checks as not run yet.
+function checksOf(pipeline: FocusPipeline): EasyCheckRow[] {
+  if (pipeline.check_results?.length) {
+    return pipeline.check_results.map((r) => {
+      const row: EasyCheckRow = { label: r.label, state: r.state }
+      if (r.timed_out) row.timedOut = true
+      if (r.state === 'failed' && r.check?.expected && r.check.seen) row.report = { screen: r.check.screen, expected: r.check.expected, seen: r.check.seen }
+      return row
+    })
+  }
+  return (pipeline.plan?.checks ?? []).map((c) => ({ label: c.label, state: 'not_run' as const }))
+}
+
+// How many checks passed, of how many: what the check screen counts.
+export function checksPassed(checks: EasyCheckRow[]): { passed: number; total: number } {
+  return { passed: checks.filter((c) => c.state === 'passed').length, total: checks.length }
+}
+
+function stageOf(pipeline: FocusPipeline): FocusStage | undefined {
+  return pipeline.stages.find((s) => s.id === pipeline.current)
+}
+
+// The step a project is in: the plan until the blueprint is approved, then
+// making; checking while the reviewer works, the checks run or a check has
+// a result; done with all three once it is finished.
+function stepOf(view: PhaseView, pipeline: FocusPipeline | null | undefined, checks: EasyCheckRow[]): EasyStep | null {
+  if (!pipeline || view.phase === 'creating' || view.phase === 'failed') return 'plan'
+  if (view.phase === 'finished') return null
+  const stage = stageOf(pipeline)
+  const kind = stage ? kindOf(stage) : 'plan'
+  if (kind === 'plan') return 'plan'
+  if (kind === 'review' || pipeline.awaiting_verification || checks.some((c) => c.state !== 'not_run')) return 'check'
+  return 'make'
+}
+
+function stepsOf(step: EasyStep | null): Record<EasyStep, EasyStepState> {
+  const steps = { plan: 'done', make: 'done', check: 'done', publish: 'next' } as Record<EasyStep, EasyStepState>
+  if (!step) return steps
+  const at = EASY_STEPS.indexOf(step)
+  EASY_STEPS.forEach((s, i) => (steps[s] = i < at ? 'done' : i === at ? 'now' : 'next'))
+  return steps
+}
+
+// The bot at work now, while the team works by itself.
+function workingBot(view: PhaseView, pipeline: FocusPipeline | null | undefined): EasyBot | undefined {
+  if (view.phase === 'creating') return 'leader'
+  if (!pipeline || (view.phase !== 'building' && view.phase !== 'planning')) return undefined
+  if (pipeline.awaiting_verification) return 'checker'
+  const stage = stageOf(pipeline)
+  if (!stage) return undefined
+  const kind = kindOf(stage)
+  if (kind === 'review') return pipeline.review?.fixing ? 'maker' : 'reviewer'
+  return botOfKind[kind]
+}
+
+function logOf(project: EasyProject, pipeline: FocusPipeline | null | undefined, view: PhaseView, questions: EasyQuestion[], checks: EasyCheckRow[]): EasyLogEntry[] {
+  const log: EasyLogEntry[] = view.change ? [{ who: 'you', line: 'change', text: view.change }] : [{ who: 'you', line: 'idea', text: project.idea }]
+  if (!pipeline || view.phase === 'creating' || view.phase === 'failed') return log
+  if (questions.length) log.push({ who: 'leader', line: 'asked' })
+  const byKind = (kind: string) => pipeline.stages.find((s) => kindOf(s) === kind)
+  const plan = byKind('plan')
+  if (plan?.status === 'active' || !plan) {
+    if (view.phase === 'approve') log.push({ who: 'leader', line: 'drew' })
+    else if (view.phase === 'planning') log.push({ who: 'leader', line: 'drawing' })
+    return log
+  }
+  if (pipeline.plan) log.push({ who: 'leader', line: 'handed' })
+  const make = byKind('build')
+  if (make?.status === 'active') log.push({ who: 'maker', line: 'making' })
+  else if (make && make.status !== 'pending') log.push({ who: 'maker', line: 'made' })
+  const review = byKind('review')
+  if (review?.status === 'active') log.push({ who: pipeline.review?.fixing ? 'maker' : 'reviewer', line: pipeline.review?.fixing ? 'fixing' : 'reviewing' })
+  const ran = checks.filter((c) => c.state !== 'not_run')
+  if (ran.length) {
+    const { passed, total } = checksPassed(checks)
+    log.push({ who: 'checker', line: 'checked', passed, total })
+    if (passed < total && checks.some((c) => c.state === 'failed') && view.phase === 'building') log.push({ who: 'maker', line: 'fixingCheck' })
+  }
+  if (view.phase === 'finished') log.push({ who: 'leader', line: 'finished' })
+  return log
+}
+
+function workspace(project: EasyProject, pipeline: (FocusPipeline & SavedField) | null | undefined, view: PhaseView) {
+  const questions = pipeline ? questionsOf(pipeline) : []
+  const checks = pipeline ? checksOf(pipeline) : []
+  const step = stepOf(view, pipeline, checks)
+  const out: Pick<EasyView, 'step' | 'steps' | 'working' | 'questions' | 'blueprint' | 'checks' | 'log'> = {
+    step: step ?? 'check',
+    steps: stepsOf(step),
+    questions,
+    checks,
+    log: logOf(project, pipeline, view, questions, checks),
+  }
+  const working = workingBot(view, pipeline)
+  if (working) out.working = working
+  if (pipeline?.plan) out.blueprint = blueprintOf(pipeline.plan)
+  return out
+}
+
+// Whether the blueprint has anything beyond its tasks.
+export function hasBlueprint(b: EasyBlueprint): boolean {
+  return b.screens.length > 0 || b.checks.length > 0 || b.saved.length > 0 || b.notNow.length > 0
 }
 
 // Whether a project still changes on its own, so the screen keeps reading.
@@ -184,6 +416,7 @@ export function easyLive(view: EasyView): boolean {
   if (view.phase === 'finished') return view.saved === undefined
   return view.phase === 'creating' || view.phase === 'planning' || view.phase === 'building'
 }
+
 
 // Whether the project takes a change now: finished and saved (or its save
 // failed), so the folder is free. The server checks the same.

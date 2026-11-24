@@ -100,9 +100,9 @@ test.describe.serial('easy mode', () => {
     await expect(page.getByTestId('easy-preview-frame')).toBeVisible({ timeout: 30_000 })
     await expectNoHiddenWords(page, 'went back')
 
-    // The project is listed on the make screen, and expert mode opens its
-    // work in the focus screen.
-    await page.getByRole('button', { name: /All projects/ }).click()
+    // The project is listed on the board (the shell's My projects), and
+    // expert mode opens its work in the focus screen.
+    await page.getByTestId('vibe-nav-projects').click()
     await expect(page.getByTestId('easy-project-item').filter({ hasText: 'A sign-up page for a' }).first()).toBeVisible()
     await page.goto(projectPath)
     await page.getByTestId('easy-expert').click()

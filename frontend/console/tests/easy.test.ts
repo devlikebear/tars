@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { EASY_BOTS, easyCanChange, easyLimitResets, easyLive, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, runEasySetup, versionLabel, type EasyProject } from '../src/lib/easy.ts'
+import { EASY_BOTS, EASY_SCREEN_PARTS, EASY_STEPS, checksPassed, hasBlueprint, easyCanChange, easyLimitResets, easyLive, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, runEasySetup, versionLabel, type EasyProject } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
 
 test('the first run sets TARS up and waits for it to come back set up', async () => {
@@ -258,4 +258,138 @@ test('the easy routes', () => {
   assert.deepEqual(resolveRoute('/console/easy/0123456789abcdef'), { view: 'easy', projectId: '0123456789abcdef' })
   assert.deepEqual(resolveRoute('/console/easy/projects'), { view: 'easy', page: 'projects' })
   assert.deepEqual(resolveRoute('/console/easy/archive'), { view: 'easy', page: 'archive' })
+})
+
+// The workspace (vibe redesign unit 4): questions, blueprint, steps, checks
+// and the team's log, all read from the pipeline.
+const question = (id: string, extra: Partial<FocusCard> = {}): FocusCard =>
+  ({
+    id, kind: 'decision', stage: 'plan', turn: 1, state: 'unseen', created_at: '', title: `Question ${id}?`,
+    payload: { id, question: `Question ${id}?`, options: ['Yes', 'No', ' '], you_decide: true },
+    ...extra,
+  }) as FocusCard
+
+test('the leader asks before the plan, and the answers wait on the person', () => {
+  const asking = easyView(project(), pipeline({ cards: [question('q1'), question('q2')] }))
+  assert.equal(asking.phase, 'questions')
+  assert.equal(asking.bots.leader, 'needs_you')
+  assert.equal(asking.step, 'plan')
+  assert.deepEqual(asking.questions.map((q) => q.cardId), ['q1', 'q2'])
+  assert.deepEqual(asking.questions[0].options, ['Yes', 'No'], 'blank choices are dropped')
+  assert.equal(asking.questions[0].youDecide, true)
+  assert.equal(asking.questions[0].answer, undefined)
+  assert.equal(easyLive(asking), false, 'nothing changes until the person answers')
+  assert.deepEqual(asking.log.map((l) => l.line), ['idea', 'asked'])
+  assert.equal(asking.log[0].text, 'Book club sign-up')
+
+  // One answered, one open: still the person's turn, with the answer kept.
+  const half = easyView(project(), pipeline({ cards: [question('q1', { state: 'decided', decision: 'You decide' }), question('q2')] }))
+  assert.equal(half.phase, 'questions')
+  assert.equal(half.questions[0].answer, 'You decide')
+
+  // All answered: the leader writes the blueprint.
+  const answered = easyView(project(), pipeline({ cards: [question('q1', { state: 'decided', decision: 'Yes' }), question('q2', { state: 'decided', decision: 'No' })] }))
+  assert.equal(answered.phase, 'planning')
+  assert.equal(answered.working, 'leader')
+  assert.deepEqual(answered.log.map((l) => l.line), ['idea', 'asked', 'drawing'])
+
+  // A question from a later stage is not one of the leader's.
+  assert.equal(easyView(project(), pipeline({ current: 'make', cards: [question('d1', { stage: 'make' })] })).questions.length, 0)
+})
+
+const blueprintPlan = {
+  goal: 'A sign-up page',
+  tasks: [{ title: 'A sign-up form', done: 'saves a name' }],
+  stages: ['plan', 'make', 'review'],
+  verify: ['sh checks/signup.sh', 'sh checks/list.sh'],
+  checks: [{ label: 'Signing up shows "Thanks"', command: 'sh checks/signup.sh' }, { label: 'The list shows the newest first', command: 'sh checks/list.sh' }],
+  screens: [{ name: 'Sign-up', line: 'Where members join', parts: [{ kind: 'heading', text: 'Join' }, { kind: 'video', text: 'x' }, { kind: 'button' }] }],
+  saved: ['Names', ''],
+  not_now: ['Payments'],
+}
+
+test('the blueprint is the plan in plain words, with its checks not run yet', () => {
+  const v = easyView(project(), pipeline({ open_gate: 'plan', plan: blueprintPlan } as Partial<FocusPipeline>))
+  assert.equal(v.phase, 'approve')
+  assert.deepEqual(v.blueprint, {
+    goal: 'A sign-up page',
+    tasks: ['A sign-up form'],
+    screens: [{ name: 'Sign-up', line: 'Where members join', parts: [{ kind: 'heading', text: 'Join' }, { kind: 'button', text: '' }] }],
+    checks: ['Signing up shows "Thanks"', 'The list shows the newest first'],
+    saved: ['Names'],
+    notNow: ['Payments'],
+  })
+  assert.ok(hasBlueprint(v.blueprint!))
+  assert.deepEqual(v.checks.map((c) => c.state), ['not_run', 'not_run'])
+  assert.deepEqual(v.steps, { plan: 'now', make: 'next', check: 'next', publish: 'next' })
+  assert.deepEqual(v.log.map((l) => l.line), ['idea', 'drew'])
+
+  // A plan from before blueprints has only its goal and tasks.
+  const old = easyView(project(), pipeline({ open_gate: 'plan', plan: { goal: 'g', tasks: [{ title: 't', done: 'd' }], stages: [], verify: [] } }))
+  assert.equal(hasBlueprint(old.blueprint!), false)
+  assert.deepEqual(old.checks, [])
+})
+
+const stages = (plan: string, make: string, review: string) => [
+  { id: 'plan', status: plan, iteration: 1 },
+  { id: 'make', kind: 'build', status: make, iteration: 1 },
+  { id: 'review', kind: 'review', status: review, iteration: 1 },
+] as FocusPipeline['stages']
+
+test('making: who works, the steps, and the checks still to run', () => {
+  const v = easyView(project(), pipeline({ current: 'make', plan: blueprintPlan, stages: stages('done', 'active', 'pending') } as Partial<FocusPipeline>))
+  assert.equal(v.phase, 'building')
+  assert.equal(v.step, 'make')
+  assert.equal(v.working, 'maker')
+  assert.deepEqual(v.steps, { plan: 'done', make: 'now', check: 'next', publish: 'next' })
+  assert.deepEqual(v.log.map((l) => [l.who, l.line]), [['you', 'idea'], ['leader', 'handed'], ['maker', 'making']])
+  assert.deepEqual(checksPassed(v.checks), { passed: 0, total: 2 })
+
+  const checking = easyView(project(), pipeline({ current: 'make', awaiting_verification: true, plan: blueprintPlan, stages: stages('done', 'active', 'pending') } as Partial<FocusPipeline>))
+  assert.equal(checking.step, 'check')
+  assert.equal(checking.working, 'checker')
+
+  const fixing = easyView(project(), pipeline({ current: 'review', review: { fixing: true }, plan: blueprintPlan, stages: stages('done', 'done', 'active') } as Partial<FocusPipeline>))
+  assert.equal(fixing.working, 'maker')
+  assert.deepEqual(fixing.log.slice(-2).map((l) => [l.who, l.line]), [['maker', 'made'], ['maker', 'fixing']])
+})
+
+test('checking: the server\'s result per check, a failed one with its report', () => {
+  const results = [
+    { label: 'Signing up shows "Thanks"', command: 'sh checks/signup.sh', state: 'passed', at: 'x' },
+    { label: 'The list shows the newest first', command: 'sh checks/list.sh', state: 'failed', at: 'x', check: { screen: 'Members', expected: '"Kim" at the top', seen: '"Kim" at the bottom' } },
+    { label: 'It survives a restart', command: 'sh checks/keep.sh', state: 'failed', timed_out: true, at: 'x' },
+  ] as FocusPipeline['check_results']
+  const v = easyView(project(), pipeline({ current: 'review', plan: blueprintPlan, stages: stages('done', 'done', 'active'), check_results: results } as Partial<FocusPipeline>))
+  assert.equal(v.step, 'check')
+  assert.deepEqual(v.checks, [
+    { label: 'Signing up shows "Thanks"', state: 'passed' },
+    { label: 'The list shows the newest first', state: 'failed', report: { screen: 'Members', expected: '"Kim" at the top', seen: '"Kim" at the bottom' } },
+    { label: 'It survives a restart', state: 'failed', timedOut: true },
+  ])
+  assert.deepEqual(checksPassed(v.checks), { passed: 1, total: 3 })
+  assert.deepEqual(v.log.slice(-2), [{ who: 'checker', line: 'checked', passed: 1, total: 3 }, { who: 'maker', line: 'fixingCheck' }])
+
+  const done = easyView(project(), pipeline({ finished_at: 'x', plan: blueprintPlan, stages: stages('done', 'done', 'done'), check_results: results!.slice(0, 1) } as Partial<FocusPipeline>))
+  assert.equal(done.phase, 'finished')
+  assert.deepEqual(done.steps, { plan: 'done', make: 'done', check: 'done', publish: 'next' })
+  assert.equal(done.working, undefined)
+  assert.equal(done.log.at(-1)?.line, 'finished')
+})
+
+test('a change run opens its log with what the person asked', () => {
+  const v = easyView(project({ session_id: 's2', changes: [{ request: 'Make the button green', session_id: 's2', at: '' }] }), pipeline({ session_id: 's2' }))
+  assert.deepEqual(v.log[0], { who: 'you', line: 'change', text: 'Make the button green' })
+})
+
+test('every workspace sentence exists in both languages', () => {
+  for (const section of [easyEn, easyKo]) {
+    for (const step of EASY_STEPS) assert.ok(section.workspace.steps[step], step)
+    for (const kind of EASY_SCREEN_PARTS) assert.ok(section.workspace.blueprint.part[kind], kind)
+    for (const line of ['idea', 'change', 'asked', 'drawing', 'drew', 'handed', 'making', 'made', 'reviewing', 'fixing', 'checked', 'fixingCheck', 'finished'] as const) {
+      assert.ok(section.workspace.log[line], line)
+    }
+    for (const state of ['not_run', 'passed', 'failed'] as const) assert.ok(section.workspace.check.state[state], state)
+    assert.ok(section.status.questions)
+  }
 })
