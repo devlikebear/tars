@@ -22,6 +22,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	"github.com/devlikebear/tars/desktop/internal/activity"
+	"github.com/devlikebear/tars/desktop/internal/consolewatch"
 	"github.com/devlikebear/tars/desktop/internal/deeplink"
 	"github.com/devlikebear/tars/desktop/internal/icon"
 	"github.com/devlikebear/tars/desktop/internal/links"
@@ -129,7 +130,7 @@ func (s *shell) createWindow(show bool) {
 		URL:              "/",
 		Hidden:           true,
 		BackgroundColour: application.NewRGB(0x16, 0x18, 0x1b),
-		JS:               links.Script,
+		JS:               links.Script + consolewatch.Script,
 	}
 	s.window = s.app.Window.NewWithOptions(opts)
 
@@ -285,7 +286,7 @@ func (s *shell) createChatWindow(id string) {
 		URL:              "/",
 		Hidden:           true,
 		BackgroundColour: application.NewRGB(0x16, 0x18, 0x1b),
-		JS:               links.Script,
+		JS:               links.Script + consolewatch.Script,
 	})
 	w.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
 		if s.quitting.Load() {
