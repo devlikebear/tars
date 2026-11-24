@@ -263,3 +263,37 @@ export function engineName(kind: string | undefined): string {
       return 'AI'
   }
 }
+
+// Easy mode's first run (POST /v1/admin/setup/easy): with no AI set up yet,
+// the server writes Claude Code on every tier and restarts, and the screen
+// waits for it to come back set up. setUp resolves when the server took
+// the setup or was already set up; health is GET /v1/healthz, which throws
+// while the server restarts.
+export type EasySetupAPI = {
+  setUp: () => Promise<void>
+  health: () => Promise<{ needs_setup?: boolean }>
+  sleep: (ms: number) => Promise<void>
+}
+
+export type EasySetupResult = 'ready' | 'failed' | 'timeout'
+
+export const easySetupPollMs = 1000
+export const easySetupAttempts = 90
+
+export async function runEasySetup(api: EasySetupAPI, attempts = easySetupAttempts): Promise<EasySetupResult> {
+  try {
+    await api.setUp()
+  } catch {
+    return 'failed'
+  }
+  for (let i = 0; i < attempts; i++) {
+    await api.sleep(easySetupPollMs)
+    try {
+      const health = await api.health()
+      if (!health.needs_setup) return 'ready'
+    } catch {
+      // Restarting: the connection is refused until it is back.
+    }
+  }
+  return 'timeout'
+}

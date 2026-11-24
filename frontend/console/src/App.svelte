@@ -230,7 +230,9 @@
     try {
       const health = await getHealthz()
       needsSetup = !!health.needs_setup
-      if (needsSetup && route.view !== 'onboarding') {
+      // Easy mode sets itself up (EasySetup.svelte); every other screen
+      // goes to the wizard.
+      if (needsSetup && route.view !== 'onboarding' && route.view !== 'easy') {
         navigate('/console/onboarding')
       }
     } catch {
@@ -573,7 +575,7 @@
     {currentPath}
     {serverHealth}
     {unreadCount}
-    {needsSetup}
+    needsSetup={needsSetup && route.view !== 'easy'}
     {authRole}
     {zenActive}
     hideNav={focusChrome}
@@ -625,7 +627,7 @@
         <div class="route-loading">Loading...</div>
       {:then module}
         {@const EasyRoute = module.default}
-        <EasyRoute projectId={route.projectId} onNavigate={navigate} />
+        <EasyRoute projectId={route.projectId} {needsSetup} onNavigate={navigate} />
       {:catch}
         <div class="route-error">Could not load console page.</div>
       {/await}

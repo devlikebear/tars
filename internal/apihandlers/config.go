@@ -49,6 +49,13 @@ func NewConfigHandler(configPath string, cfg config.Config, workspaceDir string,
 		handleRestart(w, restart, logger)
 	})
 
+	mux.HandleFunc("/v1/admin/setup/easy", func(w http.ResponseWriter, r *http.Request) {
+		if !httpapi.RequireMethod(w, r, http.MethodPost) {
+			return
+		}
+		handleEasySetup(w, configPath, restart, logger)
+	})
+
 	mux.HandleFunc("/v1/admin/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
