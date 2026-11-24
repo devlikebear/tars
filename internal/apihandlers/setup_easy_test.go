@@ -59,6 +59,9 @@ func TestEasySetupWritesClaudeCodeAndRestarts(t *testing.T) {
 			t.Fatalf("%s = %+v", tier, b)
 		}
 	}
+	if cfg.Console.DefaultMode != config.ConsoleModeEasy {
+		t.Fatalf("default mode = %q, want easy", cfg.Console.DefaultMode)
+	}
 	// The workspace the skeleton named is kept.
 	if raw, _ := os.ReadFile(path); !strings.Contains(string(raw), "workspace_dir") {
 		t.Fatalf("the rest of the file was lost:\n%s", raw)
@@ -86,6 +89,34 @@ func TestEasySetupWithoutAConfigFile(t *testing.T) {
 	cfg, err := config.Load(path)
 	if err != nil || config.NeedsSetup(cfg) {
 		t.Fatalf("not set up: %v", err)
+	}
+	if cfg.Console.DefaultMode != config.ConsoleModeEasy {
+		t.Fatalf("default mode = %q, want easy", cfg.Console.DefaultMode)
+	}
+}
+
+// A mode someone already chose is kept.
+func TestEasySetupKeepsAChosenMode(t *testing.T) {
+	prevGOOS := restartRuntimeGOOS
+	restartRuntimeGOOS = "linux"
+	t.Cleanup(func() { restartRuntimeGOOS = prevGOOS })
+
+	path := filepath.Join(t.TempDir(), "tars.config.yaml")
+	if err := os.WriteFile(path, []byte("console:\n  default_mode: focus\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewConfigHandler(path, config.Config{}, "", nil, zerolog.Nop())
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/admin/setup/easy", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	cfg, err := config.Load(path)
+	if err != nil || config.NeedsSetup(cfg) {
+		t.Fatalf("not set up: %v", err)
+	}
+	if cfg.Console.DefaultMode != config.ConsoleModeFocus {
+		t.Fatalf("default mode = %q, want focus", cfg.Console.DefaultMode)
 	}
 }
 

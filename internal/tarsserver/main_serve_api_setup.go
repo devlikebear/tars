@@ -26,7 +26,7 @@ func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Tim
 	if err != nil {
 		return nil, err
 	}
-	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) }, func() string { return consoleBuild })
+	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) }, func() string { return consoleBuild }, func() string { return cfg.Console.DefaultMode })
 	setupHandler := apihandlers.NewSetupHandler(opts.ConfigPath, cfg, logger)
 	configHandler := apihandlers.NewConfigHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, execRestart, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)

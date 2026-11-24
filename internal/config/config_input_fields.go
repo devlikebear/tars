@@ -494,13 +494,17 @@ func identityString(value string) string {
 const (
 	ConsoleModeFocus    = "focus"
 	ConsoleModeAdvanced = "advanced"
+	// ConsoleModeEasy opens the beginner's screens (vibe-coder-identity.md
+	// §4). New installs get it from the skeleton config and easy setup;
+	// a workspace that set no mode stays advanced.
+	ConsoleModeEasy = "easy"
 )
 
 // consoleModeString keeps a known console mode, lower-cased; anything else
 // becomes empty, which the console reads as advanced.
 func consoleModeString(value string) string {
 	switch mode := lowerTrimmedString(value); mode {
-	case ConsoleModeFocus, ConsoleModeAdvanced:
+	case ConsoleModeFocus, ConsoleModeAdvanced, ConsoleModeEasy:
 		return mode
 	default:
 		return ""

@@ -303,6 +303,19 @@ test('defaultModeRedirect lands /console on the focus home only when focus is th
   assert.equal(defaultModeRedirect('', { view: 'board' }), null)
   assert.equal(defaultModeRedirect('focus', { view: 'chat' }), null)
   assert.equal(defaultModeRedirect(undefined, { view: 'board' }), null)
+  assert.equal(defaultModeRedirect('easy', { view: 'board' }), '/console/easy')
+  assert.equal(defaultModeRedirect('easy', { view: 'chat' }), null)
+})
+
+test('setupRedirect opens a new install in easy mode and anything else in the wizard', async () => {
+  const { setupRedirect } = await import('../src/lib/focus.ts')
+  assert.equal(setupRedirect('easy', { view: 'board' }), '/console/easy')
+  assert.equal(setupRedirect('easy', { view: 'chat' }), '/console/easy')
+  assert.equal(setupRedirect(undefined, { view: 'board' }), '/console/onboarding')
+  assert.equal(setupRedirect('advanced', { view: 'board' }), '/console/onboarding')
+  // Each stays where it is.
+  assert.equal(setupRedirect('easy', { view: 'onboarding' }), null)
+  assert.equal(setupRedirect(undefined, { view: 'easy' }), null)
 })
 
 test('deckCursor keeps the card being read; only a new card that outranks it takes the screen', async () => {

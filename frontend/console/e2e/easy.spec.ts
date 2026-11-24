@@ -223,3 +223,44 @@ test('easy mode sets TARS up on its first run instead of opening the wizard', as
   expect(setUps).toBe(1)
   await expect(page).not.toHaveURL(/onboarding/)
 })
+
+// Easy mode is the default for new installs (phase 4-4): the skeleton config
+// a new install starts from names easy as the console's mode, and the server
+// says so while it needs setup. Opening /console then lands in easy mode,
+// which sets itself up, instead of the wizard.
+test('a new install opens in easy mode', async ({ page }) => {
+  let phase: 'needs' | 'restarting' | 'done' = 'needs'
+  await page.route('**/v1/healthz', async (route) => {
+    const real = await route.fetch()
+    const body = await real.json()
+    if (phase === 'done') return route.fulfill({ response: real, json: body })
+    if (phase === 'restarting') phase = 'done'
+    return route.fulfill({ response: real, json: { ...body, needs_setup: true, console_default_mode: 'easy' } })
+  })
+  await page.route('**/v1/admin/setup/easy', (route) => {
+    phase = 'restarting'
+    return route.fulfill({ json: { ok: 'true', mode: 'exec', info: 're-executing process' } })
+  })
+
+  await page.goto('/console')
+  await expect(page).toHaveURL(/\/console\/easy$/)
+  await expect(page.getByTestId('easy-setup')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'What do you want to make?' })).toBeVisible({ timeout: 15_000 })
+  await expect(page).not.toHaveURL(/onboarding/)
+})
+
+// Once set up, /console keeps landing in easy mode while the config says
+// easy; the board stays one click away ("expert mode").
+test('a server set to easy mode lands /console in easy mode', async ({ page }) => {
+  await page.route('**/v1/admin/config/schema', async (route) => {
+    const real = await route.fetch()
+    const body = await real.json()
+    const values = { ...(body.effective_values || body.values || {}), console_default_mode: 'easy' }
+    return route.fulfill({ response: real, json: { ...body, values, effective_values: values } })
+  })
+  await page.goto('/console')
+  await expect(page).toHaveURL(/\/console\/easy$/)
+  await expect(page.getByRole('heading', { name: 'What do you want to make?' })).toBeVisible()
+  await page.getByTestId('easy-expert').click()
+  await expect(page).toHaveURL(/\/console$/)
+})

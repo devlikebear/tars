@@ -282,7 +282,11 @@ console:
   #   advanced — the chat workbench (dock panels, tool cards, status details)
   #   focus    — a development pipeline view: stage stepper, one card at a
   #              time, and only the decisions that need you
-  # Empty means advanced. Completing the onboarding wizard writes focus.
+  #   easy     — say what to make; TARS builds it, checks it and shows it
+  #              (docs/decisions/vibe-coder-identity.md). A new install's
+  #              starting config writes easy.
+  # Empty means advanced. Completing the onboarding wizard writes focus when
+  # no mode is set.
   # default_mode: advanced
 
 companion:
