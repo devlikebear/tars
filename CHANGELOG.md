@@ -6,9 +6,42 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-11-24
+
+### Added
+
+- **Easy mode: say what to make, and TARS builds it, checks it and shows it** (`/console/easy`, `docs/decisions/vibe-coder-identity.md`). It is for someone who cannot read code, so no easy-mode screen names git, branches, pull requests, tiers or pipelines ([#1390](https://github.com/devlikebear/tars/pull/1390), [#1391](https://github.com/devlikebear/tars/pull/1391), [#1393](https://github.com/devlikebear/tars/pull/1393)):
+  - One sentence makes a project: a new folder under `~/TARS Projects`, the web app stack (React, Vite, Hono, D1, Tailwind on Cloudflare) scaffolded by a pinned `create-cloudflare`, version control, and a run of the new built-in `webapp` template (plan, make, review, no pull request) ([#1394](https://github.com/devlikebear/tars/pull/1394), [#1395](https://github.com/devlikebear/tars/pull/1395)).
+  - The progress screen shows the bot team and asks only one thing: approve the plan. After that the project runs by itself on goal mode ([#1398](https://github.com/devlikebear/tars/pull/1398), [#1399](https://github.com/devlikebear/tars/pull/1399)).
+  - Each finished run is saved as a version ([#1396](https://github.com/devlikebear/tars/pull/1396)).
+  - The result screen runs the app and shows it in place ([#1400](https://github.com/devlikebear/tars/pull/1400)).
+  - "Change it like this" starts the next run in the same project, in the person's own words ([#1401](https://github.com/devlikebear/tars/pull/1401)).
+  - A project's versions are listed, and going back to one saves it as the newest version, so nothing is rewritten ([#1402](https://github.com/devlikebear/tars/pull/1402)).
+  - A Start screen shows what the computer still needs (Claude Code installed and signed in, Node.js) before the first project ([#1403](https://github.com/devlikebear/tars/pull/1403)).
+  - On the first run, easy mode sets TARS up with Claude Code by itself instead of opening the setup wizard ([#1404](https://github.com/devlikebear/tars/pull/1404)).
+  - When the subscription's usage limit is spent, the project pauses with the time the AI comes back, and **Continue** goes on ([#1405](https://github.com/devlikebear/tars/pull/1405)).
+- **Focus: scripted browser checks for web UI work.** Web screen changes are proven by a `verify` command that drives a real browser (a Playwright spec, or an `agent-browser` script). A failed check is told as the screen, what was expected and what was seen ([#1392](https://github.com/devlikebear/tars/pull/1392)).
+- **Focus: checks the pipeline's creator pins** (`checks` on `POST /v1/focus/pipelines`). They are added to the plan's `verify` and `e2e`, and no plan edit can drop them ([#1368](https://github.com/devlikebear/tars/pull/1368)).
+- **Focus: clean up a stopped pipeline's worktree by hand** ([#1388](https://github.com/devlikebear/tars/pull/1388)).
+- **Mobile: one chat session per paired phone**, for a question outside any focus task ([#1385](https://github.com/devlikebear/tars/pull/1385)).
+- **Mobile: a demo desk inside the iOS app** for trying it with nothing paired. TARS Remote is on the App Store ([#1379](https://github.com/devlikebear/tars/pull/1379), [#1380](https://github.com/devlikebear/tars/pull/1380), [#1381](https://github.com/devlikebear/tars/pull/1381), [#1382](https://github.com/devlikebear/tars/pull/1382)).
+- **Mobile: keep the desk awake on AC power while a phone is paired** (opt-in, Settings → Phones; macOS) ([#1364](https://github.com/devlikebear/tars/pull/1364)).
+
 ### Changed
 
-- **Brand mark redesign: a T whose stem is a cursor replaces the robot mascot.** `desktop/internal/icon` draws a pale bar over a signal-green stem on graphite instead of the old photorealistic robot: the T is the name, the stem a terminal's block cursor. It stays legible from a 16px favicon to a desktop app tile (below 48px the two blocks snap to whole pixels and the stem thickens). It now covers every icon surface: the desktop app and tray icons (tray state now a corner badge), the iOS app icon, launch image and the native launch cover, the console favicon/PWA icons (including a new 32px favicon and maskable variants with a proper safe zone), the chat avatar, and the README header.
+- **A new install opens in easy mode.** The config a new install starts from sets `console.default_mode: easy`, so `/console` opens easy mode, and a first run sets itself up there instead of the wizard. An existing workspace opens where it did before ([#1406](https://github.com/devlikebear/tars/pull/1406)).
+- **Brand mark redesign: a T whose stem is a cursor replaces the robot mascot.** `desktop/internal/icon` draws a pale bar over a signal-green stem on graphite instead of the old photorealistic robot: the T is the name, the stem a terminal's block cursor. It stays legible from a 16px favicon to a desktop app tile (below 48px the two blocks snap to whole pixels and the stem thickens). It now covers every icon surface: the desktop app and tray icons (tray state now a corner badge), the iOS app icon, launch image and the native launch cover, the console favicon/PWA icons (including a new 32px favicon and maskable variants with a proper safe zone), the chat avatar, and the README header. ([#1378](https://github.com/devlikebear/tars/pull/1378), [#1384](https://github.com/devlikebear/tars/pull/1384), [#1387](https://github.com/devlikebear/tars/pull/1387))
+
+### Fixed
+
+- **Focus: a stopped pipeline can be resumed**, and a chat turn in it no longer runs the plan on its own ([#1383](https://github.com/devlikebear/tars/pull/1383)).
+- **Focus: goal mode ends when the agent repeats a question it already answered**, and the agent is told such a question is settled ([#1366](https://github.com/devlikebear/tars/pull/1366), [#1373](https://github.com/devlikebear/tars/pull/1373)).
+- **Focus: passing end-to-end goals are recorded on the pipeline and in the server log**, build and review turns are told those goals are the server's checks, and a rate-limited `@Browser` checker is no longer a failed check ([#1369](https://github.com/devlikebear/tars/pull/1369), [#1372](https://github.com/devlikebear/tars/pull/1372), [#1374](https://github.com/devlikebear/tars/pull/1374), [#1376](https://github.com/devlikebear/tars/pull/1376)).
+- **Focus: a format notice with no parse errors says which block was missing** ([#1367](https://github.com/devlikebear/tars/pull/1367)).
+- **Focus: retention cleans up a pipeline stopped while its PR was awaited** ([#1377](https://github.com/devlikebear/tars/pull/1377)).
+- **Chat: a queued unattended tool call runs once its session switches to auto**, instead of waiting for a hand approval ([#1370](https://github.com/devlikebear/tars/pull/1370)).
+- **Checkpoints keep sweeping when a session's folder was deleted** ([#1371](https://github.com/devlikebear/tars/pull/1371)).
+- **Auth: new device ids never start with a dash**, so `tars auth devices revoke <id>` works for every new phone ([#1397](https://github.com/devlikebear/tars/pull/1397)).
 
 ## [0.69.0] - 2026-11-15
 
