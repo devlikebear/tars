@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-11-24
+
+### Added
+
+- **Vibe code mode in the sidebar.** Easy mode (바이브코드 모드 in Korean) leads the sidebar's Work group, the way Focus is reached, so a workspace that opens elsewhere can switch into it in one click ([#1408](https://github.com/devlikebear/tars/pull/1408)).
+
 ## [0.70.0] - 2026-11-24
 
 ### Added
