@@ -318,6 +318,46 @@ test('setupRedirect opens a new install in easy mode and anything else in the wi
   assert.equal(setupRedirect(undefined, { view: 'easy' }), null)
 })
 
+test('setupRedirect without expert mode sets up in easy mode whatever the default mode', async () => {
+  const { setupRedirect } = await import('../src/lib/focus.ts')
+  assert.equal(setupRedirect(undefined, { view: 'board' }, false), '/console/easy')
+  assert.equal(setupRedirect('advanced', { view: 'chat' }, false), '/console/easy')
+  assert.equal(setupRedirect('focus', { view: 'focus' }, false), '/console/easy')
+  assert.equal(setupRedirect(undefined, { view: 'easy' }, false), null)
+  assert.equal(setupRedirect(undefined, { view: 'onboarding' }, false), null)
+})
+
+test('expertModeFromHealth opens the workbench only on an explicit true', async () => {
+  const { expertModeFromHealth } = await import('../src/lib/focus.ts')
+  assert.equal(expertModeFromHealth({ console_expert_mode: true }), true)
+  assert.equal(expertModeFromHealth({ console_expert_mode: false }), false)
+  assert.equal(expertModeFromHealth({ console_expert_mode: 'true' }), false)
+  assert.equal(expertModeFromHealth({}), false)
+  assert.equal(expertModeFromHealth(null), false)
+  assert.equal(expertModeFromHealth(undefined), false)
+})
+
+test('vibeOnlyRedirect sends every workbench and focus address to easy mode without expert mode', async () => {
+  const { vibeOnlyRedirect } = await import('../src/lib/focus.ts')
+  const { resolveRoute } = await import('../src/lib/router.ts')
+  const outside = [
+    '/console', '/console/system', '/console/chat', '/console/chat/abc', '/console/focus', '/console/focus/abc',
+    '/console/focus/release', '/console/focus/templates', '/console/memory', '/console/config', '/console/ops',
+    '/console/cron', '/console/logs', '/console/analytics', '/console/extensions', '/console/pulse',
+    '/console/reflection', '/console/channels', '/console/tasks', '/console/agentruntime', '/console/sysprompt',
+    '/console/no-such-page',
+  ]
+  for (const path of outside) {
+    assert.equal(vibeOnlyRedirect(false, resolveRoute(path)), '/console/easy', path)
+    // Expert mode on: the console is as it was.
+    assert.equal(vibeOnlyRedirect(true, resolveRoute(path)), null, path)
+  }
+  // Easy mode itself, and the setup wizard its Start screen can open, stay.
+  for (const path of ['/console/easy', '/console/easy/p1', '/console/onboarding', '/console/onboarding?reentry=1']) {
+    assert.equal(vibeOnlyRedirect(false, resolveRoute(path)), null, path)
+  }
+})
+
 test('deckCursor keeps the card being read; only a new card that outranks it takes the screen', async () => {
   const { deckCursor } = await import('../src/lib/focus.ts')
   const c = (id: string, kind: FocusCard['kind'], state: FocusCard['state'] = 'unseen') => ({ id, kind, state })
@@ -371,6 +411,10 @@ test('focusChrome hides the app sidebar and the companion on focus routes only',
   assert.equal(focusChromeHidden(resolveRoute('/console/focus/abc')), true)
   assert.equal(focusChromeHidden(resolveRoute('/console')), false)
   assert.equal(focusChromeHidden(resolveRoute('/console/chat/abc')), false)
+  // Without expert mode there is no workbench navigation on any route.
+  assert.equal(focusChromeHidden(resolveRoute('/console'), false), true)
+  assert.equal(focusChromeHidden(resolveRoute('/console/onboarding'), false), true)
+  assert.equal(focusChromeHidden(resolveRoute('/console/chat/abc'), true), false)
 })
 
 test('stripFocusBlocks while streaming drops only a partial focus tag at the end', () => {

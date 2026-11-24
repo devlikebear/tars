@@ -339,6 +339,7 @@ const fieldsKo: Record<string, ConfigFieldOverride> = {
 
   // Console
   console_default_mode: { label: '콘솔 기본 모드', description: '/console이 열리는 모드: focus(개발 파이프라인) 또는 advanced(워크벤치). 비우면 advanced.' },
+  console_expert_mode: { label: '전문가 모드', description: '워크벤치와 포커스 모드를 쓸 수 있게 한다. 끄면 콘솔은 바이브 코딩 모드만 보여 준다.' },
 
   // Companion
   companion_enabled: { label: '사용', description: '콘솔에 떠 있는 TARS 컴패니언을 표시합니다' },

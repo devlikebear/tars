@@ -3,6 +3,7 @@
 Status: accepted 2026-11-21
 Date: 2026-11-21
 Amends: `product-focus.md` (audience, classification, freeze, success criteria), `bot-mode.md` §2, §5 and §8
+Amended: 2026-11-24, vibe mode only (see "Amendment 2026-11-24" below; principle 4, §4 and phase 7 are changed by it)
 
 ## Context
 
@@ -16,7 +17,7 @@ and set five principles the same day:
 1. Onboarding must be very easy.
 2. The screens must not be as complex or as full of features as the Advanced workbench, Claude Code or Orca.
 3. A vibe coder is someone who does not develop software and does not know the words git, TDD or end-to-end verification. TARS uses all of them internally, out of sight, so that an idea can become a product without that knowledge.
-4. A user who gains experience can switch to an expert mode and control the workflow. Handing a session between TARS and Claude Code should be easy, and so should using another IDE (Orca, for example) alongside.
+4. A user who gains experience can switch to an expert mode and control the workflow. Handing a session between TARS and Claude Code should be easy, and so should using another IDE (Orca, for example) alongside. *(Amended 2026-11-24: the switch is not offered to a vibe-mode user. Expert mode exists only where the workspace's config turns it on.)*
 5. A team of bots the user understands at a glance: leader, builder, reviewer, verifier, release, operations, automation.
 
 Before this, `product-focus.md` (2026-10-10) made the focus pipeline the product, aimed at someone who already works with git, pull requests and verify commands. Its first "reconsider" condition says: if nobody outside has finished a pipeline by the review date, the limit is reach and not scope. Nobody outside has (4 stars, 0 forks, 0 outside pull requests on 2026-10-10). Three reasons fit that result: the people a pipeline asks for already have Claude Code and their own habits; TARS takes a lot of setup; and the screens assume the user knows the vocabulary.
@@ -64,6 +65,8 @@ What differs for generated work and is allowed for in the design:
 - More accounts get connected over time. Connecting an account is one shared screen, shown at the moment an account is first needed, not in onboarding.
 
 ### 4. Easy mode by default, expert mode one click away
+
+*Amended 2026-11-24: expert mode is no longer one click away. It is hidden unless the config turns it on (`console.expert_mode`); see "Amendment 2026-11-24". The text below is the 2026-11-21 decision.*
 
 **Easy mode** is what a new install opens on. It has three everyday screens and two that appear only when needed:
 
@@ -152,9 +155,22 @@ The easy screens are added beside the existing ones throughout.
 4. **Onboarding.** The Start screen, checking the engine's install and sign-in, and plain messages for subscription limits. The Start screen (`GET /v1/easy/readiness`, `easyproject.ReadinessOf`) replaces the make box while this computer lacks what a project needs. It checks two things: the engine (an engine is chosen, a CLI engine's program is installed, and Claude Code is signed in, read with `claude auth status`, which spends no usage) and the build tools (Node and npm). It explains only the next step, in that order, and checks again by itself every few seconds. Easy mode on a server with no AI set up does not open the setup wizard. It sets up Claude Code on every tier itself (`POST /v1/admin/setup/easy`, only while setup is still needed) and waits for the restart, so a beginner never picks a provider or a tier. A turn refused by the subscription's usage limit is recorded as such when it fails (`BlockedFact.UsageLimit`, with when it lifts in the provider's words or as a time), so the progress screen says the team is taking a break and when the AI comes back, instead of "needs a look". Goal mode stops on it rather than retrying into the limit; **Continue** retries the refused turn and, for an easy project whose goal mode the limit ended, turns goal mode back on (`GoalDueOnApproval`). Nothing waits for the reset by itself: a limit's reset time is not always given, and a retry that lands while the limit is still spent only pauses again. Done when three people other than the maintainer get from install to a first result within 10 minutes, without help.
 5. **Publish.** The publish stage, the Connect screen and the deploy skill. Done when the published address opens and the server has read its answer.
 6. **Bots.** Bot records with their own model, instructions, skills, tools and memory; adding a bot by describing it; a template stage naming its bot (`bot-mode.md` phase 2 and the editor of its phase 3). Done when a bot the user added runs a stage of the user's own template with its own model and memory.
-7. **Expert switch and handoff.** The mode switch, "open this folder in another tool", and `claude-code-handoff.md` phase 1.
+7. **Expert switch and handoff.** The mode switch, "open this folder in another tool", and `claude-code-handoff.md` phase 1. *(Amended 2026-11-24: there is no switch inside vibe mode. The config field `console.expert_mode` is the switch, and handoff features belong to expert mode.)*
 
-Easy mode becomes the default for new installs after phase 4. Done in phase 4-4: the config a new install starts from names easy as the console's mode (`console.default_mode: easy`), so `/console` opens easy mode, and a server that still needs setup opens it instead of the wizard. A workspace that set no mode keeps opening in the workbench (§4: current use does not change).
+Easy mode becomes the default for new installs after phase 4. Done in phase 4-4: the config a new install starts from names easy as the console's mode (`console.default_mode: easy`), so `/console` opens easy mode, and a server that still needs setup opens it instead of the wizard. A workspace that set no mode keeps opening in the workbench (§4: current use does not change). *(Superseded 2026-11-24: without `console.expert_mode` a workspace opens in vibe mode.)*
+
+## Amendment 2026-11-24: vibe mode only
+
+The owner reviewed the redesign of easy mode (shown as "Vibe code mode"; `docs/plans/vibe-mode-redesign/README.md`) and decided on 2026-11-24 that **vibe mode is the product**. Expert mode (the session board, the chat workbench, settings) and focus mode are hidden from a vibe-mode user, and no screen that user sees links to them.
+
+What changes:
+
+- A config field, `console.expert_mode` (`console_expert_mode`, env `TARS_CONSOLE_EXPERT_MODE`), decides whether the workbench and focus mode exist. It is off by default, **also when the field is absent**, so an existing workspace that never set it opens in vibe mode after the upgrade. The maintainer turns it on in their own config. This reverses §4's "an existing workspace opens in expert mode": the owner's direction was that expert mode is hidden by default.
+- With it off, `/console` and every workbench or focus address open `/console/easy`; the sidebar, the command palette, the keyboard shortcuts, CASE and the header's workbench parts (status pill, notification list, budget) are not there; vibe-mode screens show no expert link. The setup wizard stays reachable only from vibe mode's own Start screen (choosing an AI when none is set). A server that needs setup always sets itself up from vibe mode.
+- With it on, the console is as it was before, including `console.default_mode`.
+- The server sends the flag to every caller on `/v1/healthz`, because a user-role console cannot read the config and must know before it draws anything. It is a console setting, not an access boundary: the workbench's API routes keep their own authentication.
+
+Not changed: principles 1 to 3 and 5, §1 to §3 and §5 to §7, and every rule about hidden words, facts deciding transitions and publishing being a person's click.
 
 ## Consequences
 

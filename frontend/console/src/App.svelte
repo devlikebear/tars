@@ -14,7 +14,8 @@
   import { loadRouteComponent } from './lib/routeComponents'
   import { canSignOut, loginRequiredFor } from './lib/authGate'
   import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, patchConfigValues, streamEvents } from './lib/api'
-  import { defaultModeRedirect, focusChromeHidden, focusOwnsShortcut, onboardingModeUpdate, setupRedirect } from './lib/focus'
+  import { defaultModeRedirect, expertModeFromHealth, focusChromeHidden, focusOwnsShortcut, onboardingModeUpdate, setupRedirect, vibeOnlyRedirect } from './lib/focus'
+  import { consoleMode } from './lib/stores/consoleMode.svelte'
   import { getOwnConsoleBuild, shouldShowUpdateNotice } from './lib/consoleUpdate'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
@@ -65,6 +66,9 @@
   // True until the user navigates: only the landing on /console follows
   // console_default_mode, so the board stays reachable from the nav.
   let landing = true
+  // Whether /v1/healthz has said if expert mode is on. Until then no route
+  // is redirected: the first screen waits behind "Connecting" anyway.
+  let modeKnown = false
   let companionFailures = $state<CompanionFailure[]>([])
   // The timestamp of the latest warn-severity SSE event — a new value
   // (not a boolean) so CompanionPet can tell a fresh warning apart from
@@ -96,11 +100,11 @@
   let consoleBuildTabHidden = false
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
-  let focusChrome = $derived(focusChromeHidden(route))
+  let focusChrome = $derived(focusChromeHidden(route, consoleMode.expert))
   // CASE shows on focus routes too (tars#1247) — only the sidebar stays
   // hidden there (hideNav, below). Settings off, onboarding, login and zen
   // still hide it, same as before.
-  let showCompanion = $derived(shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
+  let showCompanion = $derived(shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive, vibeOnly: !consoleMode.expert }))
   // The session the chat route has on screen right now — same signal
   // sessionActivity.setViewing uses to mark a session as seen (#971).
   // CASE leaves this session's own pending approval and running turn out
@@ -125,6 +129,9 @@
 
   function navigate(path: string) {
     landing = false
+    // Without expert mode, a workbench or focus address opens vibe mode.
+    const vibe = modeKnown ? vibeOnlyRedirect(consoleMode.expert, resolveRoute(path)) : null
+    if (vibe) path = vibe
     if (path === currentPath) return
     window.history.pushState(null, '', path)
     currentPath = path
@@ -143,6 +150,14 @@
   function syncFromBrowser() {
     currentPath = window.location.pathname + window.location.search
     route = resolveRoute(currentPath)
+    // An address typed in, a link or the back button: without expert mode
+    // anything outside vibe mode is replaced by vibe mode's address.
+    const vibe = modeKnown ? vibeOnlyRedirect(consoleMode.expert, route) : null
+    if (vibe) {
+      window.history.replaceState(null, '', vibe)
+      currentPath = vibe
+      route = resolveRoute(vibe)
+    }
   }
 
   function startGlobalStream() {
@@ -229,13 +244,19 @@
   async function checkSetupAndMaybeRedirect() {
     try {
       const health = await getHealthz()
+      consoleMode.expert = expertModeFromHealth(health)
+      modeKnown = true
+      syncFromBrowser()
       needsSetup = !!health.needs_setup
       // Easy mode sets itself up (EasySetup.svelte), and a new install
       // opens there; every other screen goes to the wizard.
-      const redirect = needsSetup ? setupRedirect(health.console_default_mode, route) : null
+      const redirect = needsSetup ? setupRedirect(health.console_default_mode, route, consoleMode.expert) : null
       if (redirect) navigate(redirect)
     } catch {
-      // healthz fetch failed — let the SSE stream surface the disconnect
+      // healthz fetch failed — let the SSE stream surface the disconnect.
+      // Expert mode stays off: vibe mode is the default.
+      modeKnown = true
+      syncFromBrowser()
     }
   }
 
@@ -259,7 +280,8 @@
       .then((h) => { unreadCount = h.unread_count ?? 0 })
       .catch(() => {})
     startGlobalStream()
-    sessionActivity.start()
+    // Session activity notifies about and opens workbench sessions.
+    if (consoleMode.expert) sessionActivity.start()
     // Independent of companionEnabled (tars#1249): the presence signal
     // must go even with CASE turned off in config, so it starts here
     // rather than inside CompanionPet.
@@ -297,6 +319,12 @@
     const firstSetup = !(route.view === 'onboarding' && route.reentry)
     needsSetup = false
     let toFocus = false
+    if (!consoleMode.expert) {
+      // Vibe mode only: no default mode to write, and easy mode is home.
+      navigate('/console/easy')
+      void refreshAuth().then(loadConsoleNotifications)
+      return
+    }
     if (firstSetup) {
       try {
         const config = await getConfigSchema()
@@ -486,6 +514,9 @@
 
   function onGlobalKeydown(event: KeyboardEvent) {
     if (needsSetup || loginRequired) return
+    // The palette, shortcut help and every shortcut lead into the
+    // workbench: vibe mode only has none of them.
+    if (!consoleMode.expert) return
     const match = matchShortcut(event)
     if (match) {
       // While an overlay is open it owns the keyboard, except ⌘K to close.
@@ -579,6 +610,7 @@
     {authRole}
     {zenActive}
     hideNav={focusChrome}
+    vibeOnly={!consoleMode.expert}
     onNavigate={navigate}
     onUnreadChange={(count) => { unreadCount = count }}
     onLogout={canSignOut(authInfo) ? handleLogout : undefined}

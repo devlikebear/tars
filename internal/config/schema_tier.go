@@ -255,6 +255,7 @@ var configFieldTiers = map[string]fieldTier{
 
 	// Console / Companion
 	"console_default_mode": basic(),
+	"console_expert_mode":  basic(),
 	"companion_enabled":    basic(),
 
 	// Embodiment

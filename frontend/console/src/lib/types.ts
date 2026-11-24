@@ -1923,6 +1923,9 @@ export type HealthzResponse = {
   // console_default_mode, sent only while the server needs setup (the
   // console cannot read the config then): easy on a new install.
   console_default_mode?: string
+  // console_expert_mode, sent to every caller: only true makes the
+  // workbench and focus mode reachable (lib/focus.ts expertModeFromHealth).
+  console_expert_mode?: boolean
 }
 
 export type SetupTierStatus = {

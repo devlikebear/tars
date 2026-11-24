@@ -572,10 +572,30 @@ export function defaultModeRedirect(mode: unknown, route: { view: string }): str
 // setupRedirect is where a server that still needs setup sends the console:
 // a new install (console_default_mode easy, from the skeleton config) to
 // easy mode, which sets itself up; anything else to the wizard. Easy mode
-// and the wizard themselves stay where they are.
-export function setupRedirect(mode: unknown, route: { view: string }): string | null {
+// and the wizard themselves stay where they are. Without expert mode the
+// console has only easy mode, so that is where setup happens.
+export function setupRedirect(mode: unknown, route: { view: string }, expert = true): string | null {
   if (route.view === 'onboarding' || route.view === 'easy') return null
-  return mode === 'easy' ? '/console/easy' : '/console/onboarding'
+  return mode === 'easy' || !expert ? '/console/easy' : '/console/onboarding'
+}
+
+// --- Vibe mode only ---
+
+// expertModeFromHealth reads console_expert_mode from /v1/healthz. Only an
+// explicit true opens the workbench: a missing field (or an unreadable
+// health check) is vibe mode only, the default since 2026-11-24.
+export function expertModeFromHealth(health: { console_expert_mode?: unknown } | null | undefined): boolean {
+  return health?.console_expert_mode === true
+}
+
+// vibeOnlyRedirect is where the console goes when expert mode is off and the
+// route is not vibe mode's: every workbench and focus address opens
+// /console/easy. The setup wizard stays reachable — easy mode's Start screen
+// sends someone there to choose an AI when none is set.
+export function vibeOnlyRedirect(expert: boolean, route: { view: string }): string | null {
+  if (expert) return null
+  if (route.view === 'easy' || route.view === 'onboarding') return null
+  return '/console/easy'
 }
 
 // --- Deck cursor ---
@@ -635,10 +655,11 @@ export function focusOwnsShortcut(action: string, route: { view: string; session
   return action === 'help' && route.view === 'focus' && !!route.sessionId
 }
 
-export function focusChromeHidden(route: { view: string }): boolean {
+export function focusChromeHidden(route: { view: string }, expert = true): boolean {
   // Easy mode hides the workbench's navigation too: its one way out is its
-  // own "expert mode" link.
-  return route.view === 'focus' || route.view === 'easy'
+  // own "expert mode" link, shown only in expert mode. Without expert mode
+  // there is no workbench navigation to show on any route.
+  return !expert || route.view === 'focus' || route.view === 'easy'
 }
 
 // Triage progress (P3): how many finding cards of the open triage gate are

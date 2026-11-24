@@ -60,6 +60,8 @@ export const easyEn = {
     approving: 'Starting…',
     building: 'The team is working. You do not need to do anything until it is done.',
     stuck: 'The team stopped and could not go on by itself. Open it in expert mode to see what happened.',
+    // The same without expert mode, which then is not there to open.
+    stuckAlone: 'The team stopped and could not go on by itself. Your idea and what is made so far are kept.',
     limitPaused: (when: string) =>
       when
         ? `The AI has used up what your plan allows for now, so the team is taking a break. It can work again at ${when}. Nothing is lost: press Continue then, and the team picks up where it stopped.`
@@ -78,6 +80,7 @@ export const easyEn = {
     title: 'Your app',
     starting: 'Starting your app…',
     failed: 'Your app did not start. Try again, or open it in expert mode to see why.',
+    failedAlone: 'Your app did not start. Try again in a moment.',
     nodeMissing: 'This computer needs Node.js to run your app. Install it from nodejs.org, then try again.',
     stopped: 'Your app was closed after a while with nobody looking.',
     start: 'Open my app',
@@ -238,6 +241,7 @@ export const easyKo: EasyTranslations = {
     approving: '시작하는 중…',
     building: '봇 팀이 일하고 있어요. 끝날 때까지 할 일은 없어요.',
     stuck: '봇 팀이 멈췄고 스스로 이어 가지 못했어요. 전문가 모드로 열어 무슨 일인지 확인하세요.',
+    stuckAlone: '봇 팀이 멈췄고 스스로 이어 가지 못했어요. 아이디어와 지금까지 만든 것은 그대로 남아 있어요.',
     limitPaused: (when: string) =>
       when
         ? `지금 요금제로 AI를 쓸 수 있는 양을 다 써서 봇 팀이 잠시 쉬고 있어요. ${when}부터 다시 일할 수 있어요. 지금까지 한 일은 그대로 있으니, 그때 이어서 하기를 누르면 멈춘 곳부터 다시 시작해요.`
@@ -256,6 +260,7 @@ export const easyKo: EasyTranslations = {
     title: '내 앱',
     starting: '앱을 켜는 중…',
     failed: '앱이 켜지지 않았어요. 다시 시도하거나, 전문가 모드로 열어 이유를 확인하세요.',
+    failedAlone: '앱이 켜지지 않았어요. 잠시 뒤에 다시 시도해 주세요.',
     nodeMissing: '앱을 실행하려면 이 컴퓨터에 Node.js가 필요해요. nodejs.org에서 설치한 뒤 다시 시도해 주세요.',
     stopped: '한동안 보는 사람이 없어서 앱을 껐어요.',
     start: '내 앱 열기',

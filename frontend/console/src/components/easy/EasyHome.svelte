@@ -13,6 +13,7 @@
   import { createEasyProject, getEasyReadiness, listEasyProjects } from '../../lib/api/easy'
   import { APIRequestError } from '../../lib/api/client'
   import { easyProjectPath, startPollMs, type EasyProject, type EasyReadiness } from '../../lib/easy'
+  import { consoleMode } from '../../lib/stores/consoleMode.svelte'
   import EasyStart from './EasyStart.svelte'
 
   let { onNavigate }: { onNavigate: (path: string) => void } = $props()
@@ -137,9 +138,11 @@
     {/if}
   </section>
 
-  <footer>
-    <button type="button" class="btn btn-ghost btn-sm" data-testid="easy-expert" onclick={() => onNavigate('/console')}>{$t.easy.home.expert}</button>
-  </footer>
+  {#if consoleMode.expert}
+    <footer>
+      <button type="button" class="btn btn-ghost btn-sm" data-testid="easy-expert" onclick={() => onNavigate('/console')}>{$t.easy.home.expert}</button>
+    </footer>
+  {/if}
 </div>
 
 <style>

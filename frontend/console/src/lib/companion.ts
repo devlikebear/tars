@@ -6,6 +6,9 @@ export type CompanionVisibilityInput = {
   needsSetup?: boolean
   loginRequired?: boolean
   zenActive?: boolean
+  // Expert mode off (vibe mode only): CASE's lines and its Bridge lead into
+  // the workbench's sessions, so CASE does not show.
+  vibeOnly?: boolean
 }
 
 export type CompanionLocale = 'en' | 'ko'
@@ -111,7 +114,7 @@ function viewedSessionIdSet(viewed: CompanionViewedSessionIds): ReadonlySet<stri
 }
 
 export function shouldShowCompanion(input: CompanionVisibilityInput): boolean {
-  return !!input.enabled && !input.needsSetup && !input.loginRequired && !input.zenActive
+  return !!input.enabled && !input.needsSetup && !input.loginRequired && !input.zenActive && !input.vibeOnly
 }
 
 export function companionEnabledFromConfigValues(values?: Record<string, unknown>): boolean {

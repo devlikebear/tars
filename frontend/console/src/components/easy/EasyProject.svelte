@@ -12,6 +12,7 @@
   import { APIRequestError } from '../../lib/api/client'
   import { EASY_BOTS, easyBase, easyCanChange, easyLimitResets, easyLive, easyView, type EasyProject } from '../../lib/easy'
   import type { FocusPipeline } from '../../lib/types'
+  import { consoleMode } from '../../lib/stores/consoleMode.svelte'
   import EasyPreview from './EasyPreview.svelte'
   import EasyVersions from './EasyVersions.svelte'
 
@@ -131,6 +132,8 @@
         return view.saved ? $t.easy.project.finished : $t.easy.project.finishedNotSaved
       case 'approve':
         return $t.easy.project.approveIntro
+      case 'stuck':
+        return consoleMode.expert ? $t.easy.project.stuck : $t.easy.project.stuckAlone
       case 'limit':
         return $t.easy.project.limitPaused(view.limit ? easyLimitResets(view.limit, $locale) : '')
       default:
@@ -142,7 +145,7 @@
 <div class="easy" data-testid="easy-root">
   <nav class="top">
     <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate(easyBase)}>← {$t.easy.project.back}</button>
-    {#if project?.session_id}
+    {#if consoleMode.expert && project?.session_id}
       <button type="button" class="btn btn-ghost btn-sm" data-testid="easy-expert" onclick={() => onNavigate(`/console/focus/${encodeURIComponent(project!.session_id!)}`)}>
         {$t.easy.project.expert}
       </button>

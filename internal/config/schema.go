@@ -217,6 +217,7 @@ func Schema() []FieldMeta {
 
 		// ── Console ──────────────────────────────
 		fsel("console_default_mode", "Console", "Default Mode", "Console mode /console opens in: easy (say what to make), focus (development pipeline) or advanced (workbench); empty means advanced", []string{ConsoleModeAdvanced, ConsoleModeFocus, ConsoleModeEasy}),
+		f("console_expert_mode", "Console", "bool", "Expert Mode", "Make the workbench and focus mode reachable; off, the console shows vibe mode only"),
 
 		// ── Companion ────────────────────────────
 		f("companion_enabled", "Companion", "bool", "Enabled", "Show the floating TARS companion in the Console"),
@@ -607,6 +608,8 @@ func extractValue(yamlKey string, cfg Config) any {
 	// Console
 	case "console_default_mode":
 		return cfg.Console.DefaultMode
+	case "console_expert_mode":
+		return cfg.Console.ExpertMode
 	// Companion
 	case "companion_enabled":
 		return cfg.Companion.Enabled

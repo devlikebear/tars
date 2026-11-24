@@ -34,6 +34,10 @@ export function tarsServeWebServer(opts: { repoRoot: string; workspace: string; 
       TARS_API_ALLOW_INSECURE_LOCAL_AUTH: 'true',
       // Serve the embedded build, never a Vite dev proxy.
       TARS_CONSOLE_DEV_URL: '',
+      // The workbench and focus mode exist only in expert mode (off by
+      // default). The specs drive them, so the server turns it on;
+      // vibe-only.spec.ts covers it off by answering /v1/healthz without it.
+      TARS_CONSOLE_EXPERT_MODE: 'true',
       // Focus PR stages probe this stub, never the host's gh or the
       // network (GitHub runners have an authenticated gh; a capture run
       // has no PR to look at either way).

@@ -1316,7 +1316,12 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionI
 // needs setup: the console cannot read the config then, and a new install
 // (easy) sets itself up from easy mode instead of the wizard. Once set up,
 // the console reads the mode from the config like every other setting.
-func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any, needsSetupFn func() bool, consoleBuildFn func() string, defaultModeFn func() string) http.Handler {
+//
+// expertModeFn is console_expert_mode. Unlike the default mode it goes to
+// every caller in every state: a user-role console cannot read the config,
+// yet it must know before it draws anything whether the workbench exists,
+// and the flag only says which screens the console shows.
+func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any, needsSetupFn func() bool, consoleBuildFn func() string, defaultModeFn func() string, expertModeFn func() bool) http.Handler {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
@@ -1339,6 +1344,7 @@ func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string
 				body["console_default_mode"] = mode
 			}
 		}
+		body["console_expert_mode"] = expertModeFn != nil && expertModeFn()
 		if dashboardAuthStatus != nil {
 			body["dashboard_auth"] = dashboardAuthStatus
 		}

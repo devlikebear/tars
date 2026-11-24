@@ -9,6 +9,7 @@
   import { setUpEasy } from '../../lib/api/easy'
   import { getHealthz } from '../../lib/api/system'
   import { runEasySetup, type EasySetupResult } from '../../lib/easy'
+  import { consoleMode } from '../../lib/stores/consoleMode.svelte'
 
   let { onNavigate }: { onNavigate: (path: string) => void } = $props()
 
@@ -39,7 +40,9 @@
       <p class="error" role="alert">{result === 'timeout' ? $t.easy.setup.timeout : $t.easy.setup.failed}</p>
       <div class="actions">
         <button type="button" class="btn btn-primary" onclick={run}>{$t.easy.setup.retry}</button>
-        <button type="button" class="btn btn-ghost" onclick={() => onNavigate('/console/onboarding')}>{$t.easy.setup.byHand}</button>
+        {#if consoleMode.expert}
+          <button type="button" class="btn btn-ghost" onclick={() => onNavigate('/console/onboarding')}>{$t.easy.setup.byHand}</button>
+        {/if}
       </div>
     {/if}
   </section>

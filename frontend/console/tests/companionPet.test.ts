@@ -74,6 +74,8 @@ test('companion visibility is bounded by config and setup/auth state', () => {
   assert.equal(shouldShowCompanion({ enabled: true, needsSetup: true, loginRequired: false, zenActive: false }), false)
   assert.equal(shouldShowCompanion({ enabled: true, needsSetup: false, loginRequired: true, zenActive: false }), false)
   assert.equal(shouldShowCompanion({ enabled: true, needsSetup: false, loginRequired: false, zenActive: true }), false)
+  // Vibe mode only: CASE's lines lead into the workbench.
+  assert.equal(shouldShowCompanion({ enabled: true, needsSetup: false, loginRequired: false, zenActive: false, vibeOnly: true }), false)
 })
 
 test('console app wires the floating companion to live chat activity', () => {
