@@ -270,6 +270,7 @@ job warns). For such a build, clear the quarantine flag yourself:
 | `internal/tray` | tray state, menu model, which approvals to notify |
 | `internal/deeplink` | `tars://` parsing |
 | `internal/links` | opening the console's outbound links in the browser |
+| `internal/consolewatch` | reloading a console page that loaded but never started (a server restart mid-load left a white window) |
 | `internal/protocol` | `tars://` registration on Windows and Linux |
 | `internal/winstate` | saving and fitting the windows' places, the chat windows to reopen |
 | `internal/update` | picking the shell's archive out of a release |
