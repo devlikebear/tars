@@ -2645,9 +2645,33 @@ export type FocusPlan = {
   e2e_setup?: string[]
   e2e_teardown?: string[]
   limits?: Record<string, number>
+  // The blueprint (focuspipeline/blueprint.go), only on a template marked
+  // blueprint (webapp): checks in plain words with the verify command each
+  // stands for, rough screen sketches, what is kept and what is left out.
+  checks?: FocusPlanCheck[]
+  screens?: FocusPlanScreen[]
+  saved?: string[]
+  not_now?: string[]
 }
 
-export type FocusDecision = { id: string; question: string; options: string[] }
+export type FocusPlanCheck = { label: string; command: string }
+// kind is one of heading, text, field, button, list, image, link.
+export type FocusScreenPart = { kind: string; text?: string }
+export type FocusPlanScreen = { name: string; line?: string; parts?: FocusScreenPart[] }
+// A blueprint check with its latest result: the verification result of its
+// command. check is the CHECK FAILED block the command printed.
+export type FocusCheckResult = {
+  label: string
+  command: string
+  state: 'not_run' | 'passed' | 'failed'
+  timed_out?: boolean
+  check?: { screen?: string; expected: string; seen: string }
+  at?: string
+}
+
+// you_decide: the server marks a blueprint question to offer "you decide"
+// besides its options (lib/easy.ts EASY_YOU_DECIDE is that answer).
+export type FocusDecision = { id: string; question: string; options: string[]; you_decide?: boolean }
 export type FocusReport = { summary: string; decisions?: FocusDecision[]; risks?: string[]; tasks_done?: boolean }
 
 // One verification command's outcome, and a failure card's payload (P2).
@@ -2843,6 +2867,9 @@ export type FocusPipeline = {
   // The execution tier (tars#1293): build and fix turns run on it, and the
   // label the execution tier report groups by.
   exec_tier?: FocusExecTier
+  // A blueprint pipeline (webapp) and its checks' latest results.
+  blueprint?: boolean
+  check_results?: FocusCheckResult[]
 }
 
 // outcome: proposed | no_candidates | no_checks | failed | unavailable; absent until it ran.

@@ -168,12 +168,24 @@ const blueprint = {
   not_now: ['Sending emails to members'],
 }
 
+// [e2e:easy-check-fail] (easy-workspace.spec.ts): the blueprint also has a
+// check that fails, printing its CHECK FAILED report, for its first twelve
+// seconds and passes after, so the screen shows a failed check with what it
+// expected and saw before the team finishes.
+const EASY_CHECK_FAIL = '[e2e:easy-check-fail]'
+const failingCheck = {
+  label: 'The newest member is at the top of the list',
+  command:
+    'f=.e2e-check-first; [ -f "$f" ] || date +%s > "$f"; [ $(( $(date +%s) - $(cat "$f") )) -ge 12 ] && exit 0; ' +
+    "printf 'CHECK FAILED\\nscreen: Members list\\nexpected: the newest member at the top\\nseen: the newest member at the bottom\\n'; exit 1",
+}
+
 const blueprintQuestions = [
   { id: 'q1', question: 'Who can see the member list?', options: ['Everyone', 'Only members'] },
   { id: 'q2', question: 'Ask for a phone number too?', options: ['Yes', 'No'] },
 ]
 
-function templateReply(stage, typed, guidance) {
+function templateReply(stage, typed, guidance, text) {
   const report = (summary, extra = {}) => `${summary}\n\n<focus-report>${JSON.stringify({ summary, risks: [], ...extra })}</focus-report>`
   if (stage === 'plan') {
     const hasBlueprint = guidance.includes('"checks":[')
@@ -183,6 +195,7 @@ function templateReply(stage, typed, guidance) {
     const stages = JSON.parse(`[${guidance.match(/"stages":\[([^\]]*)\]/)?.[1] ?? '"plan"'}]`)
     const plan = { goal: 'Write a short story', tasks: [{ title: 'Write chapter one', done: 'chapter-1.md holds the scene' }], stages, verify: ['git status --short'] }
     if (hasBlueprint) Object.assign(plan, blueprint)
+    if (hasBlueprint && text.includes(EASY_CHECK_FAIL)) plan.checks = [...blueprint.checks, failingCheck]
     return `Here is the outline.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
   }
   if (typed.startsWith('Fix these findings')) return report('Revised the passages.')
@@ -196,7 +209,7 @@ function focusReply(text) {
   if (!stage) return null
   const typed = text.slice(0, text.indexOf('<focus-stage>'))
   if (typed.includes(FOCUS_ASK)) return 'The verification commands look right.'
-  if (text.includes(FOCUS_TEMPLATE)) return templateReply(stage, typed, text.slice(text.indexOf('<focus-stage>')))
+  if (text.includes(FOCUS_TEMPLATE)) return templateReply(stage, typed, text.slice(text.indexOf('<focus-stage>')), text)
   if (stage === 'plan' && text.includes(FOCUS_PLAN)) {
     const plan = {
       goal: 'Add a greeting',
