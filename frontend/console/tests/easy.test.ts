@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { EASY_BOTS, easyCanChange, easyLive, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, runEasySetup, versionLabel, type EasyProject } from '../src/lib/easy.ts'
+import { EASY_BOTS, easyCanChange, easyLimitResets, easyLive, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, runEasySetup, versionLabel, type EasyProject } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
 
 test('the first run sets TARS up and waits for it to come back set up', async () => {
@@ -136,6 +136,46 @@ test('finished, saved or not; stopped and stuck', () => {
   assert.equal(easyLive(blocked), false)
   const exhausted = easyView(project(), pipeline({ current: 'make', goal_mode: { enabled: false, pushes: 20, max_pushes: 20, end_reason: 'exhausted' } }))
   assert.equal(exhausted.phase, 'stuck')
+})
+
+test('a spent usage limit pauses the team until the person says to go on', () => {
+  const gate = (payload: Record<string, unknown>, state = 'open'): FocusCard =>
+    ({ id: 'c9', kind: 'gate', stage: 'make', turn: 1, title: 'turn failed', payload, state, created_at: '' }) as FocusCard
+  const stopped = (payload: Record<string, unknown>) =>
+    easyView(project(), pipeline({
+      open_gate: 'blocked', current: 'make', cards: [gate(payload)],
+      goal_mode: { enabled: false, pushes: 1, max_pushes: 20, end_reason: 'usage_limit' },
+    }))
+
+  const limit = stopped({ reason: 'turn_failed', usage_limit: true, resets: '2:40pm (Asia/Seoul)', error: 'session limit' })
+  assert.equal(limit.phase, 'limit')
+  assert.deepEqual(limit.limit, { cardId: 'c9', resets: '2:40pm (Asia/Seoul)', resetsAt: undefined })
+  assert.equal(easyLive(limit), false)
+  assert.equal(easyLimitResets(limit.limit!, 'en'), '2:40pm (Asia/Seoul)')
+
+  // Any other failed turn still needs a look.
+  assert.equal(stopped({ reason: 'turn_failed', error: 'provider timeout' }).phase, 'stuck')
+  assert.equal(stopped({ reason: 'no_progress' }).phase, 'stuck')
+  // A gate already answered is not the stop.
+  const answered = easyView(project(), pipeline({ open_gate: 'blocked', current: 'make', cards: [gate({ reason: 'turn_failed', usage_limit: true }, 'decided')] }))
+  assert.equal(answered.phase, 'stuck')
+
+  // A time the provider gave is told as a local clock time, with the day
+  // when it is not today; nothing at all when it said nothing.
+  const now = new Date(2026, 10, 24, 9, 0)
+  const today = new Date(2026, 10, 24, 14, 40).toISOString()
+  assert.equal(easyLimitResets({ cardId: 'c', resetsAt: today }, 'en-US', now), '2:40 PM')
+  const later = easyLimitResets({ cardId: 'c', resetsAt: new Date(2026, 10, 26, 14, 40).toISOString() }, 'en-US', now)
+  assert.match(later, /Nov 26/)
+  assert.equal(easyLimitResets({ cardId: 'c', resetsAt: 'not a time', resets: '3pm' }, 'en-US', now), '3pm')
+  assert.equal(easyLimitResets({ cardId: 'c' }, 'en-US', now), '')
+
+  // Both sentences, with and without a time, in both languages, use no
+  // hidden word and name the time when there is one.
+  for (const section of [easyEn, easyKo]) {
+    assert.match(section.project.limitPaused('2:40pm'), /2:40pm/)
+    assert.deepEqual(hiddenWordsIn(section.project.limitPaused('')), [])
+  }
 })
 
 test('the hidden words are found as words, in either language', () => {

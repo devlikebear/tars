@@ -4,7 +4,7 @@
 // project record (POST /v1/easy/projects) and its focus pipeline; nothing
 // decides a transition. The screens only render what easyView answers.
 
-import type { FocusCard, FocusPipeline, FocusStage } from './types'
+import type { FocusBlocked, FocusCard, FocusPipeline, FocusStage } from './types'
 
 export type EasyProjectStatus = 'creating' | 'ready' | 'failed'
 
@@ -42,6 +42,7 @@ export type EasyPhase =
   | 'approve' // the plan waits for the person
   | 'building' // the team is making, reviewing and checking it
   | 'stuck' // something stopped the team and needs the person
+  | 'limit' // the AI's usage limit is spent; the team goes on when it is back
   | 'finished' // done and saved
 
 export type EasyCheckFailure = { screen?: string; expected: string; seen: string }
@@ -61,6 +62,37 @@ export type EasyView = {
   // The person's own words, when this run makes a change they asked for
   // ("change it like this") rather than the first version.
   change?: string
+  // When the AI's usage limit lifts (phase 'limit'), and the card the
+  // "Continue" answer goes to.
+  limit?: EasyLimit
+}
+
+// A spent usage limit (FocusBlocked.usage_limit): resets is the provider's
+// own words for when it comes back, resetsAt a time when it gave one.
+export type EasyLimit = { cardId: string; resets?: string; resetsAt?: string }
+
+// The usage limit the pipeline stopped on: the open blocked gate's card,
+// when the server recorded the failed turn as refused by the limit.
+function usageLimitStop(pipeline: FocusPipeline): EasyLimit | undefined {
+  if (pipeline.open_gate !== 'blocked') return undefined
+  const card = pipeline.cards.findLast((c) => c.kind === 'gate' && c.state !== 'decided')
+  const fact = card?.payload as FocusBlocked | undefined
+  if (!card || fact?.reason !== 'turn_failed' || !fact.usage_limit) return undefined
+  return { cardId: card.id, resets: fact.resets || undefined, resetsAt: fact.resets_at || undefined }
+}
+
+// When the limit comes back, as the screen says it: the provider's time as
+// a local clock time (with the day when it is not today), else the
+// provider's own words, else nothing.
+export function easyLimitResets(limit: EasyLimit, locale: string, now = new Date()): string {
+  if (limit.resetsAt) {
+    const at = new Date(limit.resetsAt)
+    if (!Number.isNaN(at.getTime())) {
+      const sameDay = at.toDateString() === now.toDateString()
+      return at.toLocaleString(locale, sameDay ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    }
+  }
+  return limit.resets ?? ''
 }
 
 // The stage kinds a bot works in.
@@ -134,7 +166,11 @@ export function easyView(project: EasyProject, pipeline: (FocusPipeline & SavedF
   const blocked = pipeline.stages.some((s) => s.status === 'blocked')
   const goalGone = pipeline.goal_mode && !pipeline.goal_mode.enabled && pipeline.goal_mode.end_reason !== 'finished'
   if (blocked || pipeline.open_gate === 'blocked' || goalGone) {
-    view.phase = 'stuck'
+    // Nothing is wrong with the work when the usage limit stopped it: the
+    // person waits and says when to go on (goal mode comes back with it).
+    const limit = usageLimitStop(pipeline)
+    view.phase = limit ? 'limit' : 'stuck'
+    if (limit) view.limit = limit
     return view
   }
   if (pipeline.current === 'plan' || kindOf(pipeline.stages.find((s) => s.id === pipeline.current) ?? ({ id: 'plan' } as FocusStage)) === 'plan') {
