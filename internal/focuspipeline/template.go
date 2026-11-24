@@ -53,6 +53,10 @@ type Template struct {
 	// though it ends without a pull request. A template with a pr stage is
 	// taught them anyway.
 	WebUI bool `json:"web_ui,omitempty" yaml:"web_ui"`
+	// Blueprint marks a template whose plan is a blueprint for someone who
+	// cannot read code (blueprint.go): plain-language checks, screens, what
+	// is saved and left out, and up to three questions before the plan.
+	Blueprint bool `json:"blueprint,omitempty" yaml:"blueprint"`
 	// Builtin marks the templates shipped with the server; Source is the
 	// file a user template was read from.
 	Builtin bool   `json:"builtin" yaml:"-"`

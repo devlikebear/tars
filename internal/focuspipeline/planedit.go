@@ -71,7 +71,7 @@ func GoalModeLockedFields(p Pipeline, edit PlanEdit) []string {
 		if l.edit == nil {
 			continue
 		}
-		after := p.pinList(l.name, cleanStrings(*l.edit))
+		after := p.editedList(l.name, cleanStrings(*l.edit))
 		if !slices.Equal(l.list, after) {
 			locked = append(locked, l.name)
 		}
@@ -124,9 +124,10 @@ func EditPlan(p Pipeline, edit PlanEdit, now time.Time) (next Pipeline, changed 
 		if l.edit == nil {
 			continue
 		}
-		// The repository's default verify and the pinned checks stay: an
-		// edit adds to them, never removes from them.
-		after := next.pinList(l.name, cleanStrings(*l.edit))
+		// The repository's default verify, the pinned checks and the
+		// blueprint's checks stay: an edit adds to them, never removes
+		// from them.
+		after := next.editedList(l.name, cleanStrings(*l.edit))
 		if slices.Equal(*l.list, after) {
 			continue
 		}
