@@ -6,11 +6,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { APIRequestError } from '../src/lib/api/client.ts'
-import type { EasyAPI } from '../src/lib/api/easy.ts'
+import type { EasyAPI, EasyPreviewTicket } from '../src/lib/api/easy.ts'
 import { easyView, hiddenWordsIn, type EasyProject, type EasyReadiness } from '../src/lib/easy.ts'
 import type { EasyBoardState, EasyListed } from '../src/lib/easyBoard.ts'
 import type { PairedDesktop } from '../src/lib/mobile/desktops.ts'
 import { deskLines, deskTakesIdeas, defaultPhoneTab, filterCounts, phoneSections, phoneTabs, waitingCount, type PhoneProject } from '../src/lib/mobile/projects.ts'
+import { tryApp, tryAppFailure, tryAppWaitMs } from '../src/lib/mobile/tryApp.ts'
+import type { EasyPreview } from '../src/lib/easy.ts'
 import { phoneEn, phoneKo } from '../src/i18n/sections/phone.ts'
 import { mobileAppEn, mobileAppKo } from '../src/i18n/sections/mobileApp.ts'
 import { compileSvelteModule } from './helpers/compileSvelteModule.ts'
@@ -122,7 +124,7 @@ function fakeEasy(projects: EasyListed[], overrides: Partial<EasyAPI> = {}): Eas
     readiness: async () => ({ ready: true, engine: 'ok', tools: 'ok' }),
     board: async () => ({ projects, counts: {}, archived: 0 }),
     create: refuse, get: refuse, update: refuse, remove: refuse, change: refuse, versions: refuse, restore: refuse,
-    preview: refuse, startPreview: refuse, pipeline: refuse, gate: refuse, card: refuse,
+    preview: refuse, startPreview: refuse, previewTicket: refuse, pipeline: refuse, gate: refuse, card: refuse,
     ...overrides,
   }
 }
@@ -213,5 +215,111 @@ test('no phone sentence uses a hidden word', () => {
     sections.forEach(walk)
     assert.ok(texts.length > 40)
     for (const text of texts) assert.deepEqual(hiddenWordsIn(text), [], `${lang}: ${text}`)
+  }
+})
+
+// Try it (vibe redesign unit 7): a fake desk that records each call.
+function tryDesk(script: { tickets: Array<EasyPreviewTicket | Error>; reads?: Array<EasyPreview | Error>; starts?: Array<EasyPreview | Error> }) {
+  const calls: string[] = []
+  const next = <T>(list: Array<T | Error> | undefined, name: string): T => {
+    const item = list?.shift()
+    if (item === undefined) throw new Error(`no ${name} left`)
+    if (item instanceof Error) throw item
+    return item
+  }
+  let clock = 0
+  const api = fakeEasy([], {
+    previewTicket: async () => {
+      calls.push('ticket')
+      return next(script.tickets, 'ticket')
+    },
+    preview: async () => {
+      calls.push('read')
+      return next(script.reads, 'read')
+    },
+    startPreview: async () => {
+      calls.push('start')
+      return next(script.starts, 'start')
+    },
+  })
+  const options = {
+    now: () => clock,
+    sleep: async (ms: number) => {
+      calls.push(`wait ${ms}`)
+      clock += ms
+    },
+  }
+  return { api, calls, options, run: () => tryApp(api, 'p', options) }
+}
+
+const ticket = (url: string, state: EasyPreview['state'] = 'running'): EasyPreviewTicket => ({ url, expires_at: '', preview: { state } })
+const refused = (status: number, code?: string) => new APIRequestError('refused', status, code ? { error: 'refused', code } : undefined)
+
+test('Try it opens a running app with the first ticket', async () => {
+  const d = tryDesk({ tickets: [ticket('https://mac.ts.net:8443/__tars/enter?t=a')] })
+  assert.deepEqual(await d.run(), { kind: 'open', url: 'https://mac.ts.net:8443/__tars/enter?t=a' })
+  assert.deepEqual(d.calls, ['ticket'])
+})
+
+test('Try it waits while the app starts, then asks for a fresh ticket', async () => {
+  const d = tryDesk({
+    tickets: [ticket('https://mac/__tars/enter?t=old', 'starting'), ticket('https://mac/__tars/enter?t=new')],
+    reads: [{ state: 'starting' }, { state: 'running' }],
+  })
+  assert.deepEqual(await d.run(), { kind: 'open', url: 'https://mac/__tars/enter?t=new' })
+  assert.deepEqual(d.calls, ['ticket', 'wait 1000', 'read', 'wait 1000', 'read', 'ticket'])
+})
+
+test('Try it starts an app stopped while it waited once, and gives up on one that fails or never answers', async () => {
+  const restarted = tryDesk({
+    tickets: [ticket('u', 'starting'), ticket('https://mac/t')],
+    reads: [{ state: 'stopped' }],
+    starts: [{ state: 'running' }],
+  })
+  assert.deepEqual(await restarted.run(), { kind: 'open', url: 'https://mac/t' })
+  assert.deepEqual(restarted.calls, ['ticket', 'wait 1000', 'read', 'start', 'ticket'])
+
+  const failed = tryDesk({ tickets: [ticket('u', 'starting')], reads: [{ state: 'failed', error_code: 'preview_failed' }] })
+  assert.deepEqual(await failed.run(), { kind: 'failed', reason: 'could_not_start' })
+  assert.deepEqual(failed.calls, ['ticket', 'wait 1000', 'read'])
+
+  const slow = tryDesk({ tickets: [ticket('u', 'starting')], reads: Array.from({ length: 200 }, () => ({ state: 'starting' as const })) })
+  assert.deepEqual(await slow.run(), { kind: 'failed', reason: 'could_not_start' })
+  assert.equal(slow.calls.filter((c) => c === 'read').length, tryAppWaitMs / 1000)
+  assert.ok(!slow.calls.slice(1).includes('ticket'))
+})
+
+test('Try it names each failure the desk can give', async () => {
+  const cases: Array<[Error, string]> = [
+    [refused(409, 'not_ready'), 'not_ready'],
+    [refused(404, 'not_found'), 'not_ready'],
+    [refused(409, 'preview_failed'), 'could_not_start'],
+    [refused(503, 'remote_access_off'), 'phone_off'],
+    [refused(503, 'relay_not_served'), 'phone_off'],
+    [refused(503, 'tailscale_unavailable'), 'phone_off'],
+    [refused(503, 'relay_down'), 'phone_off'],
+    [refused(403), 'too_old'],
+    [new TypeError('Load failed'), 'no_answer'],
+    [new DOMException('timed out', 'TimeoutError'), 'no_answer'],
+    [refused(500, 'ticket_failed'), 'failed'],
+  ]
+  for (const [err, reason] of cases) {
+    assert.equal(tryAppFailure(err), reason, String(err))
+    assert.deepEqual(await tryDesk({ tickets: [err] }).run(), { kind: 'failed', reason })
+  }
+  // A refusal of the second ticket is said the same way.
+  const late = tryDesk({ tickets: [ticket('u', 'starting'), refused(503, 'relay_down')], reads: [{ state: 'running' }] })
+  assert.deepEqual(await late.run(), { kind: 'failed', reason: 'phone_off' })
+})
+
+test('Try it strings say every failure without a hidden word', () => {
+  for (const strings of [phoneEn, phoneKo]) {
+    const tryIt = strings.project.tryIt
+    const errors = tryIt.errors
+    const said = [
+      tryIt.intro, tryIt.button, tryIt.starting, tryIt.opened, tryIt.demo,
+      errors.not_ready, errors.could_not_start('Mac'), errors.phone_off('Mac'), errors.too_old, errors.no_answer('Mac'), errors.failed,
+    ]
+    for (const text of said) assert.deepEqual(hiddenWordsIn(text), [], text)
   }
 })
