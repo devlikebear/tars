@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { requestJSONAt, serveLocally } from '../src/lib/api/client.ts'
-import { inboxAPI, desktopAPI, taskAPI } from '../src/lib/mobile/desktopApi.ts'
+import { inboxAPI, desktopAPI } from '../src/lib/mobile/desktopApi.ts'
 import { remoteChatAPI } from '../src/lib/mobile/remoteChat.ts'
 import { createDemoDesk, demoBaseURL, demoDesktop, isDemoDesktop } from '../src/lib/mobile/demoDesk.ts'
 import { targetOf } from '../src/lib/mobile/desktops.ts'
@@ -11,7 +11,13 @@ import { inboxOf } from '../src/lib/mobile/inbox.ts'
 import { openGateCardId, pipelinePhase } from '../src/lib/focus.ts'
 import { mergeSummary, prDraftOf } from '../src/lib/focusPR.ts'
 import type { ChatEvent, FocusPipeline } from '../src/lib/types.ts'
-import type { EasyProject, EasyReadiness, EasyVersion } from '../src/lib/easy.ts'
+import { easyView, type EasyProject, type EasyReadiness, type EasyVersion } from '../src/lib/easy.ts'
+import { remoteEasyApi } from '../src/lib/mobile/easyRemote.ts'
+import type { FocusTemplate } from '../src/lib/types.ts'
+import { compileSvelteModule } from './helpers/compileSvelteModule.ts'
+import type * as EasyProjectStoreModule from '../src/lib/stores/easyProjectStore.svelte.ts'
+
+const { EasyProjectStore } = await compileSvelteModule<typeof EasyProjectStoreModule>('src/lib/stores/easyProjectStore.svelte.ts')
 
 // A desk on a clock the test moves: a turn ends when the clock passes it.
 function desk(turnMs = 1000) {
@@ -165,15 +171,18 @@ test('cleanup refuses an active pipeline, like the real server (409 conflict res
   assert.equal(result.conflict, true)
 })
 
-test('an idea sent as a task drafts a plan and waits at its gate', async () => {
+test('a focus task started on the desk drafts a plan and waits at its gate', async () => {
   const d = desk()
-  const folders = await taskAPI.folders(d.target)
+  const at = <T>(path: string, init?: RequestInit) => requestJSONAt<T>(d.target, path, init)
+  const folders = (await at<{ folders: { path: string }[] }>('/v1/focus/folders')).folders
   assert.equal(folders.length, 2)
-  assert.deepEqual((await taskAPI.templates(d.target)).map((t) => t.id), ['dev'])
+  assert.deepEqual((await at<{ templates: FocusTemplate[] }>('/v1/focus/templates')).templates.map((t) => t.id), ['dev'])
+  const create = (body: unknown) => at<{ session_id: string }>('/v1/focus/pipelines', { method: 'POST', body: JSON.stringify(body) })
 
-  await assert.rejects(taskAPI.createPipeline(d.target, { goal: 'x', cwd: '/somewhere/else' }), /not registered/)
-  const { session_id } = await taskAPI.createPipeline(d.target, { goal: 'Add CSV export\nto the reports page', cwd: folders[0].path, template: 'dev' })
-  assert.deepEqual(await running(d), [session_id])
+  await assert.rejects(create({ goal: 'x', cwd: '/somewhere/else' }), /not registered/)
+  const { session_id } = await create({ goal: 'Add CSV export\nto the reports page', cwd: folders[0].path, template: 'dev' })
+  const before = await running(d)
+  assert.ok(before.includes(session_id))
   const api = d.api(session_id)
   assert.equal((await api.getPipeline(session_id)).pending_turn, 'Add CSV export\nto the reports page')
 
@@ -267,73 +276,147 @@ test('a device chat turn can be cancelled mid-stream, with no reply recorded', a
 
 // Vibe redesign unit 6: the demo desk answers the vibe project routes a
 // paired desk answers a phone, so the phone screens (unit 8) can run on it.
-test('vibe projects: one sentence to a finished project, a change, going back', async () => {
+test('vibe projects: from one sentence through the questions, the blueprint, making and checks to a saved result', async () => {
   const d = desk()
   const at = <T>(path: string, init?: RequestInit) => requestJSONAt<T>(d.target, path, init)
   const post = (body: unknown, method = 'POST'): RequestInit => ({ method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } })
   type Listed = { projects: (EasyProject & { board: { state: string; waiting?: string } })[]; counts: Record<string, number>; archived: number }
+  const easy = remoteEasyApi(d.target)
 
   assert.equal((await at<{ readiness: EasyReadiness }>('/v1/easy/readiness')).readiness.ready, true)
   let list = await at<Listed>('/v1/easy/projects')
-  assert.deepEqual(list.projects.map((p) => [p.id, p.board.state]), [['demo-recipe-box', 'done']])
-  const seeded = await at<{ versions: EasyVersion[] }>('/v1/easy/projects/demo-recipe-box/versions')
-  assert.deepEqual(seeded.versions.map((v) => [v.kind, !!v.current]), [['saved', true], ['start', false]])
+  // One seeded project at each place the phone shows.
+  assert.deepEqual(
+    Object.fromEntries(list.projects.map((p) => [p.id, p.board.state])),
+    { 'demo-recipe-box': 'done', 'demo-family-todo': 'paused', 'demo-club-dues': 'stuck' },
+  )
+  const seeded = await easy.versions('demo-recipe-box')
+  assert.deepEqual(seeded.map((v) => [v.kind, !!v.current]), [['saved', true], ['start', false]])
 
-  await assert.rejects(at('/v1/easy/projects', post({ idea: '  ' })), /idea_required/)
-  const { project } = await at<{ project: EasyProject }>('/v1/easy/projects', post({ idea: 'A page for my book club' }))
-  assert.equal(project.status, 'ready')
+  await assert.rejects(easy.create('  '), /idea_required/)
+  const { project } = await easy.create('A page for my book club')
   const id = project.id
-  const sessionID = project.session_id!
-  const board = async () => (await at<{ board: { state: string; waiting?: string } }>(`/v1/easy/projects/${id}`)).board
-  assert.equal((await board()).state, 'working')
-
-  // The plan waits on the person; approving it goes through the focus gate.
-  d.pass()
-  assert.deepEqual([(await board()).state, (await board()).waiting], ['your_turn', 'plan'])
-  const api = d.api(sessionID)
-  await api.gate(sessionID, 'plan', 'approve')
-  assert.equal((await board()).state, 'working')
-  await assert.rejects(at(`/v1/easy/projects/${id}`, post({ archived: true }, 'PATCH')), /busy/)
-  await assert.rejects(at(`/v1/easy/projects/${id}/changes`, post({ request: 'Make it green' })), /busy/)
-
-  // Run it to the end the way the other demo pipelines run.
-  for (let i = 0; i < 20 && (await board()).state !== 'done'; i++) {
-    d.pass()
-    const p = await api.getPipeline(sessionID)
-    if (p.open_gate === 'triage') {
-      for (const c of p.cards.filter((c) => c.kind === 'finding' && c.state !== 'decided')) await api.card(sessionID, c.id, 'decided', 'fix')
-    } else if (p.open_gate) {
-      await api.gate(sessionID, p.open_gate, 'approve')
-    }
+  const store = new EasyProjectStore({ api: easy, projectId: id, pollMs: 60_000 })
+  const phase = async () => {
+    await store.read()
+    return store.view!.phase
   }
-  assert.equal((await board()).state, 'done')
+  try {
+    assert.equal(await phase(), 'planning')
+    assert.equal((await easy.get(id)).session_id, project.session_id)
 
-  // Rename and archive; the archive holds it apart.
-  const renamed = await at<{ project: EasyProject }>(`/v1/easy/projects/${id}`, post({ name: '  Book   club ', archived: true }, 'PATCH'))
-  assert.equal(renamed.project.name, 'Book club')
-  list = await at<Listed>('/v1/easy/projects')
-  assert.equal(list.archived, 1)
-  assert.ok(!list.projects.some((x) => x.id === id))
-  assert.ok((await at<Listed>('/v1/easy/projects?archived=1')).projects.some((x) => x.id === id))
-  await at(`/v1/easy/projects/${id}`, post({ archived: false }, 'PATCH'))
+    // The leader asks first; the person answers each question.
+    d.pass()
+    assert.equal(await phase(), 'questions')
+    assert.deepEqual((await at<{ board: { state: string; waiting?: string } }>(`/v1/easy/projects/${id}`)).board, {
+      state: 'your_turn', waiting: 'question', changed_at: (await easy.board()).projects.find((p) => p.id === id)!.board.changed_at,
+    })
+    const questions = store.view!.questions
+    assert.equal(questions.length, 2)
+    assert.ok(questions.every((q) => q.youDecide))
+    await store.answer(questions[0].cardId, questions[0].options[0])
+    assert.equal(store.view!.phase, 'questions')
+    await store.answer(questions[1].cardId, 'You decide')
+    assert.equal(store.view!.phase, 'planning')
 
-  // A change runs a new pipeline in the same project.
-  const changed = await at<{ project: EasyProject }>(`/v1/easy/projects/${id}/changes`, post({ request: 'Make the button green' }))
-  assert.notEqual(changed.project.session_id, sessionID)
-  assert.deepEqual(changed.project.changes?.map((c) => c.request), ['Make the button green'])
-  const versions = (await at<{ versions: EasyVersion[] }>(`/v1/easy/projects/${id}/versions`)).versions
-  assert.deepEqual(versions.map((v) => v.kind), ['saved', 'start'])
-  await assert.rejects(at(`/v1/easy/projects/${id}/versions/${versions[1].commit}/restore`, post({})), /busy/)
+    // The blueprint: screens and checks in plain words, then "tell the team".
+    d.pass()
+    assert.equal(await phase(), 'approve')
+    const blueprint = store.view!.blueprint!
+    assert.equal(blueprint.checks.length, 4)
+    assert.equal(blueprint.screens.length, 1)
+    assert.equal(await store.sayToTeam('  '), false)
+    assert.equal(store.sayError, 'required')
+    assert.equal(await store.sayToTeam('Show the meeting date too'), true)
+    assert.equal(store.view!.phase, 'planning')
+    d.pass()
+    assert.equal(await phase(), 'approve')
+
+    // Approved: the team makes it, then checks it; one check fails once.
+    await store.approve()
+    assert.equal(store.view!.phase, 'building')
+    assert.equal(store.view!.step, 'make')
+    await assert.rejects(easy.update(id, { archived: true }), /busy/)
+    await assert.rejects(easy.change(id, 'Make it green'), /busy/)
+    d.pass()
+    await store.read()
+    assert.equal(store.view!.step, 'check')
+    d.pass()
+    await store.read()
+    assert.deepEqual(store.view!.checks.map((c) => c.state), ['passed', 'passed', 'failed', 'passed'])
+    assert.equal(store.view!.checks[2].report?.expected, 'the newest entry at the top')
+    assert.equal(store.view!.phase, 'building')
+    for (let i = 0; i < 4 && (await phase()) !== 'finished'; i++) d.pass()
+    assert.equal(store.view!.phase, 'finished')
+    assert.equal(store.view!.saved, true)
+    assert.ok(store.view!.checks.every((c) => c.state === 'passed'))
+    assert.equal((await easy.board()).projects.find((p) => p.id === id)!.board.state, 'done')
+
+    // Rename and archive; the archive holds it apart.
+    const renamed = await easy.update(id, { name: '  Book   club ', archived: true })
+    assert.equal(renamed.name, 'Book club')
+    list = await at<Listed>('/v1/easy/projects')
+    assert.equal(list.archived, 1)
+    assert.ok(!list.projects.some((x) => x.id === id))
+    assert.ok((await easy.board({ archived: true })).projects.some((x) => x.id === id))
+    await easy.update(id, { archived: false })
+
+    // A change runs the same flow again in the same project.
+    assert.equal(await store.change('  '), false)
+    assert.equal(store.changeError, 'change_required')
+    assert.equal(await store.change('Make the button green'), true)
+    assert.notEqual(store.project!.session_id, project.session_id)
+    assert.equal(store.view!.change, 'Make the button green')
+    const versions = await easy.versions(id)
+    assert.deepEqual(versions.map((v) => v.kind), ['saved', 'start'])
+    await assert.rejects(easy.restore(id, versions[1].commit), /busy/)
+  } finally {
+    store.stop()
+  }
 
   // Going back on the finished seeded project adds a version, never removes one.
-  const back = await at<{ version: EasyVersion; versions: EasyVersion[] }>(
-    `/v1/easy/projects/demo-recipe-box/versions/${seeded.versions[1].commit}/restore`, post({}),
-  )
-  assert.equal(back.version.kind, 'restored')
-  assert.deepEqual(back.versions.map((v) => v.kind), ['restored', 'saved', 'start'])
+  const back = await easy.restore('demo-recipe-box', seeded[1].commit)
+  assert.deepEqual(back.map((v) => v.kind), ['restored', 'saved', 'start'])
 
   // What a phone cannot do on a real desk, it cannot do here.
-  await assert.rejects(at(`/v1/easy/projects/${id}`, { method: 'DELETE' }), /cannot delete/)
-  await assert.rejects(at(`/v1/easy/projects/${id}/preview`), /cannot show a preview/)
-  await assert.rejects(at('/v1/easy/projects/nope'), /no such project/)
+  await assert.rejects(easy.remove(id), /cannot delete/)
+  await assert.rejects(easy.preview(id), /cannot show a preview/)
+  await assert.rejects(easy.get('nope'), /no such project/)
+})
+
+test('vibe projects: a pause on the usage limit continues, a stuck project tries again with the person\'s words', async () => {
+  const d = desk()
+  const easy = remoteEasyApi(d.target)
+
+  const family = new EasyProjectStore({ api: easy, projectId: 'demo-family-todo', pollMs: 60_000 })
+  const dues = new EasyProjectStore({ api: easy, projectId: 'demo-club-dues', pollMs: 60_000 })
+  try {
+    await family.read()
+    assert.equal(family.view!.phase, 'limit')
+    assert.ok(family.view!.limit?.resetsAt)
+    await family.continueAfterLimit()
+    assert.equal(family.view!.phase, 'building')
+    assert.equal(family.view!.step, 'make')
+
+    await dues.read()
+    assert.equal(dues.view!.phase, 'stuck')
+    assert.ok(dues.view!.retry)
+    assert.equal(dues.view!.checks.filter((c) => c.state === 'failed').length, 1)
+    assert.equal(await dues.retryStuck('The newest payment goes at the top'), true)
+    assert.equal(dues.view!.phase, 'building')
+    for (let i = 0; i < 4 && dues.view!.phase !== 'finished'; i++) {
+      d.pass()
+      await dues.read()
+    }
+    assert.equal(dues.view!.phase, 'finished')
+  } finally {
+    family.stop()
+    dues.stop()
+  }
+  // The board reads the same.
+  const states = Object.fromEntries((await easy.board()).projects.map((p) => [p.id, p.board.state]))
+  assert.equal(states['demo-club-dues'], 'done')
+  // A finished seeded run reads as finished and saved in the workspace too.
+  const recipe = await easy.get('demo-recipe-box')
+  assert.equal(easyView(recipe, await easy.pipeline(recipe.session_id!)).phase, 'finished')
 })

@@ -7,8 +7,11 @@
 // a phone (vibe redesign unit 6). Nothing leaves the phone, no model runs, and its state
 // starts over each time the app starts.
 //
-// It follows the pipeline's own order (plan gate → build → triage → fix →
-// PR gate → merge gate → finished) with fixed text. A "turn" is a few
+// A focus task follows the pipeline's own order (plan gate → build → triage
+// → fix → PR gate → merge gate → finished) with fixed text. A vibe project
+// follows the webapp template's (the leader's questions → the blueprint to
+// approve → making → checks, one failing once and fixed → finished and
+// saved), so App Store review can walk the whole product on the phone. A "turn" is a few
 // seconds during which the pipeline's session is listed as running and its
 // turn feed streams a few lines; what the turn ends in was decided when it
 // started. Time comes in through `now`, so tests run it without waiting.
@@ -49,7 +52,7 @@ export type DemoDesk = {
   handle(path: string, init?: RequestInit): Promise<Response>
 }
 
-type Turn = 'planning' | 'building' | 'fixing' | 'opening' | 'merging' | 'typed'
+type Turn = 'planning' | 'building' | 'fixing' | 'opening' | 'merging' | 'typed' | 'asking' | 'drawing' | 'making' | 'checking' | 'fixingCheck'
 
 type Content = {
   plan: FocusPlan
@@ -73,9 +76,18 @@ type Demo = {
   // stopped is the turn a stop cut off, for resume to run again.
   stopped?: { turn: Turn; prompt: string; lines: string[] }
   seq: number
+  // A vibe project's run (the webapp template), with its blueprint and how
+  // many times its checks ran.
+  web?: { plan: FocusPlan; checkRuns: number }
 }
 
 const devStages: FocusStageId[] = ['plan', 'build', 'review', 'pr', 'pr_review', 'merge']
+// The webapp template's stages (focuspipeline/template_webapp.go).
+const webStages: FocusStage[] = [
+  { id: 'plan', status: 'active', iteration: 1, kind: 'plan', label: 'Plan' },
+  { id: 'make', status: 'pending', iteration: 0, kind: 'build', label: 'Make' },
+  { id: 'review', status: 'pending', iteration: 0, kind: 'review', label: 'Review' },
+]
 const folders = [
   { path: '/Volumes/code/storefront', name: 'storefront', exists: true },
   { path: '/Volumes/code/notes-app', name: 'notes-app', exists: true },
@@ -235,6 +247,13 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
       case 'typed':
         say(d, 'assistant', 'Noted. This is the demo desk, so nothing was changed; on your own desktop the agent would act on this.')
         break
+      case 'asking':
+      case 'drawing':
+      case 'making':
+      case 'checking':
+      case 'fixingCheck':
+        webFinish(d, running.turn)
+        break
     }
     touch(d)
   }
@@ -244,6 +263,119 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     d.pipeline.pr_draft = structuredClone(d.content.draft)
     card(d, 'gate', 'pr', 'Open pull request', structuredClone(d.content.draft))
     openGate(d, 'pr')
+  }
+
+  // --- A vibe project's run (the webapp template) ---------------------------
+
+  function addWeb(id: string, title: string, folder: string, idea: string): Demo {
+    const d = add(id, title, folder, contentFor(idea, 0))
+    d.pipeline.stages = structuredClone(webStages)
+    d.pipeline.template = 'webapp'
+    d.web = { plan: blueprintFor(idea), checkRuns: 0 }
+    return d
+  }
+
+  // webStart is the first turn: the leader reads the idea and asks.
+  function webStart(d: Demo, idea: string) {
+    start(d, 'asking', idea, ['Reading the idea', 'Thinking about what to ask'])
+  }
+
+  function webFinish(d: Demo, turn: Turn) {
+    const p = d.pipeline
+    const web = d.web!
+    switch (turn) {
+      case 'asking':
+        say(d, 'assistant', 'A few things to decide before the blueprint.')
+        for (const q of webQuestions) {
+          card(d, 'decision', 'plan', q.question, { id: q.id, question: q.question, options: q.options, you_decide: true })
+        }
+        break
+      case 'drawing':
+        say(d, 'assistant', 'Here is the blueprint.')
+        p.plan = structuredClone(web.plan)
+        card(d, 'gate', 'plan', 'Approve plan', structuredClone(web.plan))
+        openGate(d, 'plan')
+        break
+      case 'making':
+        say(d, 'assistant', 'Made everything in the blueprint.')
+        stage(d, 'make').turns = 1
+        card(d, 'report', 'make', 'Made everything in the blueprint.', { summary: 'Made everything in the blueprint.', tasks_done: true })
+        enter(d, 'review')
+        p.awaiting_verification = true
+        p.check_results = web.plan.checks!.map((c) => ({ label: c.label, command: c.command, state: 'not_run' }))
+        start(d, 'checking', 'Run the checks.', ['Starting the app', 'Trying each check in turn'])
+        break
+      case 'fixingCheck':
+        say(d, 'assistant', 'Fixed the order of the list.')
+        p.review = {}
+        p.awaiting_verification = true
+        start(d, 'checking', 'Run the checks again.', ['Starting the app', 'Trying each check in turn'])
+        break
+      case 'checking': {
+        web.checkRuns++
+        delete p.awaiting_verification
+        // The first run finds one check that does not pass; the maker fixes
+        // it and every check runs again.
+        const failOnce = web.checkRuns === 1
+        p.check_results = web.plan.checks!.map((c, i) => {
+          if (failOnce && i === 2) {
+            return { label: c.label, command: c.command, state: 'failed', at: iso(), check: { screen: 'the main screen', expected: 'the newest entry at the top', seen: 'it at the bottom' } }
+          }
+          return { label: c.label, command: c.command, state: 'passed', at: iso() }
+        })
+        if (failOnce) {
+          card(d, 'failure', 'review', 'Check failed', { check: { screen: 'the main screen', expected: 'the newest entry at the top', seen: 'it at the bottom' } })
+          p.review = { fixing: true }
+          start(d, 'fixingCheck', 'A check did not pass. Fix it.', ['Reading what the check saw', 'Fixing the list order'])
+          break
+        }
+        webDone(d)
+        break
+      }
+    }
+  }
+
+  // webDone finishes the run and saves it, as the server does
+  // (focusDriver.saveVersionAfterFinish).
+  function webDone(d: Demo) {
+    const p = d.pipeline
+    stage(d, 'review').status = 'done'
+    p.finished_at = iso()
+    if (p.goal_mode) p.goal_mode = { ...p.goal_mode, enabled: false, ended_at: iso(), end_reason: 'finished' }
+    easyCommits++
+    Object.assign(p, { saved: { commit: `demo${String(easyCommits).padStart(36, '0')}`, at: iso() } })
+  }
+
+  // webGate answers the plan gate and the blocked gate of a vibe project.
+  function webGate(d: Demo, gate: string, open: FocusCard, body: { action?: string; note?: string }) {
+    const p = d.pipeline
+    const note = body.note?.trim()
+    if (gate === 'plan') {
+      if (body.action === 'request_changes') {
+        decide(open, 'request_changes')
+        delete p.open_gate
+        return start(d, 'drawing', note || 'Please revise.', ['Reading what you said', 'Drawing the blueprint again'])
+      }
+      if (body.action !== 'approve') throw new Refused(400, 'unknown action')
+      decide(open, 'approve')
+      delete p.open_gate
+      enter(d, 'make')
+      // GoalAfterPlan: the team goes on by itself from here.
+      p.goal_mode = { enabled: true, pushes: 0, max_pushes: 20, started_at: iso() }
+      return start(d, 'making', 'Blueprint approved. Make it.', ['Laying out the screens', 'Making the parts work', 'Saving what people enter'])
+    }
+    if (gate === 'blocked') {
+      if (body.action !== 'retry' && body.action !== 'instruct') throw new Refused(400, 'unknown action')
+      decide(open, body.action)
+      delete p.open_gate
+      const s = stage(d, p.current)
+      s.status = 'active'
+      p.goal_mode = { enabled: true, pushes: 0, max_pushes: 20, started_at: iso() }
+      if (p.current === 'make') return start(d, 'making', note || 'Go on making it.', ['Picking up where the team stopped', 'Making the parts work'])
+      p.awaiting_verification = true
+      return start(d, 'fixingCheck', note || 'Try the check again.', ['Reading what you said', 'Fixing the list order'])
+    }
+    throw new Refused(400, 'unknown gate')
   }
 
   // settle ends every turn whose time has passed, the device chat session's
@@ -323,6 +455,7 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     const open = gateCard(d)
     if (p.open_gate !== gate || !open || d.running) throw new Refused(409, 'this gate is no longer open', p)
     if (body.action === 'stop') return stop(d)
+    if (d.web) return webGate(d, gate, open, body)
     const note = body.note?.trim()
     if (body.action === 'request_changes') {
       decide(open, 'request_changes')
@@ -362,6 +495,16 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     }
     if (c.state === 'decided') throw new Refused(409, 'already decided', p)
     decide(c, body.decision ?? '')
+    if (d.web) {
+      // The last answer sends them all to the leader, who draws the
+      // blueprint (focuspipeline: AnswersPrompt).
+      const asked = p.cards.filter((x) => x.kind === 'decision' && x.stage === 'plan')
+      if (!p.open_gate && !d.running && asked.every((x) => x.state === 'decided')) {
+        const answers = asked.map((x) => `${(x.payload as { question?: string }).question}: ${x.decision}`).join('\n')
+        start(d, 'drawing', answers, ['Reading your answers', 'Drawing the blueprint'])
+      }
+      return touch(d)
+    }
     const triage = (p.review?.triage ?? []).map((id) => p.cards.find((x) => x.id === id)!)
     if (p.open_gate === 'triage' && triage.every((x) => x.state === 'decided')) {
       delete p.open_gate
@@ -440,7 +583,7 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
       open_gate: p.open_gate ?? '',
       needs_input: cards + (p.open_gate ? 1 : 0),
       updated_at: p.updated_at,
-      template: 'dev',
+      template: p.template ?? 'dev',
       waiting: live ? { gate: p.open_gate ?? '', cards } : { cards: 0 },
       qa_session_id: p.qa_session_id,
       phase: phase(p),
@@ -585,6 +728,12 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     const p = d.pipeline
     if (p.open_gate === 'plan') return board('your_turn', { waiting: 'plan' })
     if (p.cards.some((c) => c.kind === 'decision' && c.state !== 'decided')) return board('your_turn', { waiting: 'question' })
+    if (p.open_gate === 'blocked') {
+      const blocked = [...p.cards].reverse().find((c) => c.kind === 'gate' && c.state !== 'decided')
+      const fact = blocked?.payload as { usage_limit?: boolean; resets_at?: string } | undefined
+      if (fact?.usage_limit) return board('paused', fact.resets_at ? { resets_at: fact.resets_at } : {})
+      return board('stuck', { stuck: p.goal_mode && !p.goal_mode.enabled ? 'goal_ended' : 'blocked' })
+    }
     switch (phase(p)) {
       case 'active':
         return board('working')
@@ -630,8 +779,8 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
 
   function easyPipeline(goal: string, title: string, folder: string): Demo {
     created++
-    const d = add(`demo-task-${created}`, title, folder, contentFor(goal, 140 + created))
-    start(d, 'planning', goal, ['Reading the idea', 'Drafting the plan'])
+    const d = addWeb(`demo-task-${created}`, title, folder, goal)
+    webStart(d, goal)
     return d
   }
 
@@ -871,17 +1020,20 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
   // to approve, findings to triage with a tool call waiting, a pull request
   // to merge.
   function seed() {
-    // A finished vibe project, for the Projects list and its versions.
-    const recipe: EasyDemo = {
-      project: {
-        id: 'demo-recipe-box', name: 'Recipe box', idea: 'A recipe box where I save recipes and tick off what I need to buy',
-        folder: easyFolder('Recipe box'), status: 'ready', session_id: 'demo-recipe-box-run', created_at: iso(), updated_at: iso(),
-      },
-      versions: [],
-    }
-    recipe.versions = [easyVersion('Start the project', 'start')]
-    easySave(recipe)
-    easyProjects.set(recipe.project.id, recipe)
+    // Vibe projects, one at each place the phone shows: finished with its
+    // versions, paused on the usage limit, and stuck on a check.
+    const recipe = seedProject('demo-recipe-box', 'Recipe box', 'A recipe box where I save recipes and tick off what I need to buy')
+    runTo(recipe.run, 'finished')
+    recipe.e.versions = [easyVersion('Start the project', 'start')]
+    easySave(recipe.e)
+
+    const family = seedProject('demo-family-todo', 'Family to-do list', 'A to-do list my family shares, with who does what')
+    runTo(family.run, 'making')
+    pauseOnLimit(family.run)
+
+    const dues = seedProject('demo-club-dues', 'Club dues ledger', 'A page where our club treasurer records who has paid the dues')
+    runTo(dues.run, 'checking')
+    stickOnCheck(dues.run)
 
     const plan = add('demo-dark-mode', 'Add a dark mode toggle to Settings', 'storefront', {
       plan: {
@@ -975,6 +1127,78 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     merge.pipeline.cards.filter((c) => c.kind === 'gate' && c.state === 'decided').forEach((c) => (c.decided_by = 'desk'))
   }
 
+  // seedProject makes a vibe project with its run, at the start of it.
+  function seedProject(id: string, name: string, idea: string): { e: EasyDemo; run: Demo } {
+    const folder = easyFolder(name)
+    const run = addWeb(`${id}-run`, name, folder, idea)
+    const e: EasyDemo = {
+      project: { id, name, idea, folder, status: 'ready', session_id: run.pipeline.session_id, created_at: iso(), updated_at: iso() },
+      versions: [easyVersion('Start the project', 'start')],
+    }
+    easyProjects.set(id, e)
+    webStart(run, idea)
+    return { e, run }
+  }
+
+  // runTo plays a seeded run forward, answering for the person, until the
+  // turn named is running (or the run is finished).
+  function runTo(d: Demo, until: Turn | 'finished') {
+    for (let guard = 0; guard < 20; guard++) {
+      if (d.running?.turn === until) return
+      if (d.running) {
+        finish(d)
+        continue
+      }
+      const p = d.pipeline
+      if (p.finished_at) return
+      const question = p.cards.find((c) => c.kind === 'decision' && c.state !== 'decided')
+      if (question) {
+        decideCard(d, question.id, { state: 'decided', decision: EASY_YOU_DECIDE_DEMO })
+        continue
+      }
+      if (p.open_gate === 'plan') {
+        gate(d, 'plan', { action: 'approve' })
+        continue
+      }
+      return
+    }
+  }
+
+  // pauseOnLimit ends the running turn the way a spent usage limit does
+  // (FocusBlocked.usage_limit): a blocked gate and goal mode ended.
+  function pauseOnLimit(d: Demo) {
+    const p = d.pipeline
+    say(d, 'assistant', 'The usage limit is spent.')
+    d.running = null
+    delete p.pending_turn
+    stage(d, p.current).status = 'blocked'
+    card(d, 'gate', p.current, 'Turn failed', { reason: 'turn_failed', iteration: 1, limit: 3, usage_limit: true, resets_at: new Date(now() + 2 * 3600_000).toISOString() })
+    openGate(d, 'blocked')
+    p.goal_mode = { ...(p.goal_mode ?? { pushes: 0, max_pushes: 20 }), enabled: false, ended_at: iso(), end_reason: 'usage_limit' }
+    touch(d)
+  }
+
+  // stickOnCheck ends the checks with one that kept failing, the way goal
+  // mode ends when it has tried enough (exhausted).
+  function stickOnCheck(d: Demo) {
+    const p = d.pipeline
+    const web = d.web!
+    d.running = null
+    delete p.pending_turn
+    delete p.awaiting_verification
+    web.checkRuns = 1
+    const failed = { screen: 'the main screen', expected: 'the newest payment at the top', seen: 'it at the bottom' }
+    p.check_results = web.plan.checks!.map((c, i) =>
+      i === 2 ? { label: c.label, command: c.command, state: 'failed' as const, at: iso(), check: failed } : { label: c.label, command: c.command, state: 'passed' as const, at: iso() },
+    )
+    card(d, 'failure', 'review', 'Check failed', { check: failed })
+    stage(d, 'review').status = 'blocked'
+    card(d, 'gate', 'review', 'Blocked', { reason: 'repeated', iteration: 3, limit: 3 })
+    openGate(d, 'blocked')
+    p.goal_mode = { ...(p.goal_mode ?? { pushes: 20, max_pushes: 20 }), enabled: false, ended_at: iso(), end_reason: 'exhausted' }
+    touch(d)
+  }
+
   // contentFor is what a task sent from the phone runs through.
   function contentFor(goal: string, prNumber: number): Content {
     const title = goal.split('\n', 1)[0].slice(0, 72)
@@ -1002,5 +1226,52 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
       draft: { title, body: `${goal}\n\nIncludes tests.` },
       prNumber,
     }
+  }
+}
+
+// The answer runTo gives a seeded project's questions
+// (focuspipeline.DecisionYouDecide, lib/easy.ts EASY_YOU_DECIDE).
+const EASY_YOU_DECIDE_DEMO = 'You decide'
+
+// The leader's questions before the blueprint, the same for every idea.
+const webQuestions = [
+  { id: 'q1', question: 'Who will use it?', options: ['Just me', 'A small group I know', 'Anyone with the link'] },
+  { id: 'q2', question: 'How should it feel?', options: ['Calm and simple', 'Bright and playful'] },
+]
+
+// blueprintFor is the blueprint every demo vibe project is drawn to: one
+// screen, four checks, what is kept and what is left out.
+function blueprintFor(idea: string): FocusPlan {
+  const checks = [
+    { label: 'Saving an entry shows "Saved"', command: 'npm run check -- saved' },
+    { label: 'An empty name shows "Please write a name"', command: 'npm run check -- empty-name' },
+    { label: 'The newest entry is at the top of the list', command: 'npm run check -- newest-first' },
+    { label: 'Entries are still there after closing and opening it again', command: 'npm run check -- kept' },
+  ]
+  return {
+    goal: idea,
+    tasks: [
+      { title: 'Lay out the main screen', done: 'the screen looks like the sketch' },
+      { title: 'Save what people enter', done: 'entries are kept after a reload' },
+      { title: 'Show the list, newest first', done: 'the newest entry is at the top' },
+    ],
+    stages: ['plan', 'make', 'review'],
+    verify: checks.map((c) => c.command),
+    checks,
+    screens: [
+      {
+        name: 'Main screen',
+        line: 'Add an entry and see the list',
+        parts: [
+          { kind: 'heading', text: idea.split('\n', 1)[0].slice(0, 40) },
+          { kind: 'field', text: 'Name' },
+          { kind: 'field', text: 'Note' },
+          { kind: 'button', text: 'Save' },
+          { kind: 'list', text: 'Everything saved, newest first' },
+        ],
+      },
+    ],
+    saved: ['Name', 'Note', 'When it was saved'],
+    not_now: ['Signing in', 'Payments', 'Sending email'],
   }
 }

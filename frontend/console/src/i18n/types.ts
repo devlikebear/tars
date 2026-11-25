@@ -31,6 +31,7 @@ import type { ConfigTranslations } from './sections/config.ts'
 import type { RemoteAccessTranslations } from './sections/remoteAccess.ts'
 import type { PhonesTranslations } from './sections/phones.ts'
 import type { MobileAppTranslations } from './sections/mobileApp.ts'
+import type { PhoneTranslations } from './sections/phone.ts'
 
 // Big chat panels keep their strings in ./sections/<area>.ts. Each section's
 // English object is its type, so the Korean object must match it key for key.
@@ -651,6 +652,7 @@ export type Translations = {
   remoteAccess: RemoteAccessTranslations
   phones: PhonesTranslations
   mobileApp: MobileAppTranslations
+  phone: PhoneTranslations
   cron: {
     eyebrow: string
     title: string

@@ -165,14 +165,17 @@
                 onclick={() => { menuOpen = false; onArchive?.(true) }}
                 data-testid="easy-menu-archive">{$t.easy.board.menu.archive}</button>
             {/if}
-            <button
-              type="button"
-              role="menuitem"
-              class="danger"
-              disabled={!canMove}
-              title={canMove ? undefined : $t.easy.board.menu.busyHint}
-              onclick={() => { menuOpen = false; onDelete?.() }}
-              data-testid="easy-menu-delete">{$t.easy.board.menu.delete}</button>
+            <!-- A paired phone cannot delete a project: it passes no onDelete. -->
+            {#if onDelete}
+              <button
+                type="button"
+                role="menuitem"
+                class="danger"
+                disabled={!canMove}
+                title={canMove ? undefined : $t.easy.board.menu.busyHint}
+                onclick={() => { menuOpen = false; onDelete?.() }}
+                data-testid="easy-menu-delete">{$t.easy.board.menu.delete}</button>
+            {/if}
           </div>
         {/if}
       </div>

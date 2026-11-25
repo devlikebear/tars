@@ -32,6 +32,7 @@ import { configKo } from './sections/config.ts'
 import { remoteAccessKo } from './sections/remoteAccess.ts'
 import { phonesKo } from './sections/phones.ts'
 import { mobileAppKo } from './sections/mobileApp.ts'
+import { phoneKo } from './sections/phone.ts'
 
 export const ko = {
   common: {
@@ -1547,4 +1548,5 @@ export const ko = {
   remoteAccess: remoteAccessKo,
   phones: phonesKo,
   mobileApp: mobileAppKo,
+  phone: phoneKo,
 } satisfies Translations

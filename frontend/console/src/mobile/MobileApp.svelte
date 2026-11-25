@@ -1,69 +1,57 @@
 <script lang="ts">
-  // The TARS mobile app's screen (docs/decisions/mobile-remote.md §2, §6):
-  // what waits on you across every paired desktop, ideas kept on this phone
-  // until sent to a desktop as a task, and the desktops themselves with
-  // whether each answers now. Scanning a desk's QR code with the camera
-  // opens a tars-mobile://pair link, which lands here and opens the pairing
-  // sheet filled in; a tars-mobile://focus link opens that pipeline.
+  // The TARS iPhone app (docs/decisions/mobile-remote.md, docs/plans/vibe-
+  // mode-redesign unit 8): vibe mode on every paired desktop, driven from
+  // the phone. Three tabs — Projects (what waits on the person first), +
+  // New (an idea to a desk's team, or kept here while no desk is on) and
+  // Computers (each desk in plain words, and pairing). A project opens its
+  // own screen (MobileProject). The earlier Waiting, Ideas and Chat tabs
+  // are folded into these: what waits leads Projects, ideas are what + New
+  // keeps, and a project's team conversation replaces the chat.
+  //
+  // Scanning a desk's QR code with the camera opens a tars-mobile://pair
+  // link, which lands here and opens the pairing sheet filled in. A
+  // tars-mobile://focus link (an alert's "open in app") opens the project
+  // whose run it names, or that run's own screen when it is not a vibe
+  // project.
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../i18n'
   import type { PairingTarget } from '../lib/devicePairing'
   import type { DesktopStore } from '../lib/mobile/desktopStore.svelte'
-  import type { InboxStore } from '../lib/mobile/inboxStore.svelte'
-  import { readinessLine, readinessProblems, type PairedDesktop } from '../lib/mobile/desktops'
+  import type { ProjectStore } from '../lib/mobile/projectStore.svelte'
+  import type { IdeaStore } from '../lib/mobile/ideaStore.svelte'
   import { isDemoDesktop } from '../lib/mobile/demoDesk'
   import type { AppLinks } from '../lib/mobile/appLinks'
   import type { DesktopChange, DesktopEvents } from '../lib/mobile/desktopEvents'
-  import { stageLabel } from '../lib/focus'
-  import { runningPipelines, waitingOf } from '../lib/mobile/inbox'
-  import type { FocusListItem } from '../lib/types'
-  import InboxView from './InboxView.svelte'
+  import type { PairedDesktop } from '../lib/mobile/desktops'
+  import { waitingCount } from '../lib/mobile/projects'
+  import MobileProject from './MobileProject.svelte'
   import MobilePipeline from './MobilePipeline.svelte'
   import PairSheet from './PairSheet.svelte'
-  import IdeasView from './IdeasView.svelte'
-  import SendIdeaSheet from './SendIdeaSheet.svelte'
-  import ChatView from './ChatView.svelte'
-  import type { IdeaStore } from '../lib/mobile/ideaStore.svelte'
-  import type { Idea, SentIdea } from '../lib/mobile/ideas'
-  import type { RemoteChatStore } from '../lib/mobile/remoteChatStore.svelte'
+  import ProjectsView from './ProjectsView.svelte'
+  import NewView from './NewView.svelte'
+  import ComputersView from './ComputersView.svelte'
 
   interface Props {
     store: DesktopStore
-    inbox: InboxStore
+    projects: ProjectStore
     ideas: IdeaStore
-    chat: RemoteChatStore
-    // The desktops' focus event streams; optional so a screen built
-    // without them still reads on its timer.
+    // The desktops' event streams; optional so a screen built without them
+    // still reads on its timer.
     events?: DesktopEvents
     links: AppLinks
   }
 
-  let { store, inbox, ideas, chat, events, links }: Props = $props()
-
-  // The idea being sent, while the send sheet is open.
-  let sending = $state<Idea | null>(null)
-  const onlineDesktops = $derived(store.desktops.filter((d) => store.statuses[d.id]?.state === 'online'))
-
-  function openSend(idea: Idea) {
-    ideas.sendFailure = null
-    sending = idea
-  }
-
-  function onSent(sent: SentIdea) {
-    sending = null
-    notice = $t.mobileApp.sentNotice(sent.desktopName)
-    noticeWarns = false
-    void refresh()
-  }
+  let { store, projects, ideas, events, links }: Props = $props()
 
   // While the app is open it reads again this often: for desktops that wake
   // or sleep, and for desktops too old for the event stream. A desktop
-  // whose stream is open says at once when a pipeline changes.
+  // whose stream is open says at once when a project changes.
   const pollMs = 30_000
 
-  let tab = $state<'inbox' | 'ideas' | 'chat' | 'desktops'>('inbox')
-  // The pipeline open on screen, on the desktop that owns it.
-  let opened = $state<{ desktopID: string; sessionID: string } | null>(null)
+  let tab = $state<'projects' | 'new' | 'computers'>('projects')
+  // What is open on screen: a project, or (from a link) a run that is not
+  // a vibe project.
+  let opened = $state<{ desktopID: string; projectID?: string; sessionID?: string } | null>(null)
   const openedDesktop = $derived(opened ? store.desktops.find((d) => d.id === opened!.desktopID) ?? null : null)
   let checking = $state(false)
   let pairOpen = $state(false)
@@ -72,84 +60,85 @@
   let noticeWarns = $state(false)
   const stops: Array<() => void> = []
 
-  function openPair(target: PairingTarget | null = null) {
+  const isOnline = (d: PairedDesktop) => store.statuses[d.id]?.state === 'online'
+  const onlineDesktops = $derived(store.desktops.filter(isOnline))
+  const waiting = $derived(waitingCount(projects.projects))
+  const unsentIdeas = $derived(ideas.ideas.filter((i) => !i.sent).length)
+
+  function say(text: string, warns = false) {
+    notice = text
+    noticeWarns = warns
+  }
+
+  function openPair(desktop?: PairedDesktop, target: PairingTarget | null = null) {
     store.pairFailure = null
-    pairInitial = target
+    pairInitial = target ?? (desktop ? { baseURL: desktop.baseURL, code: '' } : null)
     pairOpen = true
   }
 
   function onPaired(name: string) {
     pairOpen = false
-    notice = $t.mobileApp.pairedWith(name)
-    noticeWarns = false
+    say($t.phone.computers.paired(name))
     void refresh()
   }
 
-  const hasDemo = $derived(store.desktops.some(isDemoDesktop))
-
-  // tryDemo adds the desk that lives inside the app and shows what waits
-  // there, for someone with no desktop paired yet.
+  // tryDemo adds the desk that lives inside the app, for someone with no
+  // desktop paired yet (and for App Store review).
   async function tryDemo() {
     await store.addDemo()
-    notice = $t.mobileApp.demoAdded
-    noticeWarns = false
-    tab = 'inbox'
+    say($t.phone.computers.demoAdded)
+    tab = 'new'
     void refresh()
   }
 
   async function forget(desktop: PairedDesktop) {
-    if (!confirm(isDemoDesktop(desktop) ? $t.mobileApp.confirmForgetDemo : $t.mobileApp.confirmForget(desktop.name))) return
+    if (!confirm(isDemoDesktop(desktop) ? $t.phone.computers.confirmForgetDemo : $t.phone.computers.confirmForget(desktop.name))) return
     await store.forget(desktop.id)
     void refresh()
   }
 
-  // refresh checks which desktops answer, then asks those for what waits.
+  // refresh checks which desktops answer, then reads their projects.
   async function refresh() {
     if (checking) return
     checking = true
     try {
       await store.refresh()
-      const online = store.desktops.filter((d) => store.statuses[d.id]?.state === 'online')
+      const online = store.desktops.filter(isOnline)
       events?.watch(online)
-      await inbox.refresh(online)
+      await projects.refresh(online)
     } finally {
       checking = false
     }
   }
 
-  // The desktops whose pipelines the inbox cannot show now.
+  // The desktops whose projects the list cannot show now.
   const missing = $derived(
     store.desktops
       .filter((d) => {
         const state = store.statuses[d.id]?.state
-        return (state && state !== 'online' && state !== 'checking') || inbox.failed.includes(d.id)
+        return (state && state !== 'online' && state !== 'checking') || projects.failed.includes(d.id)
       })
       .map((d) => d.name),
   )
 
-  const waitingCount = $derived(inbox.entries.length)
-
-  function openPipeline(desktopID: string, sessionID: string) {
-    opened = { desktopID, sessionID }
+  function openProject(desktopID: string, projectID: string) {
+    notice = ''
+    opened = { desktopID, projectID }
     window.scrollTo(0, 0)
   }
 
-  // A desktop's stream said one of its pipelines changed: read that desktop
-  // again. A pipeline on screen reads its own state; the lists wait for back.
+  // A desktop's stream said something changed: read that desktop's
+  // projects again. A project on screen reads its own state.
   function onDesktopChanged(change: DesktopChange) {
     if (opened) return
     const desktop = store.desktops.find((d) => d.id === change.desktopID)
-    if (desktop) void inbox.refreshDesktop(desktop)
+    if (desktop) void projects.refreshDesktop(desktop)
   }
 
-  // Back from a pipeline: what waits has likely changed.
-  function closePipeline() {
+  // Back from a project: its state has likely changed.
+  function close() {
     opened = null
     void refresh()
-  }
-
-  function stageOf(item: FocusListItem): string {
-    return stageLabel({ template: item.template, stages: [{ id: item.current, label: item.current_label ?? '' }] }, item.current, $t.focus)
   }
 
   function hostOf(baseURL: string): string {
@@ -160,43 +149,38 @@
     }
   }
 
-  function host(desktop: PairedDesktop): string {
-    return hostOf(desktop.baseURL)
-  }
-
-  // openLink acts on a link the app was opened with: a desk's pairing code
-  // opens the pairing sheet; a pipeline (from a Telegram alert, through the
-  // console's "open in app") opens that pipeline on the desktop that owns it.
+  // openLink acts on a link the app was opened with.
   async function openLink(url: string, loading: Promise<void>) {
     const pairing = store.readLink(url)
     if (pairing) {
-      openPair(pairing)
+      openPair(undefined, pairing)
       return
     }
     await loading
     const focus = store.readFocusLink(url)
     if (!focus) return
-    if (focus.desktop) {
-      openPipeline(focus.desktop.id, focus.target.sessionID)
+    if (!focus.desktop) {
+      // A desk this phone is not paired with: say so where pairing is.
+      opened = null
+      tab = 'computers'
+      say($t.phone.computers.notPaired(hostOf(focus.target.baseURL)), true)
       return
     }
-    // A desk this phone is not paired with: say so where pairing is.
-    opened = null
-    tab = 'desktops'
-    notice = $t.mobileApp.notPairedWith(hostOf(focus.target.baseURL))
-    noticeWarns = true
+    const desktop = focus.desktop
+    if (isOnline(desktop) && !projects.byDesk[desktop.id]) await projects.refreshDesktop(desktop)
+    const project = projects.findBySession(desktop.id, focus.target.sessionID)
+    opened = project ? { desktopID: desktop.id, projectID: project.id } : { desktopID: desktop.id, sessionID: focus.target.sessionID }
   }
 
   onMount(() => {
     const loading = store.load()
-    void loading.then(() => refresh())
+    const first = loading.then(() => refresh())
     void ideas.load()
-    // A pipeline on screen reads its own state; the lists wait for back.
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible' && !opened) void refresh()
     }, pollMs)
     stops.push(
-      links.listen((url) => void openLink(url, loading)),
+      links.listen((url) => void openLink(url, first)),
       links.onResume(() => {
         events?.reconnect()
         if (!opened) void refresh()
@@ -209,170 +193,71 @@
   onDestroy(() => stops.forEach((stop) => stop()))
 </script>
 
-{#if opened && openedDesktop}
+{#if opened && openedDesktop && opened.projectID}
+  {#key `${opened.desktopID}\n${opened.projectID}`}
+    <MobileProject
+      desktop={openedDesktop}
+      projectId={opened.projectID}
+      {events}
+      onOpen={(projectID) => openProject(openedDesktop.id, projectID)}
+      onClose={close}
+    />
+  {/key}
+{:else if opened && openedDesktop && opened.sessionID}
   {#key `${opened.desktopID}\n${opened.sessionID}`}
     <MobilePipeline
       desktop={openedDesktop}
       sessionId={opened.sessionID}
       {events}
-      onOpen={(sessionID) => openPipeline(openedDesktop.id, sessionID)}
-      onClose={closePipeline}
+      onOpen={(sessionID) => (opened = { desktopID: openedDesktop.id, sessionID })}
+      onClose={close}
     />
   {/key}
 {:else}
-<main class="mobile">
-  <header>
-    <h1>{$t.mobileApp.title}</h1>
-    <button type="button" class="btn btn-ghost btn-sm" onclick={() => refresh()} disabled={!store.loaded || checking}>
-      {checking ? $t.mobileApp.refreshing : $t.mobileApp.refresh}
-    </button>
-  </header>
-
-  <div class="tabs" role="tablist">
-    <button
-      type="button"
-      role="tab"
-      aria-selected={tab === 'inbox'}
-      class:active={tab === 'inbox'}
-      onclick={() => (tab = 'inbox')}
-      data-testid="mobile-tab-inbox"
-    >
-      {$t.mobileApp.tabs.inbox}
-      {#if waitingCount > 0}
-        <span class="badge" data-testid="mobile-inbox-count">{waitingCount}</span>
-      {/if}
-    </button>
-    <button
-      type="button"
-      role="tab"
-      aria-selected={tab === 'ideas'}
-      class:active={tab === 'ideas'}
-      onclick={() => (tab = 'ideas')}
-      data-testid="mobile-tab-ideas"
-    >
-      {$t.mobileApp.tabs.ideas}
-    </button>
-    <button
-      type="button"
-      role="tab"
-      aria-selected={tab === 'chat'}
-      class:active={tab === 'chat'}
-      onclick={() => (tab = 'chat')}
-      data-testid="mobile-tab-chat"
-    >
-      {$t.mobileApp.tabs.chat}
-    </button>
-    <button
-      type="button"
-      role="tab"
-      aria-selected={tab === 'desktops'}
-      class:active={tab === 'desktops'}
-      onclick={() => (tab = 'desktops')}
-      data-testid="mobile-tab-desktops"
-    >
-      {$t.mobileApp.tabs.desktops}
-    </button>
-  </div>
-
-  {#if notice}
-    <p class="notice" class:warns={noticeWarns} role="status" data-testid="mobile-notice">{notice}</p>
-  {/if}
-
-  {#if tab === 'inbox'}
-    <InboxView {inbox} desktops={store.desktops} {missing} {checking} onOpen={openPipeline} />
-  {:else if tab === 'ideas'}
-    <IdeasView {ideas} onSend={openSend} onOpen={openPipeline} paired={(id) => store.desktops.some((d) => d.id === id)} />
-  {:else if tab === 'chat'}
-    <ChatView {chat} desktops={onlineDesktops} />
-  {:else}
-  <section aria-label={$t.mobileApp.desktopsTitle}>
-    {#if store.loaded && store.desktops.length === 0}
-      <p class="empty" data-testid="mobile-empty">{$t.mobileApp.empty}</p>
+  <main class="mobile">
+    {#if notice}
+      <p class="notice" class:warns={noticeWarns} role="status" data-testid="mobile-notice">{notice}</p>
     {/if}
-    {#each store.desktops as desktop (desktop.id)}
-      {@const status = store.statuses[desktop.id]?.state ?? 'checking'}
-      <article class="desktop" data-testid="mobile-desktop" data-state={status}>
-        <div class="desktop-head">
-          <span class="dot {status}" aria-hidden="true"></span>
-          <strong>{desktop.name}</strong>
-          <span class="state">{$t.mobileApp.states[status]}</span>
-        </div>
-        {#if isDemoDesktop(desktop)}
-          <span class="state-hint" data-testid="mobile-demo-hint">{$t.mobileApp.demoHint}</span>
-        {:else}
-          <span class="host">{host(desktop)}</span>
-        {/if}
-        {#if $t.mobileApp.stateHints[status]}
-          <span class="state-hint">{$t.mobileApp.stateHints[status]}</span>
-        {/if}
-        {#if status === 'online' && store.readiness[desktop.id]}
-          {@const problems = readinessProblems(store.readiness[desktop.id])}
-          <div class="readiness" data-testid="mobile-desktop-readiness" data-ready={problems.length === 0 ? 'true' : 'false'}>
-            {#if problems.length === 0}
-              <span class="ready">{$t.mobileApp.ready}</span>
-            {/if}
-            {#each problems as check (check.id)}
-              <span class="problem" class:blocking={check.id === 'model'}>{readinessLine(check, $t.mobileApp.readiness)}</span>
-            {/each}
-          </div>
-        {/if}
-        <div class="desktop-actions">
-          {#if status === 'unpaired'}
-            <button type="button" class="btn btn-primary btn-sm" onclick={() => openPair({ baseURL: desktop.baseURL, code: '' })}>
-              {$t.mobileApp.pair}
-            </button>
-          {/if}
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => forget(desktop)}>{$t.mobileApp.forget}</button>
-        </div>
-        {#if status === 'online' && inbox.pipelines[desktop.id]}
-          {@const running = runningPipelines(inbox.pipelines[desktop.id])}
-          <div class="pipelines" data-testid="mobile-desktop-pipelines">
-            <span class="pipelines-title">{$t.mobileApp.pipelinesTitle}</span>
-            {#if running.length === 0}
-              <span class="state-hint">{$t.mobileApp.noPipelines}</span>
-            {/if}
-            {#each running as item (item.session_id)}
-              {@const waits = waitingOf(item)}
-              <button type="button" class="pipeline-row" onclick={() => openPipeline(desktop.id, item.session_id)} data-testid="mobile-desktop-pipeline">
-                <span class="pipeline-title">{item.title || item.goal}</span>
-                <span class="pipeline-meta">
-                  {stageOf(item)}
-                  {#if waits.gate || waits.cards > 0}<span class="pipeline-waits">· {$t.mobileApp.waitsOnYou}</span>{/if}
-                  {#if item.goal_mode}<span>· {$t.focus.screen.goal}</span>{/if}
-                </span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </article>
-    {/each}
-  </section>
-  {/if}
 
-  <!-- Pairing belongs to the Desktops tab, or to any tab while there is
-       nothing paired yet. -->
-  {#if tab === 'desktops' || (store.loaded && store.desktops.length === 0)}
-    <footer>
-      <button type="button" class="btn btn-primary" onclick={() => openPair()} data-testid="mobile-pair-open">
-        {$t.mobileApp.pairDesktop}
-      </button>
-      {#if store.loaded && !hasDemo}
-        <button type="button" class="btn btn-ghost" onclick={tryDemo} data-testid="mobile-demo-open">
-          {$t.mobileApp.tryDemo}
-        </button>
+    {#if tab === 'projects'}
+      <ProjectsView {projects} desktops={store.desktops} {missing} onOpen={openProject} onNotice={(text) => say(text)} />
+      {#if store.loaded && store.desktops.length === 0}
+        <button type="button" class="btn btn-primary first" onclick={() => (tab = 'computers')}>{$t.phone.computers.add}</button>
       {/if}
-    </footer>
-  {/if}
-</main>
+    {:else if tab === 'new'}
+      <NewView {projects} {ideas} desktops={store.desktops} online={isOnline} onOpen={openProject} onNotice={(text) => say(text)} />
+    {:else}
+      <ComputersView
+        {store}
+        {projects}
+        savedIdeas={unsentIdeas}
+        {checking}
+        onPair={(desktop) => openPair(desktop)}
+        onDemo={tryDemo}
+        onForget={forget}
+        onRefresh={() => void refresh()}
+        onIdeas={() => (tab = 'new')}
+      />
+    {/if}
+  </main>
 
+  <nav class="tabbar" aria-label={$t.phone.tabsLabel}>
+    <button type="button" class:active={tab === 'projects'} aria-current={tab === 'projects' ? 'page' : undefined} onclick={() => (tab = 'projects')} data-testid="mobile-tab-projects">
+      {$t.phone.tabs.projects}
+      {#if waiting > 0}<span class="badge" data-testid="mobile-waiting-count">{waiting}</span>{/if}
+    </button>
+    <button type="button" class:active={tab === 'new'} aria-current={tab === 'new' ? 'page' : undefined} onclick={() => (tab = 'new')} data-testid="mobile-tab-new">
+      {$t.phone.tabs.new}
+    </button>
+    <button type="button" class:active={tab === 'computers'} aria-current={tab === 'computers' ? 'page' : undefined} onclick={() => (tab = 'computers')} data-testid="mobile-tab-computers">
+      {$t.phone.tabs.computers}
+      {#if onlineDesktops.length === 0 && store.loaded}<span class="dot-warn" aria-hidden="true"></span>{/if}
+    </button>
+  </nav>
 {/if}
 
 {#if pairOpen}
   <PairSheet {store} initial={pairInitial} onDone={onPaired} onCancel={() => (pairOpen = false)} />
-{/if}
-
-{#if sending}
-  <SendIdeaSheet {ideas} idea={sending} desktops={onlineDesktops} readiness={store.readiness} {onSent} onCancel={() => (sending = null)} />
 {/if}
 
 <style>
@@ -381,206 +266,58 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    padding: calc(env(safe-area-inset-top) + var(--space-4)) var(--space-4) calc(env(safe-area-inset-bottom) + var(--space-4));
+    box-sizing: border-box;
+    padding: calc(env(safe-area-inset-top) + var(--space-4)) var(--space-4) calc(env(safe-area-inset-bottom) + 72px);
     max-width: 640px;
     margin: 0 auto;
   }
 
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: var(--text-xl);
-    letter-spacing: 0.04em;
-  }
-
-  section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    flex: 1;
-  }
-
-  .empty,
   .notice {
     margin: 0;
     font-size: var(--text-sm);
-    color: var(--text-secondary);
-    line-height: 1.5;
-  }
-
-  .notice {
     color: var(--success);
+    line-height: 1.5;
   }
 
   .notice.warns {
     color: var(--warning);
   }
 
-  .desktop {
+  .first {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  /* The three tabs sit at the bottom, where a thumb reaches
+     (screens/M-Projects). */
+  .tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    background: var(--surface);
-    padding: var(--space-4);
-  }
-
-  .desktop-head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .desktop-head strong {
-    font-size: 17px;
-    color: var(--text-primary);
-  }
-
-  .state {
-    margin-left: auto;
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-  }
-
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-tertiary);
-    flex: none;
-  }
-
-  .dot.online {
-    background: var(--success);
-  }
-
-  .dot.unpaired,
-  .dot.setup {
-    background: var(--warning);
-  }
-
-  .dot.unreachable {
-    background: var(--error);
-  }
-
-  .host {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    overflow-wrap: anywhere;
-  }
-
-  .state-hint {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-  }
-
-  .desktop-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
-  }
-
-  .readiness {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: var(--text-sm);
-    line-height: 1.4;
-  }
-
-  .ready {
-    color: var(--success);
-  }
-
-  .problem {
-    color: var(--warning);
-  }
-
-  .problem.blocking {
-    color: var(--error);
-  }
-
-  .pipelines {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
-    padding-top: var(--space-3);
+    padding: var(--space-1) var(--space-2) calc(env(safe-area-inset-bottom) + var(--space-1));
     border-top: 1px solid var(--border-subtle);
+    background: var(--surface);
   }
 
-  .pipelines-title {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .pipeline-row {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    align-items: flex-start;
-    text-align: left;
-    min-height: 44px;
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    background: var(--surface-inset);
-    color: var(--text-primary);
-    font: inherit;
-  }
-
-  .pipeline-title {
-    font-size: var(--text-sm);
-    overflow-wrap: anywhere;
-  }
-
-  .pipeline-meta {
-    display: flex;
-    gap: var(--space-1);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-  }
-
-  .pipeline-waits {
-    color: var(--warning);
-  }
-
-  .tabs {
-    display: flex;
-    gap: var(--space-1);
-    padding: 3px;
-    border-radius: var(--radius-md);
-    background: var(--surface-inset);
-  }
-
-  .tabs button {
+  .tabbar button {
     flex: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
-    min-height: 36px;
+    min-height: 52px;
     border: 0;
-    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-secondary);
     font: inherit;
     font-size: var(--text-sm);
   }
 
-  .tabs button.active {
-    background: var(--surface-elevated);
-    color: var(--text-primary);
+  .tabbar button.active {
+    color: var(--primary-text);
+    font-weight: 600;
   }
 
   .badge {
@@ -594,16 +331,10 @@
     line-height: 20px;
   }
 
-  footer {
-    margin-top: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  footer .btn {
-    width: 100%;
-    min-height: 48px;
-    font-size: 16px;
+  .dot-warn {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--warning);
   }
 </style>

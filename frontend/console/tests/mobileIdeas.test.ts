@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { APIRequestError } from '../src/lib/api/client.ts'
 import { ideaTitle, parseIdeas, sortedIdeas, type Idea } from '../src/lib/mobile/ideas.ts'
 import { memoryStore } from '../src/lib/mobile/secureStore.ts'
-import type { TaskAPI } from '../src/lib/mobile/desktopApi.ts'
+import type { IdeaAPI } from '../src/lib/mobile/ideaStore.svelte.ts'
 import type { PairedDesktop } from '../src/lib/mobile/desktops.ts'
 import { compileSvelteModule } from './helpers/compileSvelteModule.ts'
 import type * as IdeaStoreModule from '../src/lib/mobile/ideaStore.svelte.ts'
@@ -24,29 +24,21 @@ function backing() {
 const mac: PairedDesktop = { id: 'https://mac.ts.net', name: 'mac', baseURL: 'https://mac.ts.net', token: 'tok', deviceID: 'd', pairedAt: '2026-11-14T00:00:00Z' }
 const mini: PairedDesktop = { ...mac, id: 'https://mini.ts.net', name: 'mini', baseURL: 'https://mini.ts.net' }
 
-function fakeTaskAPI(overrides: Partial<TaskAPI> = {}) {
-  const created: Array<{ baseURL: string; token: string; body: unknown }> = []
-  const api: TaskAPI = {
-    async folders() {
-      return [
-        { path: '/work/app', name: 'app', exists: true },
-        { path: '/work/gone', name: 'gone', exists: false },
-      ]
-    },
-    async templates() {
-      return [{ id: 'dev', name: 'Development', stages: [], builtin: true }]
-    },
-    async createPipeline(target, request) {
-      created.push({ baseURL: target.baseURL, token: target.token, body: request })
-      return { session_id: 'sess-1' }
-    },
-    ...overrides,
+function fakeIdeaAPI(create?: IdeaAPI['create']) {
+  const created: Array<{ baseURL: string; token: string; idea: string }> = []
+  const api: IdeaAPI = {
+    create:
+      create ??
+      (async (target, idea) => {
+        created.push({ baseURL: target.baseURL, token: target.token, idea })
+        return { project: { id: 'proj-1', name: idea, idea, folder: '~/TARS Projects/x', status: 'ready', session_id: 's1', created_at: '', updated_at: '' } }
+      }),
   }
   return { api, created }
 }
 
 let clock = 0
-const deps = (b: ReturnType<typeof backing>, api: TaskAPI) => ({
+const deps = (b: ReturnType<typeof backing>, api: IdeaAPI) => ({
   storage: memoryStore(b),
   api,
   now: () => new Date(Date.UTC(2026, 10, 14, 9, clock++)),
@@ -65,104 +57,63 @@ test('ideas: first line is the title; unsent first, newest first; the stored lis
   assert.deepEqual(parseIdeas('{}'), [])
 })
 
-test('ideas are kept on the phone: add, edit, delete, and read back', async () => {
+test('an idea sent before vibe mode (a focus task) and one sent as a project both read back', () => {
+  const old: Idea = { id: 'o', text: 'o', createdAt: '2026-11-14T08:00:00Z', sent: { desktopID: 'x', desktopName: 'x', sessionID: 's', at: '2026-11-14T08:01:00Z' } }
+  const now: Idea = { id: 'n', text: 'n', createdAt: '2026-11-14T09:00:00Z', sent: { desktopID: 'x', desktopName: 'x', projectID: 'p', at: '2026-11-14T09:01:00Z' } }
+  assert.deepEqual(parseIdeas(JSON.stringify([old, now])), [old, now])
+})
+
+test('ideas are kept on the phone: add, delete, and read back', async () => {
   const b = backing()
-  const { api } = fakeTaskAPI()
+  const { api } = fakeIdeaAPI()
   const store = new IdeaStore(deps(b, api))
   await store.load()
   assert.equal(await store.add('   '), null)
-  const idea = await store.add('  Dark mode toggle  ')
-  assert.equal(idea?.text, 'Dark mode toggle')
-  await store.edit(idea!.id, 'Dark mode toggle\nin settings')
+  const idea = await store.add('  A to-do list  ')
+  assert.equal(idea?.text, 'A to-do list')
   const again = new IdeaStore(deps(b, api))
   await again.load()
-  assert.deepEqual(again.ideas.map((i) => i.text), ['Dark mode toggle\nin settings'])
+  assert.deepEqual(again.ideas.map((i) => i.text), ['A to-do list'])
   await again.remove(idea!.id)
   assert.deepEqual(parseIdeas(b.map.get('tars-mobile:ideas')), [])
 })
 
-test('sending an idea starts a task in a registered folder on the desktop and remembers where it went', async () => {
+test("sending an idea starts a project on the desktop's team and remembers where it went", async () => {
   const b = backing()
-  const { api, created } = fakeTaskAPI()
+  const { api, created } = fakeIdeaAPI()
   const store = new IdeaStore(deps(b, api))
   await store.load()
-  const idea = (await store.add('Dark mode'))!
+  const idea = (await store.add('A sign-up page'))!
 
-  await store.prepare(mac)
-  // Only folders that exist are offered.
-  assert.deepEqual(store.options?.folders.map((f) => f.path), ['/work/app'])
-  assert.equal(store.options?.desktopID, mac.id)
-
-  const sent = await store.send(mac, idea.id, ' Dark mode, with a toggle ', ['/work/app'], '')
-  assert.equal(sent?.sessionID, 'sess-1')
+  const sent = await store.send(mac, idea.id)
+  assert.equal(sent?.projectID, 'proj-1')
   assert.equal(sent?.desktopName, 'mac')
-  // Goal, folder; no template when the desk's default is picked, and nothing
-  // else (the desk starts the first turn itself and refuses goal mode).
-  assert.deepEqual(created, [{ baseURL: mac.baseURL, token: 'tok', body: { goal: 'Dark mode, with a toggle', cwd: '/work/app' } }])
-  const saved = parseIdeas(b.map.get('tars-mobile:ideas'))[0]
-  assert.equal(saved.text, 'Dark mode, with a toggle')
-  assert.equal(saved.sent?.sessionID, 'sess-1')
+  assert.deepEqual(created, [{ baseURL: mac.baseURL, token: 'tok', idea: 'A sign-up page' }])
+  assert.equal(parseIdeas(b.map.get('tars-mobile:ideas'))[0].sent?.projectID, 'proj-1')
+  assert.equal(store.sending, '')
 
-  // A sent idea is not sent twice, nor edited.
-  assert.equal(await store.send(mac, idea.id, 'again', ['/work/app'], ''), null)
-  await store.edit(idea.id, 'changed')
-  assert.equal(store.ideas[0].text, 'Dark mode, with a toggle')
+  // A sent idea is not sent twice.
+  assert.equal(await store.send(mini, idea.id), null)
   assert.equal(created.length, 1)
-
-  const other = (await store.add('Release notes'))!
-  await store.send(mac, other.id, 'Release notes', ['/work/app'], 'writing')
-  assert.deepEqual(created[1].body, { goal: 'Release notes', cwd: '/work/app', template: 'writing' })
-})
-
-test('sending with more than one folder puts the first as cwd and the rest as extra_dirs', async () => {
-  const b = backing()
-  const { api, created } = fakeTaskAPI()
-  const store = new IdeaStore(deps(b, api))
-  await store.load()
-  const idea = (await store.add('Dark mode'))!
-
-  await store.send(mac, idea.id, 'Dark mode', ['/work/app', '/work/shared', '/work/docs'], '')
-  assert.deepEqual(created[0].body, { goal: 'Dark mode', cwd: '/work/app', extra_dirs: ['/work/shared', '/work/docs'] })
 })
 
 test('a send that fails says why and keeps the idea unsent', async () => {
   for (const [err, failure] of [
-    [new APIRequestError('folder is not registered for phones', 403), 'folder'],
-    [new APIRequestError('registered folders are unavailable', 503), 'unavailable'],
+    [new APIRequestError('cannot run', 503, { error: 'x', code: 'cannot_run' } as never), 'cannot_run'],
     [new APIRequestError('unauthorized', 401), 'unpaired'],
-    [new APIRequestError('boom', 500), 'failed'],
+    [new APIRequestError('boom', 500), 'unknown'],
     [new TypeError('Load failed'), 'unreachable'],
   ] as const) {
     const b = backing()
-    const { api } = fakeTaskAPI({ createPipeline: async () => { throw err } })
+    const { api } = fakeIdeaAPI(async () => {
+      throw err
+    })
     const store = new IdeaStore(deps(b, api))
     await store.load()
     const idea = (await store.add('x'))!
-    assert.equal(await store.send(mac, idea.id, 'x', ['/work/app'], ''), null)
+    assert.equal(await store.send(mac, idea.id), null)
     assert.equal(store.sendFailure, failure)
-    assert.equal(store.sending, false)
+    assert.equal(store.sending, '')
     assert.equal(parseIdeas(b.map.get('tars-mobile:ideas'))[0].sent, undefined)
   }
-})
-
-test("reading a desktop's choices: a failure says why, and a late answer for another desktop is dropped", async () => {
-  let release: () => void = () => {}
-  const slow = new Promise<void>((r) => { release = r })
-  const { api } = fakeTaskAPI({
-    async folders(target) {
-      if (target.baseURL === mac.baseURL) {
-        await slow
-        return [{ path: '/late', name: 'late', exists: true }]
-      }
-      throw new APIRequestError('registered folders are unavailable', 503)
-    },
-  })
-  const store = new IdeaStore(deps(backing(), api))
-  const first = store.prepare(mac)
-  await store.prepare(mini)
-  assert.equal(store.optionsFailure, 'unavailable')
-  release()
-  await first
-  assert.equal(store.options, null)
-  assert.equal(store.loadingOptions, false)
 })

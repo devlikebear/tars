@@ -7,11 +7,19 @@
   // (the team is at work: 409 busy) is told in plain words.
   import { onMount } from 'svelte'
   import { locale, t } from '../../i18n'
-  import { easyErrorCode, listEasyVersions, restoreEasyVersion } from '../../lib/api/easy'
+  import { easyErrorCode, localEasyApi, type EasyAPI } from '../../lib/api/easy'
   import { easyAgo } from '../../lib/easyBoard'
   import { VERSION_STRIP, currentVersion, restoreErrorKey, versionRows, type EasyVersion, type EasyVersionRow } from '../../lib/easy'
 
-  let { projectId, onRestored, onCurrent }: { projectId: string; onRestored: () => void; onCurrent?: (n: number | undefined) => void } = $props()
+  let {
+    projectId,
+    onRestored,
+    onCurrent,
+    api = localEasyApi,
+    // full shows every version at once (the phone's Versions tab) instead of
+    // the strip of three.
+    full = false,
+  }: { projectId: string; onRestored: () => void; onCurrent?: (n: number | undefined) => void; api?: EasyAPI; full?: boolean } = $props()
 
   let versions = $state<EasyVersion[]>([])
   let loadFailed = $state(false)
@@ -22,7 +30,7 @@
   let goButton = $state<HTMLButtonElement | null>(null)
 
   const rows = $derived(versionRows(versions, $t.easy.versions))
-  const shown = $derived(all ? rows : rows.slice(0, VERSION_STRIP))
+  const shown = $derived(all || full ? rows : rows.slice(0, VERSION_STRIP))
 
   $effect(() => {
     onCurrent?.(currentVersion(rows))
@@ -33,7 +41,7 @@
 
   onMount(async () => {
     try {
-      versions = await listEasyVersions(projectId)
+      versions = await api.versions(projectId)
     } catch {
       loadFailed = true
     }
@@ -49,7 +57,7 @@
     restoring = true
     restoreError = ''
     try {
-      versions = await restoreEasyVersion(projectId, row.commit)
+      versions = await api.restore(projectId, row.commit)
       asking = null
       onRestored()
     } catch (err) {
@@ -90,7 +98,7 @@
         </li>
       {/each}
     </ul>
-    {#if rows.length > VERSION_STRIP}
+    {#if !full && rows.length > VERSION_STRIP}
       <button type="button" class="more" data-testid="easy-versions-all" onclick={() => (all = !all)}>
         {all ? $t.easy.versions.fewer : $t.easy.versions.all(rows.length)}
       </button>
