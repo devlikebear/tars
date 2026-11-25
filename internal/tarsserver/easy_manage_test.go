@@ -178,7 +178,7 @@ func TestEasyProjectRenameAndArchive(t *testing.T) {
 		{`{}`, serverauth.RoleUser, http.StatusBadRequest},
 		{`{"name":"   "}`, serverauth.RoleUser, http.StatusBadRequest},
 		{`{"name":"` + strings.Repeat("x", 61) + `"}`, serverauth.RoleUser, http.StatusBadRequest},
-		{`{"name":"x"}`, serverauth.RoleFocus, http.StatusForbidden},
+		{`{"name":"x"}`, serverauth.RoleFocus, http.StatusOK},
 	} {
 		if rec := focusRequestAs(t, h, http.MethodPatch, path, tc.body, tc.role); rec.Code != tc.code {
 			t.Fatalf("%s as %s = %d %s", tc.body, tc.role, rec.Code, rec.Body.String())

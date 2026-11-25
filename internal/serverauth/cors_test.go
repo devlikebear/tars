@@ -87,3 +87,32 @@ func TestAppCORSActualRequests(t *testing.T) {
 		t.Fatalf("route outside the table must not get CORS headers: %v", rec.Header())
 	}
 }
+
+// The vibe routes a phone reaches get CORS like the rest of the device
+// table; the ones it does not (delete, the preview) stay untouched.
+func TestAppCORSVibeRoutes(t *testing.T) {
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/v1/easy/projects"},
+		{http.MethodPost, "/v1/easy/projects"},
+		{http.MethodPatch, "/v1/easy/projects/p1"},
+		{http.MethodPost, "/v1/easy/projects/p1/changes"},
+		{http.MethodPost, "/v1/easy/projects/p1/versions/c1/restore"},
+		{http.MethodGet, "/v1/easy/readiness"},
+	} {
+		h, reached := corsHandler()
+		rec := corsRequest(h, http.MethodOptions, tc.path, "capacitor://localhost", tc.method)
+		if rec.Code != http.StatusNoContent || *reached != 0 || rec.Header().Get("Access-Control-Allow-Methods") != tc.method {
+			t.Errorf("%s %s: preflight code=%d reached=%d headers=%v", tc.method, tc.path, rec.Code, *reached, rec.Header())
+		}
+	}
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodDelete, "/v1/easy/projects/p1"},
+		{http.MethodGet, "/v1/easy/projects/p1/preview"},
+	} {
+		h, reached := corsHandler()
+		rec := corsRequest(h, http.MethodOptions, tc.path, "capacitor://localhost", tc.method)
+		if *reached != 1 || rec.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Errorf("%s %s: must pass through without CORS headers", tc.method, tc.path)
+		}
+	}
+}

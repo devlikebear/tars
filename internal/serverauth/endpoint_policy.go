@@ -168,6 +168,21 @@ var focusEndpointRules = []EndpointPolicyRule{
 	// the request (internal/apihandlers/remote_chat.go).
 	focusRule([]string{http.MethodPost}, "/v1/remote/chat/session", "device chat session ensure"),
 	focusRule([]string{http.MethodGet}, "/v1/remote/chat/history", "device chat session history"),
+	// Vibe (easy) mode from the phone (docs/plans/vibe-mode-redesign unit 6).
+	// Every id here names a record in the easy project store, never a
+	// session or a folder, and creating one takes only an idea: the server
+	// picks the folder (internal/tarsserver/easy_projects.go). An easy
+	// project's pipeline is a focus pipeline, so its plan gate, the leader's
+	// questions, its transcript and its turn feed are the focus routes above
+	// and below. Not here on purpose: DELETE /v1/easy/projects/:id (moves a
+	// folder on the desk) and /v1/easy/projects/:id/preview (the app answers
+	// only on the desk's loopback; unit 7).
+	focusRule([]string{http.MethodGet}, "/v1/easy/readiness", "whether this desk can make a vibe project"),
+	focusRule([]string{http.MethodGet, http.MethodPost}, "/v1/easy/projects", "vibe project list/create"),
+	focusRule([]string{http.MethodGet, http.MethodPatch}, "/v1/easy/projects/:id", "vibe project read, rename, archive"),
+	focusRule([]string{http.MethodPost}, "/v1/easy/projects/:id/changes", "vibe project change"),
+	focusRule([]string{http.MethodGet}, "/v1/easy/projects/:id/versions", "vibe project versions"),
+	focusRule([]string{http.MethodPost}, "/v1/easy/projects/:id/versions/:commit/restore", "vibe project going back"),
 	// The routes below name a session. Their handlers let a phone reach only
 	// focus pipeline sessions, or (§8) the device's own chat session
 	// (internal/tarsserver/focus_device_scope.go).

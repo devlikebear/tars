@@ -18,7 +18,8 @@ import (
 //
 // The app runs on this computer's loopback address, so only a console on
 // the same computer can show it; a paired phone (role focus) never reaches
-// these routes. 404 for an unknown project, 409 not_ready while the project
+// these routes — they are not in serverauth's focus table, and this handler
+// refuses one too (relaying the app to a phone is vibe redesign unit 7). 404 for an unknown project, 409 not_ready while the project
 // is still being made or could not be.
 
 // easyPreviewSweep is how often idle previews are looked for.

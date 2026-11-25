@@ -32,10 +32,6 @@ func easyChangeReady(p focuspipeline.Pipeline) bool {
 
 func (e *easyProjectsAPI) change(w http.ResponseWriter, r *http.Request) {
 	role := serverauth.RoleFromRequest(r)
-	if role == serverauth.RoleFocus {
-		writeError(w, http.StatusForbidden, "forbidden", "a paired phone cannot change a project")
-		return
-	}
 	var req struct {
 		Request string `json:"request"`
 	}

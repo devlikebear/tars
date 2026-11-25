@@ -67,7 +67,7 @@ func TestEasyChangeOpensTheNextPipelineInTheSameFolder(t *testing.T) {
 		code       int
 	}{
 		{`{"request":"  "}`, serverauth.RoleUser, http.StatusBadRequest},
-		{`{"request":"Make the button green"}`, serverauth.RoleFocus, http.StatusForbidden},
+		{`{"request":""}`, serverauth.RoleFocus, http.StatusBadRequest},
 	} {
 		if rec := focusRequestAs(t, h, http.MethodPost, changes, tc.body, tc.role); rec.Code != tc.code {
 			t.Fatalf("%s as %s = %d %s", tc.body, tc.role, rec.Code, rec.Body.String())
@@ -77,7 +77,8 @@ func TestEasyChangeOpensTheNextPipelineInTheSameFolder(t *testing.T) {
 		t.Fatalf("unknown project = %d", rec.Code)
 	}
 
-	rec = focusRequestAs(t, h, http.MethodPost, changes, `{"request":"  Make the button green  "}`, serverauth.RoleUser)
+	// A paired phone may ask for a change (vibe redesign unit 6).
+	rec = focusRequestAs(t, h, http.MethodPost, changes, `{"request":"  Make the button green  "}`, serverauth.RoleFocus)
 	var changed easyProjectResp
 	decodeInto(t, rec, &changed)
 	if rec.Code != http.StatusAccepted {
