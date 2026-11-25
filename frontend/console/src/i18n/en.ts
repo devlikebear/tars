@@ -32,6 +32,7 @@ import { configEn } from './sections/config.ts'
 import { remoteAccessEn } from './sections/remoteAccess.ts'
 import { phonesEn } from './sections/phones.ts'
 import { mobileAppEn } from './sections/mobileApp.ts'
+import { phoneEn } from './sections/phone.ts'
 
 export const en = {
   common: {
@@ -1549,4 +1550,5 @@ export const en = {
   remoteAccess: remoteAccessEn,
   phones: phonesEn,
   mobileApp: mobileAppEn,
+  phone: phoneEn,
 } satisfies Translations

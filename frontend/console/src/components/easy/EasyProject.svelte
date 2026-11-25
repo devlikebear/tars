@@ -14,11 +14,9 @@
   // the one thing to press in the bar.
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../../i18n'
-  import { changeEasyProject, createEasyProject, deleteEasyProject, getEasyProject } from '../../lib/api/easy'
-  import { focusCard, focusGate, getFocusPipeline } from '../../lib/api/focus'
-  import { APIRequestError } from '../../lib/api/client'
-  import { easyCanChange, easyLive, easyProjectPath, easyRetryAction, easyView, recreateEasyProject, type EasyProject } from '../../lib/easy'
-  import type { FocusPipeline } from '../../lib/types'
+  import { localEasyApi, type EasyAPI } from '../../lib/api/easy'
+  import { easyCanChange, easyProjectPath } from '../../lib/easy'
+  import { EasyProjectStore } from '../../lib/stores/easyProjectStore.svelte'
   import { consoleMode } from '../../lib/stores/consoleMode.svelte'
   import EasyBlueprint from './EasyBlueprint.svelte'
   import EasyChecks from './EasyChecks.svelte'
@@ -29,135 +27,38 @@
   import EasyTeam from './EasyTeam.svelte'
   import EasyVersions from './EasyVersions.svelte'
 
-  let { projectId, onNavigate }: { projectId: string; onNavigate: (path: string) => void } = $props()
+  let { projectId, onNavigate, api = localEasyApi }: { projectId: string; onNavigate: (path: string) => void; api?: EasyAPI } = $props()
 
-  const pollMs = 2000
+  // The project, its run and every action on it (shared with the phone).
+  // svelte-ignore state_referenced_locally
+  const store = new EasyProjectStore({ api, projectId })
+  onMount(() => store.start())
+  onDestroy(() => store.stop())
 
-  let project = $state<EasyProject | null>(null)
-  let pipeline = $state<FocusPipeline | null>(null)
-  let notFound = $state(false)
-  let loadFailed = $state(false)
-  let approving = $state(false)
-  let actionFailed = $state(false)
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let stopped = false
+  let project = $derived(store.project)
+  let view = $derived(store.view)
+  let notFound = $derived(store.notFound)
+  let loadFailed = $derived(store.loadFailed)
+  let approving = $derived(store.approving)
+  let continuing = $derived(store.continuing)
+  let answering = $derived(store.answering)
+  let saying = $derived(store.saying)
+  let retrying = $derived(store.retrying)
+  let recreating = $derived(store.recreating)
+  let changing = $derived(store.changing)
+  let actionFailed = $derived(store.actionFailed)
 
-  let view = $derived(project ? easyView(project, pipeline) : null)
-
-  async function read() {
-    try {
-      const next = await getEasyProject(projectId)
-      // The project and its pipeline are shown together: after a change the
-      // project names a new pipeline, and showing it with the old one (or
-      // none) would flash the wrong step.
-      const nextPipeline = next.status === 'ready' && next.session_id ? await getFocusPipeline(next.session_id) : null
-      project = next
-      pipeline = nextPipeline
-      loadFailed = false
-    } catch (err) {
-      if (err instanceof APIRequestError && err.status === 404) {
-        notFound = true
-        return
-      }
-      loadFailed = true
-    }
-  }
-
-  async function loop() {
-    await read()
-    if (stopped || notFound) return
-    if (!view || easyLive(view) || loadFailed) timer = setTimeout(loop, pollMs)
-  }
-
-  onMount(loop)
-  onDestroy(() => {
-    stopped = true
-    clearTimeout(timer)
-  })
-
-  // The plan gate's open card: the action names it so a gate the server
-  // replaced since refuses it.
-  function planCard(): { card_id?: string } {
-    const card = pipeline?.cards.findLast((c) => c.kind === 'gate' && c.state !== 'decided')
-    return card ? { card_id: card.id } : {}
-  }
-
-  async function approve() {
-    if (!project?.session_id || approving) return
-    approving = true
-    actionFailed = false
-    try {
-      await focusGate(project.session_id, 'plan', 'approve', planCard())
-      clearTimeout(timer)
-      await loop()
-    } catch {
-      actionFailed = true
-    } finally {
-      approving = false
-    }
-  }
-
-  // The usage limit stopped the team: Continue sends the turn it refused
-  // again, and the server puts goal mode back on (GoalDueOnApproval).
-  let continuing = $state(false)
-  async function continueAfterLimit() {
-    if (!project?.session_id || !view?.limit || continuing) return
-    continuing = true
-    actionFailed = false
-    try {
-      await focusGate(project.session_id, 'blocked', 'retry', { card_id: view.limit.cardId })
-      clearTimeout(timer)
-      await loop()
-    } catch {
-      actionFailed = true
-    } finally {
-      continuing = false
-    }
-  }
-
-  // One of the leader's questions answered: its decision card is decided
-  // with the choice's words. The last answer sends them all to the leader,
-  // who then draws the blueprint (the server's own rule).
-  let answering = $state('')
-  async function answer(cardId: string, choice: string) {
-    if (!project?.session_id || answering) return
-    answering = cardId
-    actionFailed = false
-    try {
-      await focusCard(project.session_id, cardId, 'decided', choice)
-      clearTimeout(timer)
-      await loop()
-    } catch {
-      actionFailed = true
-    } finally {
-      answering = ''
-    }
-  }
+  const approve = () => store.approve()
+  const continueAfterLimit = () => store.continueAfterLimit()
+  const answer = (cardId: string, choice: string) => store.answer(cardId, choice)
 
   // "Tell the team" on the blueprint: the plan gate's request for changes,
   // with the person's words as the note; the leader draws it again.
   let say = $state('')
-  let saying = $state(false)
-  let sayError = $state('')
+  let sayError = $derived(store.sayError === 'required' ? $t.easy.workspace.say.required : store.sayError === 'failed' ? $t.easy.project.actionFailed : '')
   async function sayToTeam(event: SubmitEvent) {
     event.preventDefault()
-    if (!project?.session_id || saying) return
-    if (!say.trim()) {
-      sayError = $t.easy.workspace.say.required
-      return
-    }
-    saying = true
-    sayError = ''
-    try {
-      await focusGate(project.session_id, 'plan', 'request_changes', { note: say.trim(), ...planCard() })
-      say = ''
-      clearTimeout(timer)
-      await loop()
-    } catch {
-      sayError = $t.easy.project.actionFailed
-    } finally {
-      saying = false
-    }
+    if (await store.sayToTeam(say)) say = ''
   }
 
   // The sentence above the step's content, for the steps the workspace
@@ -166,43 +67,18 @@
   // The phases EasyState draws.
   const statePhases = new Set(['creating', 'failed', 'limit', 'stuck'])
 
-  // Try again on a stuck project: the blocked step again, with the person's
-  // words when they explained again; the server puts the team back to work
-  // on its own (GoalDueOnApproval). A gate answered elsewhere meanwhile
-  // (409) only means the screen is behind: it reads again.
+  // Try again on a stuck project, with the person's words when they
+  // explained again.
   let stuckNote = $state('')
-  let retrying = $state(false)
   async function retryStuck() {
-    if (!project?.session_id || !view?.retry || retrying) return
-    retrying = true
-    actionFailed = false
-    try {
-      const { action, note } = easyRetryAction(stuckNote)
-      await focusGate(project.session_id, 'blocked', action, { note, card_id: view.retry.cardId })
-      stuckNote = ''
-    } catch (err) {
-      if (!(err instanceof APIRequestError && err.status === 409)) actionFailed = true
-    } finally {
-      clearTimeout(timer)
-      await loop()
-      retrying = false
-    }
+    if (await store.retryStuck(stuckNote)) stuckNote = ''
   }
 
   // Try again on a project that could not be set up: the same idea as a new
   // project, which the screen then follows.
-  let recreating = $state(false)
   async function recreate() {
-    if (!project || recreating) return
-    recreating = true
-    actionFailed = false
-    try {
-      const id = await recreateEasyProject({ create: createEasyProject, remove: deleteEasyProject }, project)
-      onNavigate(easyProjectPath(id))
-    } catch {
-      actionFailed = true
-      recreating = false
-    }
+    const id = await store.recreate()
+    if (id) onNavigate(easyProjectPath(id))
   }
 
   // The number of the version the folder holds, for the result's header.
@@ -210,28 +86,10 @@
 
   let previewKey = $state(0)
   let changeRequest = $state('')
-  let changing = $state(false)
-  let changeError = $state('')
+  let changeError = $derived(store.changeError === null ? '' : $t.easy.errors[store.changeError] || $t.easy.errors.unknown)
 
   async function submitChange() {
-    if (!project || changing) return
-    if (!changeRequest.trim()) {
-      changeError = $t.easy.errors.change_required
-      return
-    }
-    changing = true
-    changeError = ''
-    try {
-      await changeEasyProject(project.id, changeRequest)
-      changeRequest = ''
-      clearTimeout(timer)
-      await loop()
-    } catch (err) {
-      const code = err instanceof APIRequestError ? String((err.payload as { code?: string } | undefined)?.code ?? '') : ''
-      changeError = (code && $t.easy.errors[code]) || $t.easy.errors.unknown
-    } finally {
-      changing = false
-    }
+    if (await store.change(changeRequest)) changeRequest = ''
   }
 
   function phaseText(): string {
@@ -348,10 +206,10 @@
             <!-- Going back stops the preview on the server; a new key starts it
                  again on the files the folder holds now. -->
             {#key previewKey}
-              <EasyPreview projectId={project.id} version={currentNumber} />
+              <EasyPreview projectId={project.id} version={currentNumber} {api} />
             {/key}
             {#if easyCanChange(view)}
-              <EasyVersions projectId={project.id} onRestored={() => (previewKey += 1)} onCurrent={(n) => (currentNumber = n)} />
+              <EasyVersions projectId={project.id} {api} onRestored={() => (previewKey += 1)} onCurrent={(n) => (currentNumber = n)} />
             {/if}
           {/if}
 

@@ -1,13 +1,16 @@
-// The phone's idea inbox (docs/decisions/mobile-remote.md §6): ideas are
-// written and kept on the phone, so capture works with every desktop asleep
-// or offline. An idea becomes a focus task only when the developer sends
-// it to a desktop, a registered folder and a template; the pipeline then
-// drafts its plan and stops at G1, as every pipeline does.
+// The phone's saved ideas (docs/decisions/mobile-remote.md §6, vibe
+// redesign unit 8): an idea written while no desktop answers is kept on
+// the phone, so capture works with every desktop asleep or offline. It
+// becomes a vibe project when the person sends it to a desktop that
+// answers; the leader then asks its questions and draws the blueprint.
 
+// Where an idea went. Ideas sent before vibe mode became the app started a
+// focus task and carry its session; newer ones carry the project.
 export type SentIdea = {
   desktopID: string
   desktopName: string
-  sessionID: string
+  projectID?: string
+  sessionID?: string
   at: string
 }
 
@@ -16,7 +19,7 @@ export type Idea = {
   text: string
   createdAt: string
   // Where the idea went, once sent. A sent idea stays (with a way to open
-  // its pipeline) until the developer deletes it.
+  // its project) until the person deletes it.
   sent?: SentIdea
 }
 
@@ -63,13 +66,14 @@ export function parseIdeas(raw: string | null | undefined): Idea[] {
     if (typeof d.id !== 'string' || !d.id || typeof d.text !== 'string' || !d.text.trim() || typeof d.createdAt !== 'string') continue
     const idea: Idea = { id: d.id, text: d.text, createdAt: d.createdAt }
     const s = d.sent as Record<string, unknown> | undefined
-    if (s && typeof s === 'object' && ['desktopID', 'desktopName', 'sessionID', 'at'].every((k) => typeof s[k] === 'string' && s[k] !== '')) {
-      idea.sent = { desktopID: s.desktopID as string, desktopName: s.desktopName as string, sessionID: s.sessionID as string, at: s.at as string }
+    const text = (k: string) => typeof s?.[k] === 'string' && s[k] !== ''
+    if (s && typeof s === 'object' && ['desktopID', 'desktopName', 'at'].every(text) && (text('projectID') || text('sessionID'))) {
+      const sent: SentIdea = { desktopID: s.desktopID as string, desktopName: s.desktopName as string, at: s.at as string }
+      if (text('projectID')) sent.projectID = s.projectID as string
+      if (text('sessionID')) sent.sessionID = s.sessionID as string
+      idea.sent = sent
     }
     out.push(idea)
   }
   return out
 }
-
-// A registered folder a phone may start a task in, as the desk answers it.
-export type RegisteredFolder = { path: string; name: string; exists: boolean }

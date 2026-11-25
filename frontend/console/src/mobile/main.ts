@@ -8,18 +8,16 @@ import '../app.css'
 import './mobile.css'
 import MobileApp from './MobileApp.svelte'
 import type { AppLinks } from '../lib/mobile/appLinks'
-import { desktopAPI, eventsAPI, inboxAPI, taskAPI } from '../lib/mobile/desktopApi'
+import { desktopAPI, eventsAPI } from '../lib/mobile/desktopApi'
 import { createDemoDesk, demoBaseURL } from '../lib/mobile/demoDesk'
 import { DesktopEvents } from '../lib/mobile/desktopEvents'
 import { DesktopStore } from '../lib/mobile/desktopStore.svelte'
 import { IdeaStore } from '../lib/mobile/ideaStore.svelte'
-import { InboxStore } from '../lib/mobile/inboxStore.svelte'
-import { remoteChatAPI } from '../lib/mobile/remoteChat'
-import { RemoteChatStore } from '../lib/mobile/remoteChatStore.svelte'
+import { ProjectStore } from '../lib/mobile/projectStore.svelte'
 import { appSecureStore } from '../lib/mobile/secureStore'
 import { serveLocally } from '../lib/api/client'
 
-// Desktops with their tokens and the idea inbox both live in the Keychain:
+// Desktops with their tokens and the saved ideas both live in the Keychain:
 // one store the app owns, which iOS does not clear under storage pressure
 // the way it may clear a web view's localStorage.
 const storage = appSecureStore()
@@ -66,9 +64,8 @@ const app = mount(MobileApp, {
   target: document.getElementById('app')!,
   props: {
     store,
-    inbox: new InboxStore({ api: inboxAPI }),
-    ideas: new IdeaStore({ storage, api: taskAPI }),
-    chat: new RemoteChatStore({ api: remoteChatAPI }),
+    projects: new ProjectStore(),
+    ideas: new IdeaStore({ storage }),
     events: new DesktopEvents({ api: eventsAPI }),
     links,
   },

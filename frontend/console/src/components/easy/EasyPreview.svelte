@@ -5,11 +5,11 @@
   // component starts it when it appears and keeps reading while it shows.
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../../i18n'
-  import { getEasyPreview, startEasyPreview } from '../../lib/api/easy'
+  import { localEasyApi, type EasyAPI } from '../../lib/api/easy'
   import { previewPollMs, previewReachable, type EasyPreview } from '../../lib/easy'
   import { consoleMode } from '../../lib/stores/consoleMode.svelte'
 
-  let { projectId, version }: { projectId: string; version?: number } = $props()
+  let { projectId, version, api = localEasyApi }: { projectId: string; version?: number; api?: EasyAPI } = $props()
 
   const reachable = previewReachable(window.location.hostname)
 
@@ -31,7 +31,7 @@
 
   async function read() {
     try {
-      preview = await getEasyPreview(projectId)
+      preview = await api.preview(projectId)
       requestFailed = false
     } catch {
       requestFailed = true
@@ -42,7 +42,7 @@
   async function start() {
     requestFailed = false
     try {
-      preview = await startEasyPreview(projectId)
+      preview = await api.startPreview(projectId)
     } catch {
       requestFailed = true
     }
