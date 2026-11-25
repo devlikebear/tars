@@ -15,7 +15,7 @@
 // seconds during which the pipeline's session is listed as running and its
 // turn feed streams a few lines; what the turn ends in was decided when it
 // started. Time comes in through `now`, so tests run it without waiting.
-import type { EasyProject, EasyReadiness, EasyVersion } from '../easy.ts'
+import type { EasyPreview, EasyProject, EasyReadiness, EasyVersion } from '../easy.ts'
 import type { EasyBoard, EasyBoardState, EasyListed } from '../easyBoard.ts'
 import type { QueuedApproval } from '../sessionBoard.ts'
 import type {
@@ -863,6 +863,21 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     return { version: back, versions: easyVersions(e) }
   }
 
+  let easyTickets = 0
+
+  function easyPreviewRoute(e: EasyDemo, method: string, rest: string[]): Response | null {
+    // Stopping the app is the desk's: a phone is refused, as on a real one.
+    if (method === 'DELETE' && rest.length === 1) throw new Refused(403, 'a paired phone cannot stop the app')
+    const known = (method === 'GET' || method === 'POST') && rest.length === 1
+    const ticket = method === 'POST' && rest.length === 2 && rest[1] === 'ticket'
+    if (!known && !ticket) return null
+    if (easyBoard(e).state !== 'done') return json({ error: 'the project is not ready', code: 'not_ready' }, 409)
+    const preview: EasyPreview = { state: 'running' }
+    if (!ticket) return json({ preview })
+    easyTickets += 1
+    return json({ url: `${demoBaseURL}/__tars/enter?t=demo-${easyTickets}`, expires_at: new Date(now() + 60_000).toISOString(), preview })
+  }
+
   const easyReadiness: EasyReadiness = { ready: true, engine: 'ok', engine_kind: 'claude-code-cli', tools: 'ok' }
 
   function easyRoute(url: URL, method: string, parts: string[], body: Record<string, unknown>): Response | null {
@@ -883,8 +898,11 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
       if (method === 'DELETE') throw new Refused(403, 'a paired phone cannot delete a project')
       return null
     }
-    // The app runs on the desk's own address (vibe redesign unit 7).
-    if (rest[0] === 'preview') throw new Refused(403, 'a paired phone cannot show a preview')
+    // The running app (vibe redesign unit 7). The demo desk has none to
+    // show: a finished project's app "runs", and its ticket is an address
+    // on the demo desk itself, which the app's Try it recognizes and
+    // answers in place instead of leaving the app (lib/mobile/tryApp.ts).
+    if (rest[0] === 'preview') return easyPreviewRoute(e, method, rest)
     if (method === 'POST' && rest.length === 1 && rest[0] === 'changes') return json({ project: easyChange(e, body) }, 202)
     if (method === 'GET' && rest.length === 1 && rest[0] === 'versions') return json({ versions: easyVersions(e) })
     if (method === 'POST' && rest.length === 3 && rest[0] === 'versions' && rest[2] === 'restore') return json(easyRestore(e, rest[1]))

@@ -13,6 +13,7 @@ import { mergeSummary, prDraftOf } from '../src/lib/focusPR.ts'
 import type { ChatEvent, FocusPipeline } from '../src/lib/types.ts'
 import { easyView, type EasyProject, type EasyReadiness, type EasyVersion } from '../src/lib/easy.ts'
 import { remoteEasyApi } from '../src/lib/mobile/easyRemote.ts'
+import { tryApp } from '../src/lib/mobile/tryApp.ts'
 import type { FocusTemplate } from '../src/lib/types.ts'
 import { compileSvelteModule } from './helpers/compileSvelteModule.ts'
 import type * as EasyProjectStoreModule from '../src/lib/stores/easyProjectStore.svelte.ts'
@@ -380,7 +381,6 @@ test('vibe projects: from one sentence through the questions, the blueprint, mak
 
   // What a phone cannot do on a real desk, it cannot do here.
   await assert.rejects(easy.remove(id), /cannot delete/)
-  await assert.rejects(easy.preview(id), /cannot show a preview/)
   await assert.rejects(easy.get('nope'), /no such project/)
 })
 
@@ -419,4 +419,25 @@ test('vibe projects: a pause on the usage limit continues, a stuck project tries
   // A finished seeded run reads as finished and saved in the workspace too.
   const recipe = await easy.get('demo-recipe-box')
   assert.equal(easyView(recipe, await easy.pipeline(recipe.session_id!)).phase, 'finished')
+})
+
+test('vibe projects: Try it on the demo desk answers in place and never leaves the app', async () => {
+  const d = desk()
+  const easy = remoteEasyApi(d.target)
+  // The finished seeded project "runs"; its ticket is an address on the demo
+  // desk itself, new on every press.
+  assert.deepEqual(await easy.startPreview('demo-recipe-box'), { state: 'running' })
+  assert.deepEqual(await easy.preview('demo-recipe-box'), { state: 'running' })
+  const first = await easy.previewTicket('demo-recipe-box')
+  const second = await easy.previewTicket('demo-recipe-box')
+  assert.ok(first.url.startsWith(`${demoBaseURL}/__tars/enter?t=`))
+  assert.notEqual(first.url, second.url)
+  assert.equal(Date.parse(first.expires_at) - Date.parse('2026-11-15T09:00:00Z'), 60_000)
+  assert.deepEqual(await tryApp(easy, 'demo-recipe-box'), { kind: 'demo' })
+
+  // A project still being made is not ready; stopping the app stays the desk's.
+  await assert.rejects(easy.previewTicket('demo-family-todo'), /not ready/)
+  assert.deepEqual(await tryApp(easy, 'demo-family-todo'), { kind: 'failed', reason: 'not_ready' })
+  await assert.rejects(requestJSONAt(d.target, '/v1/easy/projects/demo-recipe-box/preview', { method: 'DELETE' }), /cannot stop/)
+  assert.deepEqual(await tryApp(easy, 'nope'), { kind: 'failed', reason: 'not_ready' })
 })

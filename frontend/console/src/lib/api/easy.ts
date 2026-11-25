@@ -41,15 +41,21 @@ export type EasyAPI = {
   // Saved versions, newest first; going back answers the list after it.
   versions(id: string): Promise<EasyVersion[]>
   restore(id: string, commit: string): Promise<EasyVersion[]>
-  // The running app on the desk (reading it keeps it running). A phone is
-  // refused (vibe redesign unit 7).
+  // The running app on the desk (reading it keeps it running). A phone may
+  // start and read it, but its loopback url is left out for a phone.
   preview(id: string): Promise<EasyPreview>
   startPreview(id: string): Promise<EasyPreview>
+  // A one-use address (60 s) on the desk's preview relay that opens the
+  // running app on a paired phone (vibe redesign unit 7). It also starts
+  // the app; ask for a new one every time, never keep one.
+  previewTicket(id: string): Promise<EasyPreviewTicket>
   // The project's run, by its session.
   pipeline(sessionId: string): Promise<FocusPipeline>
   gate(sessionId: string, gate: string, action: FocusGateAction, options?: { note?: string; card_id?: string }): Promise<FocusActionResult>
   card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
 }
+
+export type EasyPreviewTicket = { url: string; expires_at: string; preview: EasyPreview }
 
 // easyApiOf builds the calls on one way of sending a JSON request: this
 // console's own requestJSON, or the phone's request to a chosen desktop.
@@ -84,6 +90,7 @@ export function easyApiOf(request: FocusRequester): EasyAPI {
       (await request<{ versions: EasyVersion[] }>(`${project(id)}/versions/${encodeURIComponent(commit)}/restore`, post())).versions ?? [],
     preview: async (id) => (await request<{ preview: EasyPreview }>(`${project(id)}/preview`)).preview,
     startPreview: async (id) => (await request<{ preview: EasyPreview }>(`${project(id)}/preview`, post())).preview,
+    previewTicket: (id) => request<EasyPreviewTicket>(`${project(id)}/preview/ticket`, post()),
     pipeline: (sessionId) => request<FocusPipeline>(focusPipelinePath(sessionId)),
     gate: (sessionId, gate, action, options = {}) =>
       postFocusAction(request, `${focusPipelinePath(sessionId)}/gates/${encodeURIComponent(gate)}`, { action, ...options }),

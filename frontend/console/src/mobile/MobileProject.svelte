@@ -6,8 +6,9 @@
   // EasyBlueprint, EasyMaking, EasyChecks, EasyState, EasyVersions), every
   // request sent to the desk that owns the project. What differs at phone
   // width lives here: one pane at a time behind tabs, and one bar at the
-  // bottom with the single thing to press. The running app stays on the
-  // desk (unit 7), so its tab says where it is.
+  // bottom with the single thing to press. The app tab's Try it opens the
+  // running app in Safari through the desk's preview relay (unit 7,
+  // lib/mobile/tryApp.ts).
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../i18n'
   import { remoteEasyApi } from '../lib/mobile/easyRemote'
@@ -15,6 +16,8 @@
   import type { DesktopEvents } from '../lib/mobile/desktopEvents'
   import { defaultPhoneTab, phoneTabs, type PhoneTab } from '../lib/mobile/projects'
   import { easyCanChange } from '../lib/easy'
+  import { openOutside } from '../lib/mobile/openOutside'
+  import { tryApp, type TryAppOutcome } from '../lib/mobile/tryApp'
   import { EasyProjectStore } from '../lib/stores/easyProjectStore.svelte'
   import EasyBlueprint from '../components/easy/EasyBlueprint.svelte'
   import EasyChecks from '../components/easy/EasyChecks.svelte'
@@ -103,6 +106,35 @@
 
   let currentNumber = $state<number | undefined>(undefined)
 
+  // Try it: every press asks the desk for a new one-use address and opens
+  // it at once (lib/mobile/tryApp.ts).
+  let trying = $state(false)
+  let tried = $state<TryAppOutcome | null>(null)
+  let gone = false
+  onDestroy(() => (gone = true))
+  async function tryIt() {
+    if (trying || !store.project) return
+    trying = true
+    tried = null
+    const outcome = await tryApp(api, store.project.id, { cancelled: () => gone })
+    trying = false
+    if (gone) return
+    if (outcome.kind === 'open') openOutside(outcome.url)
+    tried = outcome
+  }
+  function tryError(outcome: TryAppOutcome): string {
+    if (outcome.kind !== 'failed') return ''
+    const errors = $t.phone.project.tryIt.errors
+    switch (outcome.reason) {
+      case 'could_not_start':
+      case 'phone_off':
+      case 'no_answer':
+        return errors[outcome.reason](desktop.name)
+      default:
+        return errors[outcome.reason]
+    }
+  }
+
   function barHint(): string {
     if (!view) return ''
     switch (view.phase) {
@@ -188,10 +220,24 @@
           <EasyState {view} bind:note={stuckNote} busy={store.retrying} />
         {/if}
       {:else if tab === 'app'}
-        <section class="app-here" data-testid="phone-app-elsewhere">
+        <section class="app-here" data-testid="phone-app">
           {#if currentNumber}<span class="version">{$t.easy.result.version(currentNumber)}</span>{/if}
-          <p>{$t.phone.project.appOnDesk(desktop.name)}</p>
-          <p class="muted">{$t.phone.project.appLater}</p>
+          {#if tried?.kind === 'failed' && tried.reason === 'too_old'}
+            <!-- A desk from before the phone could open the app: it stays there. -->
+            <p data-testid="phone-app-elsewhere">{$t.phone.project.appOnDesk(desktop.name)}</p>
+          {:else}
+            <p>{$t.phone.project.tryIt.intro}</p>
+          {/if}
+          <button type="button" class="btn btn-primary go" data-testid="phone-try-it" disabled={trying} onclick={tryIt}>
+            {trying ? $t.phone.project.tryIt.starting : $t.phone.project.tryIt.button}
+          </button>
+          {#if tried?.kind === 'open'}
+            <p class="muted" data-testid="phone-try-opened">{$t.phone.project.tryIt.opened}</p>
+          {:else if tried?.kind === 'demo'}
+            <p class="muted" data-testid="phone-try-demo">{$t.phone.project.tryIt.demo}</p>
+          {:else if tried?.kind === 'failed'}
+            <p class={tried.reason === 'too_old' ? 'muted' : 'error'} role="alert" data-testid="phone-try-error" data-reason={tried.reason}>{tryError(tried)}</p>
+          {/if}
         </section>
       {:else if tab === 'checks'}
         {#if view.checks.length}
