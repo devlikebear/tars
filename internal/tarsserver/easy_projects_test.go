@@ -124,7 +124,7 @@ func TestEasyProjectRefusals(t *testing.T) {
 	}{
 		{"empty idea", `{"idea":"   "}`, serverauth.RoleUser, "idea_required", http.StatusBadRequest},
 		{"long idea", `{"idea":"` + strings.Repeat("a", easyproject.MaxIdeaRunes+1) + `"}`, serverauth.RoleUser, "idea_too_long", http.StatusBadRequest},
-		{"phone", `{"idea":"a page"}`, serverauth.RoleFocus, "forbidden", http.StatusForbidden},
+		{"phone, empty idea", `{"idea":""}`, serverauth.RoleFocus, "idea_required", http.StatusBadRequest},
 	} {
 		rec := focusRequestAs(t, h, http.MethodPost, "/v1/easy/projects", tc.body, tc.role)
 		var body map[string]any

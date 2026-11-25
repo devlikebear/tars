@@ -256,3 +256,44 @@ func TestUnknownRoleReachesNothing(t *testing.T) {
 		t.Fatalf("an unknown role must reach nothing")
 	}
 }
+
+// Vibe redesign unit 6: a phone reaches the vibe (easy) project routes it
+// needs, and nothing new beside them — not deleting a project, not the
+// preview, not the desk's own setup.
+func TestFocusEndpointTableVibeRoutes(t *testing.T) {
+	allowed := []struct{ method, path string }{
+		{http.MethodGet, "/v1/easy/readiness"},
+		{http.MethodGet, "/v1/easy/projects"},
+		{http.MethodGet, "/v1/easy/projects?state=your_turn&limit=5"},
+		{http.MethodPost, "/v1/easy/projects"},
+		{http.MethodGet, "/v1/easy/projects/p1"},
+		{http.MethodPatch, "/v1/easy/projects/p1"},
+		{http.MethodPost, "/v1/easy/projects/p1/changes"},
+		{http.MethodGet, "/v1/easy/projects/p1/versions"},
+		{http.MethodPost, "/v1/easy/projects/p1/versions/abc123/restore"},
+	}
+	for _, tc := range allowed {
+		if !EndpointAllowsRole(tc.method, tc.path, RoleFocus) {
+			t.Errorf("focus must reach %s %s", tc.method, tc.path)
+		}
+	}
+	denied := []struct{ method, path string }{
+		{http.MethodDelete, "/v1/easy/projects/p1"},
+		{http.MethodPut, "/v1/easy/projects/p1"},
+		{http.MethodGet, "/v1/easy/projects/p1/preview"},
+		{http.MethodPost, "/v1/easy/projects/p1/preview"},
+		{http.MethodDelete, "/v1/easy/projects/p1/preview"},
+		{http.MethodGet, "/v1/easy/projects/p1/changes"},
+		{http.MethodPost, "/v1/easy/projects/p1/versions"},
+		{http.MethodGet, "/v1/easy/projects/p1/versions/abc123/restore"},
+		{http.MethodPost, "/v1/easy/projects/p1/versions/abc123/restore/x"},
+		{http.MethodPost, "/v1/easy/projects/p1/other"},
+		{http.MethodPost, "/v1/easy/readiness"},
+		{http.MethodPost, "/v1/admin/setup/easy"},
+	}
+	for _, tc := range denied {
+		if EndpointAllowsRole(tc.method, tc.path, RoleFocus) {
+			t.Errorf("focus must not reach %s %s", tc.method, tc.path)
+		}
+	}
+}

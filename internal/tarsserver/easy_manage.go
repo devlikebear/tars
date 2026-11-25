@@ -19,8 +19,9 @@ import (
 // Who may call: the same callers as the other easy routes — a user token is
 // enough, because nothing here takes a path from the request: the folder
 // moved away is the one the server made and recorded. A paired phone (role
-// focus) is refused, as for a change, until the phone's routes are opened
-// on purpose (unit 6).
+// focus) may rename, archive and bring back (vibe redesign unit 6) but not
+// delete: deleting moves a folder on the desk, which the plan leaves to the
+// desk.
 //
 // Busy: archiving and deleting need the team idle — not starting, not
 // working by itself, and no turn holding the pipeline's session. Archiving
@@ -42,10 +43,6 @@ func (e *easyProjectsAPI) easyIdle(p easyproject.Project, board easyproject.Boar
 }
 
 func (e *easyProjectsAPI) manageProject(w http.ResponseWriter, r *http.Request) (easyproject.Project, bool) {
-	if serverauth.RoleFromRequest(r) == serverauth.RoleFocus {
-		writeError(w, http.StatusForbidden, "forbidden", "a paired phone cannot manage projects")
-		return easyproject.Project{}, false
-	}
 	p, err := e.creator.Store.Get(r.PathValue("id"))
 	if errors.Is(err, easyproject.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "no such project")
@@ -128,6 +125,10 @@ func (e *easyProjectsAPI) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *easyProjectsAPI) remove(w http.ResponseWriter, r *http.Request) {
+	if serverauth.RoleFromRequest(r) == serverauth.RoleFocus {
+		writeError(w, http.StatusForbidden, "forbidden", "a paired phone cannot delete a project")
+		return
+	}
 	e.changeMu.Lock()
 	defer e.changeMu.Unlock()
 	p, ok := e.manageProject(w, r)

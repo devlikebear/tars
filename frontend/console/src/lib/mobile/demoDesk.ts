@@ -3,7 +3,8 @@
 // owner's tailnet). It answers the same routes a paired desktop does — the
 // ones in the server's focus table — from memory, so every screen is the
 // real one: the Waiting list, a pipeline with its gates and cards, sending
-// an idea as a task. Nothing leaves the phone, no model runs, and its state
+// an idea as a task, and the vibe (easy) projects a paired desk now answers
+// a phone (vibe redesign unit 6). Nothing leaves the phone, no model runs, and its state
 // starts over each time the app starts.
 //
 // It follows the pipeline's own order (plan gate → build → triage → fix →
@@ -11,6 +12,8 @@
 // seconds during which the pipeline's session is listed as running and its
 // turn feed streams a few lines; what the turn ends in was decided when it
 // started. Time comes in through `now`, so tests run it without waiting.
+import type { EasyProject, EasyReadiness, EasyVersion } from '../easy.ts'
+import type { EasyBoard, EasyBoardState, EasyListed } from '../easyBoard.ts'
 import type { QueuedApproval } from '../sessionBoard.ts'
 import type {
   FocusCard,
@@ -560,6 +563,185 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
   }
 
+  // --- Vibe projects ----------------------------------------------------------
+  //
+  // The easy routes a phone reaches (vibe redesign unit 6). A project is a
+  // record whose session is one of the demo pipelines above, so its plan
+  // gate, questions and turn feed are the focus routes the app already
+  // calls. The state is read from that pipeline the way the server's
+  // easyproject.BoardOf reads it; a project whose pipeline is gone is done.
+
+  // savedFor is the session whose finished work is the newest version.
+  type EasyDemo = { project: EasyProject; versions: EasyVersion[]; archivedAt?: string; savedFor?: string }
+  const easyProjects = new Map<string, EasyDemo>()
+  let easyCreated = 0
+  let easyCommits = 0
+
+  function easyBoard(e: EasyDemo): EasyBoard {
+    const d = e.project.session_id ? demos.get(e.project.session_id) : undefined
+    const changedAt = d && d.pipeline.updated_at > e.project.updated_at ? d.pipeline.updated_at : e.project.updated_at
+    const board = (state: EasyBoardState, extra: Partial<EasyBoard> = {}): EasyBoard => ({ state, changed_at: changedAt, ...extra })
+    if (!d) return board('done')
+    const p = d.pipeline
+    if (p.open_gate === 'plan') return board('your_turn', { waiting: 'plan' })
+    if (p.cards.some((c) => c.kind === 'decision' && c.state !== 'decided')) return board('your_turn', { waiting: 'question' })
+    switch (phase(p)) {
+      case 'active':
+        return board('working')
+      case 'finished':
+        return board('done')
+      default:
+        return board('stuck', { stuck: 'stopped' })
+    }
+  }
+
+  function easyListed(e: EasyDemo): EasyListed {
+    return { ...e.project, board: easyBoard(e), ...(e.archivedAt ? { archived_at: e.archivedAt } : {}) }
+  }
+
+  function easyGet(id: string): EasyDemo {
+    const e = easyProjects.get(id)
+    if (!e) throw new Refused(404, 'no such project')
+    return e
+  }
+
+  function easyIdle(e: EasyDemo): boolean {
+    const state = easyBoard(e).state
+    return state !== 'working' && state !== 'starting'
+  }
+
+  function easyFolder(name: string): string {
+    return `~/TARS Projects/${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project'}`
+  }
+
+  function easyVersion(title: string, kind: EasyVersion['kind']): EasyVersion {
+    easyCommits++
+    return { commit: `demo${String(easyCommits).padStart(36, '0')}`, title, kind, at: iso() }
+  }
+
+  // easySave records the finished run's work as a version, once — the
+  // server saves it when the pipeline finishes (focusDriver.saveVersionAfterFinish).
+  function easySave(e: EasyDemo) {
+    const id = e.project.session_id
+    if (!id || e.savedFor === id || easyBoard(e).state !== 'done') return
+    e.savedFor = id
+    e.versions.unshift(easyVersion(e.project.changes?.at(-1)?.request ?? e.project.name, 'saved'))
+  }
+
+  function easyPipeline(goal: string, title: string, folder: string): Demo {
+    created++
+    const d = add(`demo-task-${created}`, title, folder, contentFor(goal, 140 + created))
+    start(d, 'planning', goal, ['Reading the idea', 'Drafting the plan'])
+    return d
+  }
+
+  function easyCreate(body: Record<string, unknown>): EasyProject {
+    const idea = String(body.idea ?? '').trim()
+    if (!idea) throw new Refused(400, 'idea_required')
+    if ([...idea].length > 2000) throw new Refused(400, 'idea_too_long')
+    easyCreated++
+    const name = idea.split('\n', 1)[0].slice(0, 60)
+    const folder = easyFolder(name)
+    const d = easyPipeline(idea, name, folder)
+    const project: EasyProject = {
+      id: `demo-project-${easyCreated}`, name, idea, folder, status: 'ready', session_id: d.pipeline.session_id,
+      created_at: iso(), updated_at: iso(),
+    }
+    easyProjects.set(project.id, { project, versions: [easyVersion('Start the project', 'start')] })
+    return project
+  }
+
+  function easyList(url: URL) {
+    const archived = url.searchParams.get('archived') === '1'
+    const state = url.searchParams.get('state') ?? ''
+    const all = [...easyProjects.values()]
+    const shown = all.filter((e) => !!e.archivedAt === archived)
+    const counts: Partial<Record<EasyBoardState, number>> = {}
+    for (const e of shown) {
+      const s = easyBoard(e).state
+      counts[s] = (counts[s] ?? 0) + 1
+    }
+    const projects = shown
+      .map(easyListed)
+      .filter((p) => !state || p.board.state === state)
+      .sort((a, b) => b.board.changed_at.localeCompare(a.board.changed_at))
+    return { projects, counts, archived: all.filter((e) => e.archivedAt).length }
+  }
+
+  function easyUpdate(e: EasyDemo, body: Record<string, unknown>) {
+    if (body.name === undefined && body.archived === undefined) throw new Refused(400, 'nothing_to_change')
+    if (body.name !== undefined) {
+      const name = String(body.name).trim().replace(/\s+/g, ' ')
+      if (!name) throw new Refused(400, 'name_required')
+      if ([...name].length > 60) throw new Refused(400, 'name_too_long')
+      e.project.name = name
+    }
+    if (body.archived === true && !e.archivedAt) {
+      if (!easyIdle(e)) throw new Refused(409, 'busy')
+      e.archivedAt = iso()
+    } else if (body.archived === false) {
+      delete e.archivedAt
+    }
+    e.project.updated_at = iso()
+    return { project: e.project, board: easyBoard(e) }
+  }
+
+  function easyChange(e: EasyDemo, body: Record<string, unknown>): EasyProject {
+    const request = String(body.request ?? '').trim()
+    if (!request) throw new Refused(400, 'change_required')
+    if (easyBoard(e).state !== 'done') throw new Refused(409, 'busy')
+    easySave(e)
+    const d = easyPipeline(request, e.project.name, e.project.folder)
+    e.project.session_id = d.pipeline.session_id
+    e.project.changes = [...(e.project.changes ?? []), { request, session_id: d.pipeline.session_id, at: iso() }]
+    e.project.updated_at = iso()
+    return e.project
+  }
+
+  function easyVersions(e: EasyDemo): EasyVersion[] {
+    easySave(e)
+    return e.versions.map(({ current: _, ...v }, i) => (i === 0 ? { ...v, current: true } : v))
+  }
+
+  function easyRestore(e: EasyDemo, commit: string) {
+    if (!easyIdle(e)) throw new Refused(409, 'busy')
+    easySave(e)
+    const target = e.versions.find((v) => v.commit === commit)
+    if (!target) throw new Refused(404, 'not_found')
+    const back = easyVersion(target.title, 'restored')
+    e.versions.unshift(back)
+    e.project.updated_at = iso()
+    return { version: back, versions: easyVersions(e) }
+  }
+
+  const easyReadiness: EasyReadiness = { ready: true, engine: 'ok', engine_kind: 'claude-code-cli', tools: 'ok' }
+
+  function easyRoute(url: URL, method: string, parts: string[], body: Record<string, unknown>): Response | null {
+    if (parts[0] !== 'v1' || parts[1] !== 'easy') return null
+    if (method === 'GET' && parts.length === 3 && parts[2] === 'readiness') return json({ readiness: easyReadiness })
+    if (parts[2] !== 'projects') return null
+    if (parts.length === 3) {
+      if (method === 'GET') return json(easyList(url))
+      if (method === 'POST') return json({ project: easyCreate(body) }, 202)
+      return null
+    }
+    const e = easyGet(parts[3])
+    const rest = parts.slice(4)
+    if (rest.length === 0) {
+      if (method === 'GET') return json({ project: e.project, board: easyBoard(e) })
+      if (method === 'PATCH') return json(easyUpdate(e, body))
+      // Deleting moves a folder on the desk: the desk does it, not a phone.
+      if (method === 'DELETE') throw new Refused(403, 'a paired phone cannot delete a project')
+      return null
+    }
+    // The app runs on the desk's own address (vibe redesign unit 7).
+    if (rest[0] === 'preview') throw new Refused(403, 'a paired phone cannot show a preview')
+    if (method === 'POST' && rest.length === 1 && rest[0] === 'changes') return json({ project: easyChange(e, body) }, 202)
+    if (method === 'GET' && rest.length === 1 && rest[0] === 'versions') return json({ versions: easyVersions(e) })
+    if (method === 'POST' && rest.length === 3 && rest[0] === 'versions' && rest[2] === 'restore') return json(easyRestore(e, rest[1]))
+    return null
+  }
+
   // --- Routes ---------------------------------------------------------------
 
   const json = (value: unknown, status = 200) =>
@@ -592,6 +774,9 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
     if (is('GET', 'v1', 'chat', 'activity')) return json(activity())
     if (is('GET', 'v1', 'focus', 'pipelines')) return json([...demos.values()].map(listItem))
     if (is('POST', 'v1', 'focus', 'pipelines')) return json(create(body))
+
+    const easy = easyRoute(url, method, parts, body)
+    if (easy) return easy
 
     if (is('POST', 'v1', 'remote', 'chat', 'session')) return json({ session_id: chatSessionID })
     if (is('GET', 'v1', 'remote', 'chat', 'history')) return json({ session_id: chatSessionID, messages: chatHistory })
@@ -686,6 +871,18 @@ export function createDemoDesk(options: { now?: () => number; turnMs?: number } 
   // to approve, findings to triage with a tool call waiting, a pull request
   // to merge.
   function seed() {
+    // A finished vibe project, for the Projects list and its versions.
+    const recipe: EasyDemo = {
+      project: {
+        id: 'demo-recipe-box', name: 'Recipe box', idea: 'A recipe box where I save recipes and tick off what I need to buy',
+        folder: easyFolder('Recipe box'), status: 'ready', session_id: 'demo-recipe-box-run', created_at: iso(), updated_at: iso(),
+      },
+      versions: [],
+    }
+    recipe.versions = [easyVersion('Start the project', 'start')]
+    easySave(recipe)
+    easyProjects.set(recipe.project.id, recipe)
+
     const plan = add('demo-dark-mode', 'Add a dark mode toggle to Settings', 'storefront', {
       plan: {
         goal: 'Add a dark mode toggle to Settings that follows the system setting by default',

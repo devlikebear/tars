@@ -28,8 +28,12 @@ import (
 // (~/TARS Projects/<name>), sets the web app stack up in it, starts version
 // control and opens a webapp-template focus pipeline there whose first turn
 // it sends itself. The folder is the server's own choice, so — unlike a
-// pipeline in a folder the caller names — a user token is enough; a paired
-// phone (role focus) never reaches these routes.
+// pipeline in a folder the caller names — a user token is enough, and a
+// paired phone (role focus) may call them too (docs/plans/vibe-mode-redesign
+// unit 6): the request carries only an idea, so a phone chooses no folder,
+// tier or opt-in, and every id these routes take names a record in the easy
+// project store, never a session. Deleting a project and the preview stay
+// refused to a phone (easy_manage.go, easy_preview.go).
 
 type easyProjectsAPI struct {
 	creator *easyproject.Creator
@@ -122,10 +126,6 @@ func easyOpenPipeline(api *focusAPI) easyproject.Opener {
 
 func (e *easyProjectsAPI) create(w http.ResponseWriter, r *http.Request) {
 	role := serverauth.RoleFromRequest(r)
-	if role == serverauth.RoleFocus {
-		writeError(w, http.StatusForbidden, "forbidden", "a paired phone cannot start a project")
-		return
-	}
 	var req struct {
 		Idea string `json:"idea"`
 	}

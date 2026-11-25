@@ -66,7 +66,7 @@ func TestEasyVersionsListAndGoBack(t *testing.T) {
 		code               int
 	}{
 		{http.MethodPost, restore, serverauth.RoleUser, http.StatusConflict},
-		{http.MethodPost, restore, serverauth.RoleFocus, http.StatusForbidden},
+		{http.MethodPost, restore, serverauth.RoleFocus, http.StatusConflict},
 		{http.MethodGet, "/v1/easy/projects/0000000000000000/versions", serverauth.RoleUser, http.StatusNotFound},
 		{http.MethodGet, "/v1/easy/projects/fedcba9876543210/versions", serverauth.RoleUser, http.StatusConflict},
 	} {

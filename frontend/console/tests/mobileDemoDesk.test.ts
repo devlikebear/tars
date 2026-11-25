@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { serveLocally } from '../src/lib/api/client.ts'
+import { requestJSONAt, serveLocally } from '../src/lib/api/client.ts'
 import { inboxAPI, desktopAPI, taskAPI } from '../src/lib/mobile/desktopApi.ts'
 import { remoteChatAPI } from '../src/lib/mobile/remoteChat.ts'
 import { createDemoDesk, demoBaseURL, demoDesktop, isDemoDesktop } from '../src/lib/mobile/demoDesk.ts'
@@ -11,6 +11,7 @@ import { inboxOf } from '../src/lib/mobile/inbox.ts'
 import { openGateCardId, pipelinePhase } from '../src/lib/focus.ts'
 import { mergeSummary, prDraftOf } from '../src/lib/focusPR.ts'
 import type { ChatEvent, FocusPipeline } from '../src/lib/types.ts'
+import type { EasyProject, EasyReadiness, EasyVersion } from '../src/lib/easy.ts'
 
 // A desk on a clock the test moves: a turn ends when the clock passes it.
 function desk(turnMs = 1000) {
@@ -262,4 +263,77 @@ test('a device chat turn can be cancelled mid-stream, with no reply recorded', a
   )
   // Cancelling again has nothing left to cancel.
   assert.equal(await remoteChatAPI.cancel(target, sessionId), false)
+})
+
+// Vibe redesign unit 6: the demo desk answers the vibe project routes a
+// paired desk answers a phone, so the phone screens (unit 8) can run on it.
+test('vibe projects: one sentence to a finished project, a change, going back', async () => {
+  const d = desk()
+  const at = <T>(path: string, init?: RequestInit) => requestJSONAt<T>(d.target, path, init)
+  const post = (body: unknown, method = 'POST'): RequestInit => ({ method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } })
+  type Listed = { projects: (EasyProject & { board: { state: string; waiting?: string } })[]; counts: Record<string, number>; archived: number }
+
+  assert.equal((await at<{ readiness: EasyReadiness }>('/v1/easy/readiness')).readiness.ready, true)
+  let list = await at<Listed>('/v1/easy/projects')
+  assert.deepEqual(list.projects.map((p) => [p.id, p.board.state]), [['demo-recipe-box', 'done']])
+  const seeded = await at<{ versions: EasyVersion[] }>('/v1/easy/projects/demo-recipe-box/versions')
+  assert.deepEqual(seeded.versions.map((v) => [v.kind, !!v.current]), [['saved', true], ['start', false]])
+
+  await assert.rejects(at('/v1/easy/projects', post({ idea: '  ' })), /idea_required/)
+  const { project } = await at<{ project: EasyProject }>('/v1/easy/projects', post({ idea: 'A page for my book club' }))
+  assert.equal(project.status, 'ready')
+  const id = project.id
+  const sessionID = project.session_id!
+  const board = async () => (await at<{ board: { state: string; waiting?: string } }>(`/v1/easy/projects/${id}`)).board
+  assert.equal((await board()).state, 'working')
+
+  // The plan waits on the person; approving it goes through the focus gate.
+  d.pass()
+  assert.deepEqual([(await board()).state, (await board()).waiting], ['your_turn', 'plan'])
+  const api = d.api(sessionID)
+  await api.gate(sessionID, 'plan', 'approve')
+  assert.equal((await board()).state, 'working')
+  await assert.rejects(at(`/v1/easy/projects/${id}`, post({ archived: true }, 'PATCH')), /busy/)
+  await assert.rejects(at(`/v1/easy/projects/${id}/changes`, post({ request: 'Make it green' })), /busy/)
+
+  // Run it to the end the way the other demo pipelines run.
+  for (let i = 0; i < 20 && (await board()).state !== 'done'; i++) {
+    d.pass()
+    const p = await api.getPipeline(sessionID)
+    if (p.open_gate === 'triage') {
+      for (const c of p.cards.filter((c) => c.kind === 'finding' && c.state !== 'decided')) await api.card(sessionID, c.id, 'decided', 'fix')
+    } else if (p.open_gate) {
+      await api.gate(sessionID, p.open_gate, 'approve')
+    }
+  }
+  assert.equal((await board()).state, 'done')
+
+  // Rename and archive; the archive holds it apart.
+  const renamed = await at<{ project: EasyProject }>(`/v1/easy/projects/${id}`, post({ name: '  Book   club ', archived: true }, 'PATCH'))
+  assert.equal(renamed.project.name, 'Book club')
+  list = await at<Listed>('/v1/easy/projects')
+  assert.equal(list.archived, 1)
+  assert.ok(!list.projects.some((x) => x.id === id))
+  assert.ok((await at<Listed>('/v1/easy/projects?archived=1')).projects.some((x) => x.id === id))
+  await at(`/v1/easy/projects/${id}`, post({ archived: false }, 'PATCH'))
+
+  // A change runs a new pipeline in the same project.
+  const changed = await at<{ project: EasyProject }>(`/v1/easy/projects/${id}/changes`, post({ request: 'Make the button green' }))
+  assert.notEqual(changed.project.session_id, sessionID)
+  assert.deepEqual(changed.project.changes?.map((c) => c.request), ['Make the button green'])
+  const versions = (await at<{ versions: EasyVersion[] }>(`/v1/easy/projects/${id}/versions`)).versions
+  assert.deepEqual(versions.map((v) => v.kind), ['saved', 'start'])
+  await assert.rejects(at(`/v1/easy/projects/${id}/versions/${versions[1].commit}/restore`, post({})), /busy/)
+
+  // Going back on the finished seeded project adds a version, never removes one.
+  const back = await at<{ version: EasyVersion; versions: EasyVersion[] }>(
+    `/v1/easy/projects/demo-recipe-box/versions/${seeded.versions[1].commit}/restore`, post({}),
+  )
+  assert.equal(back.version.kind, 'restored')
+  assert.deepEqual(back.versions.map((v) => v.kind), ['restored', 'saved', 'start'])
+
+  // What a phone cannot do on a real desk, it cannot do here.
+  await assert.rejects(at(`/v1/easy/projects/${id}`, { method: 'DELETE' }), /cannot delete/)
+  await assert.rejects(at(`/v1/easy/projects/${id}/preview`), /cannot show a preview/)
+  await assert.rejects(at('/v1/easy/projects/nope'), /no such project/)
 })

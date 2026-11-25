@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/devlikebear/tars/internal/easyproject"
-	"github.com/devlikebear/tars/internal/serverauth"
 )
 
 // An easy-mode project's versions (vibe-coder-identity.md §4, phase 3):
@@ -22,10 +21,6 @@ import (
 // versionsProject answers the ready project the request names, or writes
 // the error and answers false.
 func (e *easyProjectsAPI) versionsProject(w http.ResponseWriter, r *http.Request) (easyproject.Project, bool) {
-	if serverauth.RoleFromRequest(r) == serverauth.RoleFocus {
-		writeError(w, http.StatusForbidden, "forbidden", "a paired phone cannot change a project's versions")
-		return easyproject.Project{}, false
-	}
 	p, err := e.creator.Store.Get(r.PathValue("id"))
 	if errors.Is(err, easyproject.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "no such project")
