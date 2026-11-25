@@ -5,6 +5,18 @@
 # empty project folder.
 set -eu
 dir="$1"
+# An idea that starts with "Scaffold fails once" (easy-states.spec.ts) fails
+# the first time, as a lost connection would, and works when tried again.
+case "$(basename "$dir")" in
+scaffold-fails-once*)
+	marker="$(dirname "$dir")/.e2e-scaffold-failed"
+	if [ ! -f "$marker" ]; then
+		: > "$marker"
+		echo "could not reach the template server" >&2
+		exit 1
+	fi
+	;;
+esac
 printf '{"name":"app","private":true,"scripts":{"build":"true"}}\n' > "$dir/package.json"
 printf 'node_modules\n.wrangler\n' > "$dir/.gitignore"
 mkdir -p "$dir/src" "$dir/worker"

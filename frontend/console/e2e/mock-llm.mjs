@@ -180,6 +180,19 @@ const failingCheck = {
     "printf 'CHECK FAILED\\nscreen: Members list\\nexpected: the newest member at the top\\nseen: the newest member at the bottom\\n'; exit 1",
 }
 
+// [e2e:easy-stuck] (easy-states.spec.ts): the blueprint also has a check
+// that fails, with its CHECK FAILED report, until the project folder holds
+// .e2e-unstuck — so goal mode spends its budget and the team is stuck. The
+// person's "Try again" with [e2e:easy-unstick] in their words makes the
+// next turn write that file (easyUnstickTool), and the check passes.
+const EASY_STUCK = '[e2e:easy-stuck]'
+const EASY_UNSTICK = '[e2e:easy-unstick]'
+const stuckCheck = {
+  label: 'The newest member is at the top of the list',
+  command:
+    "[ -f .e2e-unstuck ] && exit 0; printf 'CHECK FAILED\\nscreen: Members list\\nexpected: the newest member at the top\\nseen: the newest member at the bottom\\n'; exit 1",
+}
+
 const blueprintQuestions = [
   { id: 'q1', question: 'Who can see the member list?', options: ['Everyone', 'Only members'] },
   { id: 'q2', question: 'Ask for a phone number too?', options: ['Yes', 'No'] },
@@ -196,6 +209,7 @@ function templateReply(stage, typed, guidance, text) {
     const plan = { goal: 'Write a short story', tasks: [{ title: 'Write chapter one', done: 'chapter-1.md holds the scene' }], stages, verify: ['git status --short'] }
     if (hasBlueprint) Object.assign(plan, blueprint)
     if (hasBlueprint && text.includes(EASY_CHECK_FAIL)) plan.checks = [...blueprint.checks, failingCheck]
+    if (hasBlueprint && text.includes(EASY_STUCK)) plan.checks = [...blueprint.checks, stuckCheck]
     return `Here is the outline.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
   }
   if (typed.startsWith('Fix these findings')) return report('Revised the passages.')
@@ -278,6 +292,11 @@ function easyMakeTool(text) {
   const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z][a-z0-9_]*)/)?.[1]
   const typed = stage ? text.slice(0, text.indexOf('<focus-stage>')) : ''
   return stage === 'make' && text.includes(EASY_WRITE) && !typed.startsWith('Fix these findings')
+}
+
+function easyUnstickTool(text) {
+  const at = text.indexOf('<focus-stage>')
+  return at > 0 && text.slice(0, at).includes(EASY_UNSTICK)
 }
 
 // [e2e:easy-limit] (easy.spec.ts): the first make-stage turn that carries
@@ -478,6 +497,14 @@ async function handleCompletion(req, res) {
       id: 'call_e2e_easy',
       type: 'function',
       function: { name: 'write_file', arguments: JSON.stringify({ path: 'page.txt', content: `made at ${Date.now()}\n` }) },
+    }])
+    return
+  }
+  if (toolResults === 0 && easyUnstickTool(lastUserText(messages)) && offersTool(body, 'write_file')) {
+    sendToolCalls(res, model, body.stream, [{
+      id: 'call_e2e_unstick',
+      type: 'function',
+      function: { name: 'write_file', arguments: JSON.stringify({ path: '.e2e-unstuck', content: 'the person explained\n' }) },
     }])
     return
   }

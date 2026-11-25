@@ -260,6 +260,13 @@ func TestEasyProjectDelete(t *testing.T) {
 		// or a projects folder moved since): never touched.
 		{ID: "0000000000000004", Name: "elsewhere", Folder: outside, Status: easyproject.StatusReady, SessionID: done},
 		{ID: "0000000000000005", Name: "failed", Status: easyproject.StatusFailed, ErrorCode: easyproject.ErrorNodeMissing},
+		// A failed creation keeps its folder's path; the same idea made
+		// again took the same folder name.
+		{ID: "0000000000000006", Name: "guest book", Folder: filepath.Join(base, "guest-book"), Status: easyproject.StatusFailed, ErrorCode: easyproject.ErrorScaffoldFailed},
+		{ID: "0000000000000007", Name: "guest book", Folder: filepath.Join(base, "guest-book"), Status: easyproject.StatusReady, SessionID: done},
+	}
+	if err := os.MkdirAll(filepath.Join(base, "guest-book", "src"), 0o755); err != nil {
+		t.Fatal(err)
 	}
 	for _, p := range projects {
 		putEasyProject(t, workspace, p)
@@ -307,8 +314,18 @@ func TestEasyProjectDelete(t *testing.T) {
 	if code := del("0000000000000005", serverauth.RoleUser); code != http.StatusOK {
 		t.Fatalf("delete failed project = %d", code)
 	}
+	// Deleting the failed record leaves the folder the new project uses.
+	rec = focusRequestAs(t, h, http.MethodDelete, "/v1/easy/projects/0000000000000006", "", serverauth.RoleUser)
+	out.DeletedTo = "x"
+	decodeInto(t, rec, &out)
+	if rec.Code != http.StatusOK || out.DeletedTo != "" {
+		t.Fatalf("delete failed record sharing a folder = %d %+v", rec.Code, out)
+	}
+	if _, err := os.Stat(filepath.Join(base, "guest-book", "src")); err != nil {
+		t.Fatalf("the other project's folder moved: %v", err)
+	}
 	_, board := listEasy(t, h, "")
-	if len(board.Projects) != 3 {
+	if len(board.Projects) != 4 {
 		t.Fatalf("board after deletes = %d projects", len(board.Projects))
 	}
 }

@@ -229,7 +229,12 @@ func GoalApplied(p Pipeline, step GoalStep, now time.Time) Pipeline {
 //   - the plan's approval, when the pipeline has never been in goal mode;
 //   - a retry of a turn the provider's usage limit stopped, when that limit
 //     is what ended goal mode (GoalEndUsageLimit): the person waited for
-//     the limit to lift and asks the team to go on as it was.
+//     the limit to lift and asks the team to go on as it was;
+//   - a retry (or a retry with the person's own words, instruct) of the
+//     blocked gate goal mode spent its budget on (GoalEndExhausted): the
+//     team got stuck, and the person's "Try again" gives it a new budget
+//     instead of leaving it to wait at every later step with no one to
+//     answer.
 //
 // Goal mode turned off by a person, or ended for any other reason, stays
 // off.
@@ -240,9 +245,17 @@ func GoalDueOnApproval(p Pipeline, gate, action string) bool {
 	switch {
 	case gate == GatePlan && action == GateApprove:
 		return p.GoalMode == nil
-	case gate == GateBlocked && action == GateRetry:
+	case gate == GateBlocked && (action == GateRetry || action == GateInstruct):
 		g := p.GoalMode
-		return g != nil && !g.Enabled && g.EndReason == GoalEndUsageLimit && p.UsageLimitStop() != nil
+		if g == nil || g.Enabled || p.OpenGate != GateBlocked {
+			return false
+		}
+		switch g.EndReason {
+		case GoalEndUsageLimit:
+			return action == GateRetry && p.UsageLimitStop() != nil
+		case GoalEndExhausted:
+			return p.UsageLimitStop() == nil
+		}
 	}
 	return false
 }

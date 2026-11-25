@@ -9,7 +9,7 @@
   import { previewPollMs, previewReachable, type EasyPreview } from '../../lib/easy'
   import { consoleMode } from '../../lib/stores/consoleMode.svelte'
 
-  let { projectId }: { projectId: string } = $props()
+  let { projectId, version }: { projectId: string; version?: number } = $props()
 
   const reachable = previewReachable(window.location.hostname)
 
@@ -17,6 +17,8 @@
   let requestFailed = $state(false)
   // Bumped by Reload so the frame loads the app again.
   let frameKey = $state(0)
+  // The width the app is shown at: the column's, or a phone's.
+  let width = $state<'pc' | 'phone'>('pc')
   let timer: ReturnType<typeof setTimeout> | undefined
   let destroyed = false
 
@@ -59,12 +61,20 @@
 <section class="result" data-testid="easy-result">
   <div class="head">
     <h2>{$t.easy.result.title}</h2>
+    {#if version}<span class="version" data-testid="easy-result-version">{$t.easy.result.version(version)}</span>{/if}
     {#if preview?.state === 'running' && preview.url}
       <div class="actions">
+        <div class="widths" role="group" aria-label={$t.easy.result.widthLabel}>
+          {#each ['pc', 'phone'] as const as w (w)}
+            <button type="button" class:on={width === w} aria-pressed={width === w} data-testid="easy-preview-width-{w}" onclick={() => (width = w)}>
+              {$t.easy.result.width[w]}
+            </button>
+          {/each}
+        </div>
         <button type="button" class="btn btn-ghost btn-sm" data-testid="easy-preview-reload" onclick={() => (frameKey += 1)}>
           {$t.easy.result.reload}
         </button>
-        <a class="btn btn-ghost btn-sm" href={preview.url} target="_blank" rel="noopener noreferrer">{$t.easy.result.newTab}</a>
+        <a class="btn btn-ghost btn-sm" data-testid="easy-preview-open" href={preview.url} target="_blank" rel="noopener noreferrer">{$t.easy.result.newTab}</a>
       </div>
     {/if}
   </div>
@@ -75,6 +85,8 @@
     {#key frameKey}
       <iframe
         class="frame"
+        class:phone={width === 'phone'}
+        data-width={width}
         data-testid="easy-preview-frame"
         title={$t.easy.result.frameTitle}
         src={preview.url}
@@ -101,26 +113,64 @@
   .head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    flex-wrap: wrap;
     gap: var(--space-3);
     margin-bottom: var(--space-3);
   }
   h2 {
-    font-size: var(--text-lg);
+    font-size: var(--text-xl);
+    font-weight: 600;
     margin: 0;
   }
+  .version {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 2px var(--space-3);
+  }
   .actions {
+    margin-left: auto;
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
+  }
+  .widths {
+    display: flex;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .widths button {
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    background: transparent;
+    border: 0;
+    padding: var(--space-1) var(--space-3);
+    cursor: pointer;
+  }
+  .widths button + button {
+    border-left: 1px solid var(--border-default);
+  }
+  .widths button.on {
+    color: var(--text-primary);
+    background: var(--surface-active);
   }
   .frame {
     display: block;
     width: 100%;
-    height: 520px;
+    margin: 0 auto;
+    height: 560px;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     /* The app paints its own page; white is what an unstyled page expects. */
     background: #fff;
+  }
+  .frame.phone {
+    width: 390px;
+    max-width: 100%;
+    height: 720px;
   }
   .muted {
     color: var(--text-secondary);

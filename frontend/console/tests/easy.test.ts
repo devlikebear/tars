@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { EASY_BOTS, EASY_SCREEN_PARTS, EASY_STEPS, checksPassed, hasBlueprint, easyCanChange, easyLimitResets, easyLive, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, runEasySetup, versionLabel, type EasyProject } from '../src/lib/easy.ts'
+import { EASY_BOTS, EASY_SCREEN_PARTS, EASY_STEPS, START_STEPS, checksPassed, currentVersion, hasBlueprint, easyCanChange, easyLimitResets, easyLive, easyRetryAction, easyStuck, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, recreateEasyProject, restoreErrorKey, runEasySetup, startSteps, versionLabel, versionRows, type EasyProject, type EasyVersion } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
 
 test('the first run sets TARS up and waits for it to come back set up', async () => {
@@ -41,9 +41,24 @@ test('the Start screen names the engine as the person knows it', () => {
   assert.equal(engineName(undefined), 'Claude Code')
   assert.equal(engineName('antigravity-cli'), 'Antigravity')
   assert.equal(engineName('anthropic'), 'AI')
-  for (const state of ['ok', 'missing', 'signed_out', 'not_set']) {
-    assert.ok(easyEn.start.state[state] && easyKo.start.state[state], state)
-  }
+  for (const step of START_STEPS) assert.ok(easyEn.start.steps[step] && easyKo.start.steps[step], step)
+})
+
+test('the Start screen marks its three steps from the server\'s answer', () => {
+  const r = (extra: Record<string, unknown>) => ({ ready: false, engine: 'ok', tools: 'ok', ...extra }) as Parameters<typeof startSteps>[0]
+  assert.deepEqual(startSteps(r({ next: 'install_engine', engine: 'missing', tools: 'missing' })), {
+    steps: { install: 'now', signIn: 'next', tools: 'next' }, at: 1,
+  })
+  assert.deepEqual(startSteps(r({ next: 'sign_in', engine: 'signed_out' })), {
+    steps: { install: 'done', signIn: 'now', tools: 'done' }, at: 2,
+  })
+  assert.deepEqual(startSteps(r({ next: 'install_tools', tools: 'missing' })), {
+    steps: { install: 'done', signIn: 'done', tools: 'now' }, at: 3,
+  })
+  // Choosing an AI comes before the three: none of them is now.
+  assert.deepEqual(startSteps(r({ next: 'choose_engine', engine: 'not_set', tools: 'ok' })), {
+    steps: { install: 'next', signIn: 'next', tools: 'done' },
+  })
 })
 import { resolveRoute } from '../src/lib/router.ts'
 import type { FocusCard, FocusPipeline } from '../src/lib/types.ts'
@@ -136,6 +151,60 @@ test('finished, saved or not; stopped and stuck', () => {
   assert.equal(easyLive(blocked), false)
   const exhausted = easyView(project(), pipeline({ current: 'make', goal_mode: { enabled: false, pushes: 20, max_pushes: 20, end_reason: 'exhausted' } }))
   assert.equal(exhausted.phase, 'stuck')
+  assert.equal(exhausted.retry, undefined, 'no blocked step to try again')
+})
+
+test('a stuck project: its blocked step to try again, the failed check, the count', () => {
+  const make = [
+    { id: 'plan', status: 'done', iteration: 1 },
+    { id: 'make', kind: 'build', status: 'blocked', iteration: 4 },
+    { id: 'review', kind: 'review', status: 'pending', iteration: 0 },
+  ] as FocusPipeline['stages']
+  const gate = { id: 'g7', kind: 'gate', stage: 'make', turn: 9, title: 'limit reached', payload: { reason: 'limit' }, state: 'open', created_at: '' } as FocusCard
+  const results = [
+    { label: 'The page opens', command: 'a', state: 'passed' },
+    { label: 'The newest member is at the top', command: 'b', state: 'failed', check: { screen: 'Members', expected: 'at the top', seen: 'at the bottom' } },
+  ] as FocusPipeline['check_results']
+  const ended = { enabled: false, pushes: 20, max_pushes: 20, end_reason: 'exhausted' } as FocusPipeline['goal_mode']
+  const stuck = easyView(project(), pipeline({ current: 'make', stages: make, open_gate: 'blocked', cards: [gate], check_results: results, goal_mode: ended }))
+  assert.equal(stuck.phase, 'stuck')
+  assert.deepEqual(stuck.retry, { cardId: 'g7' })
+  assert.equal(stuck.stoppedAt, 'maker')
+  assert.deepEqual(easyStuck(stuck), {
+    label: 'The newest member is at the top', report: { screen: 'Members', expected: 'at the top', seen: 'at the bottom' }, timedOut: undefined, passed: 1, total: 2,
+  })
+
+  // While goal mode is still on it tries again by itself: the team is at
+  // work, and nothing asks the person.
+  const retrying = easyView(project(), pipeline({ current: 'make', stages: make, open_gate: 'blocked', cards: [gate], goal_mode: { enabled: true, pushes: 3, max_pushes: 20 } }))
+  assert.equal(retrying.phase, 'building')
+  assert.equal(retrying.bots.maker, 'working')
+  assert.equal(retrying.retry, undefined)
+  assert.equal(easyLive(retrying), true)
+
+  // Without check results, the last failed check's report; without that, the count.
+  const card = { id: 'f1', kind: 'failure', stage: 'make', turn: 1, state: 'unseen', created_at: '', title: 't', payload: { check: { expected: 'e', seen: 's' } } } as FocusCard
+  assert.deepEqual(easyStuck(easyView(project(), pipeline({ current: 'make', open_gate: 'blocked', cards: [card] }))), { report: { screen: undefined, expected: 'e', seen: 's' }, passed: 0, total: 0 })
+  assert.deepEqual(easyStuck(easyView(project(), pipeline({ current: 'make', open_gate: 'blocked' }))), { passed: 0, total: 0 })
+
+  // Try again: a plain retry, or the person's words.
+  assert.deepEqual(easyRetryAction('  '), { action: 'retry' })
+  assert.deepEqual(easyRetryAction(' newest first '), { action: 'instruct', note: 'newest first' })
+})
+
+test('a project that could not be set up starts its idea again as a new one', async () => {
+  const calls: string[] = []
+  const failed = project({ id: 'old', status: 'failed', idea: 'A guest book', error_code: 'scaffold_failed' })
+  const id = await recreateEasyProject({
+    create: async (idea) => { calls.push(`create ${idea}`); return { project: project({ id: 'new', idea }) } },
+    remove: async (old) => { calls.push(`remove ${old}`) },
+  }, failed)
+  assert.equal(id, 'new')
+  assert.deepEqual(calls, ['create A guest book', 'remove old'])
+  // The old record staying behind is not a failure.
+  assert.equal(await recreateEasyProject({ create: async () => ({ project: project({ id: 'n2' }) }), remove: async () => { throw new Error('409') } }, failed), 'n2')
+  // A refused creation is.
+  await assert.rejects(recreateEasyProject({ create: async () => { throw new Error('503') }, remove: async () => {} }, failed))
 })
 
 test('a spent usage limit pauses the team until the person says to go on', () => {
@@ -170,12 +239,9 @@ test('a spent usage limit pauses the team until the person says to go on', () =>
   assert.equal(easyLimitResets({ cardId: 'c', resetsAt: 'not a time', resets: '3pm' }, 'en-US', now), '3pm')
   assert.equal(easyLimitResets({ cardId: 'c' }, 'en-US', now), '')
 
-  // Both sentences, with and without a time, in both languages, use no
-  // hidden word and name the time when there is one.
-  for (const section of [easyEn, easyKo]) {
-    assert.match(section.project.limitPaused('2:40pm'), /2:40pm/)
-    assert.deepEqual(hiddenWordsIn(section.project.limitPaused('')), [])
-  }
+  // Where the team stopped: the bot of the stage the limit stopped.
+  assert.equal(limit.stoppedAt, 'maker')
+  for (const section of [easyEn, easyKo]) assert.match(section.states.limit.stoppedAt('Make', 'Maker'), /Make.*Maker/)
 })
 
 test('the hidden words are found as words, in either language', () => {
@@ -225,6 +291,24 @@ test('a finished project takes a change once its version is saved, and a change 
   })
   assert.equal(easyView(changed, pipeline({ session_id: 's2' })).change, 'Make it bigger')
   assert.equal(easyView(project(), pipeline()).change, undefined, 'the first version is no change')
+})
+
+test('the result numbers its versions from the oldest saved one', () => {
+  const v = (commit: string, kind: EasyVersion['kind'], title = commit, current = false): EasyVersion => ({ commit, title, kind, at: '2026-11-25T10:00:00Z', current })
+  const words = { start: 'The start', backTo: (title: string) => `Back to: ${title}` }
+  const rows = versionRows([v('c4', 'restored', 'First', true), v('c3', 'saved', 'Green button'), v('c2', 'saved', 'First'), v('c1', 'start')], words)
+  assert.deepEqual(rows.map((r) => [r.number, r.label, r.current]), [
+    [3, 'Back to: First', true], [2, 'Green button', false], [1, 'First', false], [undefined, 'The start', false],
+  ])
+  assert.equal(currentVersion(rows), 3)
+  assert.equal(currentVersion(versionRows([v('c1', 'start', 'x', true)], words)), undefined)
+  assert.equal(restoreErrorKey('busy'), 'busy')
+  assert.equal(restoreErrorKey('not_ready'), 'busy')
+  assert.equal(restoreErrorKey('not_found'), 'notFound')
+  assert.equal(restoreErrorKey(''), 'unknown')
+  for (const section of [easyEn, easyKo]) {
+    for (const key of ['busy', 'notFound', 'unknown'] as const) assert.ok(section.versions.errors[key], key)
+  }
 })
 
 test('a version is named by its own words, the start and a going back by the screen', () => {

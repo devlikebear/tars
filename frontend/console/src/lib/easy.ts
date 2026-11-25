@@ -66,6 +66,12 @@ export type EasyView = {
   // When the AI's usage limit lifts (phase 'limit'), and the card the
   // "Continue" answer goes to.
   limit?: EasyLimit
+  // Where the team stopped (phases 'limit' and 'stuck'): the bot whose
+  // stage it was.
+  stoppedAt?: EasyBot
+  // The card "Try again" answers on a stuck project: the open blocked
+  // gate's. A project stuck with no such gate has nothing to try again.
+  retry?: { cardId: string }
   // The workspace (docs/plans/vibe-mode-redesign unit 4): which of the four
   // steps the project is in, the bot at work, the leader's questions, the
   // blueprint, the checks with their results and the team's log.
@@ -244,9 +250,23 @@ function phaseView(project: EasyProject, pipeline: (FocusPipeline & SavedField) 
     // Nothing is wrong with the work when the usage limit stopped it: the
     // person waits and says when to go on (goal mode comes back with it).
     const limit = usageLimitStop(pipeline)
-    view.phase = limit ? 'limit' : 'stuck'
-    if (limit) view.limit = limit
-    return view
+    const stage = stageOf(pipeline)
+    if (limit) {
+      view.phase = 'limit'
+      view.limit = limit
+      view.stoppedAt = (stage && botOfKind[kindOf(stage)]) || 'leader'
+      return view
+    }
+    if (!pipeline.goal_mode?.enabled) {
+      view.phase = 'stuck'
+      view.stoppedAt = (stage && botOfKind[kindOf(stage)]) || 'leader'
+      const card = pipeline.open_gate === 'blocked' ? pipeline.cards.findLast((c) => c.kind === 'gate' && c.state !== 'decided') : undefined
+      if (card) view.retry = { cardId: card.id }
+      return view
+    }
+    // Goal mode is still on: it tries again by itself in a moment, so the
+    // team is still at work as far as the person is concerned.
+    for (const bot of EASY_BOTS) if (bots[bot] === 'needs_you') bots[bot] = 'working'
   }
   // The leader's questions before the plan wait for the person's answers.
   if (openQuestions(pipeline) > 0) {
@@ -424,6 +444,47 @@ export function easyCanChange(view: EasyView): boolean {
   return view.phase === 'finished' && view.saved !== undefined
 }
 
+// What a stuck project shows (screens/D-States C): the check that did not
+// pass, with what it expected and saw when it printed them, and how many
+// of the checks passed. Without check results, the last failed check the
+// server recorded; without either, nothing but the count.
+export type EasyStuck = { label?: string; report?: EasyCheckFailure; timedOut?: boolean; passed: number; total: number }
+
+export function easyStuck(view: EasyView): EasyStuck {
+  const { passed, total } = checksPassed(view.checks)
+  const failed = view.checks.find((c) => c.state === 'failed')
+  if (failed) return { label: failed.label, report: failed.report, timedOut: failed.timedOut, passed, total }
+  if (view.check) return { report: view.check, passed, total }
+  return { passed, total }
+}
+
+// "Try again" on a stuck project: a plain retry, or, when the person
+// explained again what they want, their words for the team (the blocked
+// gate's instruct). Either one puts the team back to work on its own.
+export function easyRetryAction(note: string): { action: 'retry' | 'instruct'; note?: string } {
+  const words = note.trim()
+  return words ? { action: 'instruct', note: words } : { action: 'retry' }
+}
+
+// "Try again" on a project that could not be set up: the server never
+// retries a creation, so the idea starts a new project and the failed one
+// leaves the list (its half-made folder was already removed). Answers the
+// new project's id; the old record staying behind is not a failure.
+export type EasyRecreateAPI = {
+  create: (idea: string) => Promise<{ project: EasyProject }>
+  remove: (id: string) => Promise<void>
+}
+
+export async function recreateEasyProject(api: EasyRecreateAPI, failed: EasyProject): Promise<string> {
+  const { project } = await api.create(failed.idea)
+  try {
+    await api.remove(failed.id)
+  } catch {
+    // It stays on the board under Stopped, where it can be deleted.
+  }
+  return project.id
+}
+
 // Words an easy-mode screen never shows (vibe-coder-identity.md §4): the
 // machinery under the screen. Matched as whole words, ignoring case.
 export const EASY_HIDDEN_WORDS = [
@@ -483,6 +544,37 @@ export function previewReachable(hostname: string): boolean {
 export type EasyVersionKind = 'start' | 'saved' | 'restored'
 export type EasyVersion = { commit: string; title: string; kind: EasyVersionKind; at: string; current?: boolean }
 
+// A version as the result screen lists it: numbered from the oldest saved
+// one (the empty start has no number), with its name and whether the folder
+// holds it now.
+export type EasyVersionRow = { commit: string; number?: number; label: string; at: string; current: boolean; kind: EasyVersionKind }
+
+export function versionRows(versions: EasyVersion[], words: { start: string; backTo: (title: string) => string }): EasyVersionRow[] {
+  let n = versions.filter((v) => v.kind !== 'start').length
+  return versions.map((v) => {
+    const row: EasyVersionRow = { commit: v.commit, label: versionLabel(v, words), at: v.at, current: Boolean(v.current), kind: v.kind }
+    if (v.kind !== 'start') row.number = n--
+    return row
+  })
+}
+
+// The number of the version the folder holds now, if it has one.
+export function currentVersion(rows: EasyVersionRow[]): number | undefined {
+  return rows.find((r) => r.current)?.number
+}
+
+// How many versions the result screen's strip shows before "All versions".
+export const VERSION_STRIP = 3
+
+// A refused going back, as a key into the strings: the team is at work on
+// the project (409 busy), the version is not this project's (404), or
+// anything else.
+export function restoreErrorKey(code: string): 'busy' | 'notFound' | 'unknown' {
+  if (code === 'busy' || code === 'not_ready') return 'busy'
+  if (code === 'not_found') return 'notFound'
+  return 'unknown'
+}
+
 // How a version is named on the screen. The titles are the team's own
 // plain words (the plan's goal); the start has no words of its own.
 export function versionLabel(v: EasyVersion, words: { start: string; backTo: (title: string) => string }): string {
@@ -506,6 +598,27 @@ export type EasyReadiness = {
   engine: EasyCheckState
   engine_kind?: string
   tools: EasyCheckState
+}
+
+// The Start screen's three steps (screens/D-Start): installing the AI,
+// signing in to it, installing the tools, each done, now or still to come,
+// and the place of the one to do now (1 to 3). Choosing an AI comes before
+// all three and is not one of them.
+export const START_STEPS = ['install', 'signIn', 'tools'] as const
+export type EasyStartStep = (typeof START_STEPS)[number]
+
+export function startSteps(r: EasyReadiness): { steps: Record<EasyStartStep, EasyStepState>; at?: number } {
+  const installed = r.engine === 'ok' || r.engine === 'signed_out'
+  const steps: Record<EasyStartStep, EasyStepState> = {
+    install: installed ? 'done' : 'next',
+    signIn: r.engine === 'ok' ? 'done' : 'next',
+    tools: r.tools === 'ok' ? 'done' : 'next',
+  }
+  const now: EasyStartStep | undefined =
+    r.next === 'install_engine' ? 'install' : r.next === 'sign_in' ? 'signIn' : r.next === 'install_tools' ? 'tools' : undefined
+  if (!now) return { steps }
+  steps[now] = 'now'
+  return { steps, at: START_STEPS.indexOf(now) + 1 }
 }
 
 // How often the Start screen reads the answer again while the person
