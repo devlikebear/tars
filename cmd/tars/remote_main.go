@@ -94,8 +94,28 @@ func newRemoteCommand(stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
+// remoteCLIOptions names TARS's serve port and the phone preview relay's:
+// remote access is one switch for both (docs/decisions/vibe-phone-preview.md).
+func remoteCLIOptions(httpsPort int) remoteaccess.Options {
+	return remoteaccess.Options{HTTPSPort: httpsPort, RelayTargetURL: remoteaccess.DefaultRelayTargetURL}
+}
+
+// relayLine is the one status line about the phone preview relay.
+func relayLine(status remoteaccess.Status) string {
+	switch {
+	case status.RelayURL() != "":
+		return "preview relay: " + status.RelayURL()
+	case status.Relay != nil && status.Relay.Active && !status.Relay.OwnedByTARS:
+		return fmt.Sprintf("preview relay: port %d is used by another Serve target", status.Relay.Port)
+	case status.URL() == "":
+		return "preview relay: off (remote access is off)"
+	default:
+		return fmt.Sprintf("preview relay: port %d not served (restart tars serve)", remoteaccess.DefaultRelayHTTPSPort)
+	}
+}
+
 func runRemoteStatus(ctx context.Context, opts remoteStatusOptions, stdout, _ io.Writer) error {
-	status, err := remoteaccess.Detect(ctx, remoteaccess.Options{HTTPSPort: opts.httpsPort})
+	status, err := remoteaccess.Detect(ctx, remoteCLIOptions(opts.httpsPort))
 	if err != nil {
 		return err
 	}
@@ -118,16 +138,19 @@ func runRemoteStatus(ctx context.Context, opts remoteStatusOptions, stdout, _ io
 	} else if status.ServeActive {
 		serve = fmt.Sprintf("port %d is used by another Serve target", status.ServePort)
 	}
-	_, err = fmt.Fprintf(stdout, "tailscale: %s, %s\nhost: %s\nurl: %s\nserve: %s\n", availability, login, status.HostName, status.TailnetURL, serve)
+	_, err = fmt.Fprintf(stdout, "tailscale: %s, %s\nhost: %s\nurl: %s\nserve: %s\n%s\n", availability, login, status.HostName, status.TailnetURL, serve, relayLine(status))
 	return err
 }
 
-func runRemoteEnable(ctx context.Context, opts remoteAccessOptions, stdout, _ io.Writer) error {
+func runRemoteEnable(ctx context.Context, opts remoteAccessOptions, stdout, stderr io.Writer) error {
 	if err := validateRemoteAccessCLIAuth(opts); err != nil {
 		return err
 	}
 	if err := remoteaccess.Enable(ctx, remoteaccess.Options{HTTPSPort: opts.httpsPort}); err != nil {
 		return err
+	}
+	if err := remoteaccess.EnableRelay(ctx, remoteCLIOptions(opts.httpsPort)); err != nil {
+		_, _ = fmt.Fprintf(stderr, "warning: preview relay not served: %v\n", err)
 	}
 	if err := patchRemoteAccessCLIState(opts, true); err != nil {
 		return err
@@ -136,7 +159,10 @@ func runRemoteEnable(ctx context.Context, opts remoteAccessOptions, stdout, _ io
 	return err
 }
 
-func runRemoteDisable(ctx context.Context, opts remoteAccessOptions, stdout, _ io.Writer) error {
+func runRemoteDisable(ctx context.Context, opts remoteAccessOptions, stdout, stderr io.Writer) error {
+	if err := remoteaccess.DisableRelay(ctx, remoteCLIOptions(opts.httpsPort)); err != nil {
+		_, _ = fmt.Fprintf(stderr, "warning: preview relay still served: %v\n", err)
+	}
 	if err := remoteaccess.Disable(ctx, remoteaccess.Options{HTTPSPort: opts.httpsPort}); err != nil {
 		return err
 	}

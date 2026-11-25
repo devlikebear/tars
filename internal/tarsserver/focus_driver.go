@@ -46,6 +46,9 @@ type focusDriver struct {
 	// idlePoll is how often a run checks whether another turn on its
 	// session has ended before it starts the next step.
 	idlePoll time.Duration
+	// phonePreview is the preview relay the easy project routes hand
+	// tickets into (easy_preview_relay.go); nil when the server has none.
+	phonePreview *easyPhonePreview
 
 	// Bound by the chat handler (bind): how a turn runs and a command is
 	// verified, and where the verification step reports progress.

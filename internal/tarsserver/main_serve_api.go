@@ -27,6 +27,7 @@ import (
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/notification"
 	"github.com/devlikebear/tars/internal/ops"
+	"github.com/devlikebear/tars/internal/previewrelay"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/reflection"
 	"github.com/devlikebear/tars/internal/remoteaccess"
@@ -202,6 +203,7 @@ func runServeAPICommand(
 		}
 	}
 	awaitPredecessorExit(opts.APIAddr, logger)
+	startPreviewRelay(apiRuntime, logger)
 	if err := apiRuntime.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error().Err(err).Msg("failed to serve api")
 		return &cli.ExitError{Code: 1, Err: err}
@@ -534,6 +536,8 @@ func buildAPIMux(
 	}
 	chatTooling.Worktrees = sessionWorktrees
 	focusDriver := newFocusDriver(logger)
+	focusDriver.phonePreview = newEasyPhonePreview(cfg.WorkspaceDir, relayDetect(
+		remoteaccess.ExecRunner{}, effectiveRemoteAccessPort(cfg.RemoteAccessTailscaleServeHTTPSPort), remoteaccess.DefaultTargetURL))
 	// The same engine behind the computer_use chat tool, independent of
 	// tools.computer_use.enabled (that flag only gates the chat tool's
 	// registration): it never fails to construct, answering "unavailable"
@@ -737,9 +741,10 @@ func buildAPIMux(
 	remoteChatHandler := apihandlers.NewRemoteChatHandler(sessionStore, consoleAuthStore, logger)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	remoteAccessHandler := apihandlers.NewRemoteAccessHandler(apihandlers.RemoteAccessOptions{
-		Config:     cfg,
-		ConfigPath: resolvedConfigPath,
-		Logger:     logger,
+		Config:         cfg,
+		ConfigPath:     resolvedConfigPath,
+		Logger:         logger,
+		RelayTargetURL: remoteaccess.DefaultRelayTargetURL,
 	})
 	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) }, consoleBuildTracker.Get, func() string { return cfg.Console.DefaultMode }, func() bool { return cfg.Console.ExpertMode })
 	setupHandler := apihandlers.NewSetupHandler(opts.ConfigPath, cfg, logger)
@@ -1362,6 +1367,10 @@ func reconcileRemoteAccessOnStart(ctx context.Context, runtime *serveAPIRuntime,
 		logger.Warn().Err(err).Msg("remote access reconcile failed")
 		return
 	}
+	// One switch, two ports: the phone preview relay follows remote access.
+	if err := remoteaccess.EnableRelay(reconcileCtx, remoteAccessRelayOptions(runtime)); err != nil {
+		logger.Warn().Err(err).Int("https_port", remoteaccess.DefaultRelayHTTPSPort).Msg("preview relay: tailscale serve port not mapped")
+	}
 	logger.Info().
 		Int("https_port", effectiveRemoteAccessPort(runtime.cfg.RemoteAccessTailscaleServeHTTPSPort)).
 		Msg("remote access reconciled")
@@ -1404,11 +1413,15 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime.cfg.RemoteAccessTailscaleServeEnabled {
 		// Shutdown should continue even if Tailscale was logged out or the
 		// Serve target was already removed outside TARS.
+		_ = remoteaccess.DisableRelay(ctx, remoteAccessRelayOptions(runtime))
 		_ = remoteaccess.Disable(ctx, remoteaccess.Options{
 			Runner:    remoteAccessRunner(runtime),
 			HTTPSPort: runtime.cfg.RemoteAccessTailscaleServeHTTPSPort,
 			TargetURL: remoteAccessTargetURL(runtime),
 		})
+	}
+	if runtime.focusDriver != nil && runtime.focusDriver.phonePreview != nil {
+		runtime.focusDriver.phonePreview.close()
 	}
 	if runtime.server != nil {
 		_ = runtime.server.Shutdown(ctx)
@@ -1424,6 +1437,26 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime.workLedger != nil {
 		_ = runtime.workLedger.Close()
 	}
+}
+
+// remoteAccessRelayOptions names the phone preview relay's serve port
+// beside TARS's own.
+func remoteAccessRelayOptions(runtime *serveAPIRuntime) remoteaccess.Options {
+	return remoteaccess.Options{
+		Runner:         remoteAccessRunner(runtime),
+		HTTPSPort:      runtime.cfg.RemoteAccessTailscaleServeHTTPSPort,
+		TargetURL:      remoteAccessTargetURL(runtime),
+		RelayTargetURL: remoteaccess.DefaultRelayTargetURL,
+	}
+}
+
+// startPreviewRelay starts the phone preview relay's listener: only a real
+// `tars serve` does, so tests that build the server never take its port.
+func startPreviewRelay(runtime *serveAPIRuntime, logger zerolog.Logger) {
+	if runtime == nil || runtime.focusDriver == nil || runtime.focusDriver.phonePreview == nil {
+		return
+	}
+	runtime.focusDriver.phonePreview.listen(previewrelay.DefaultAddr, logger)
 }
 
 func remoteAccessRunner(runtime *serveAPIRuntime) remoteaccess.Runner {

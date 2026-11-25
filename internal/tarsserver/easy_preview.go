@@ -16,11 +16,12 @@ import (
 //	POST   /v1/easy/projects/{id}/preview → {preview}; starts it unless it runs
 //	DELETE /v1/easy/projects/{id}/preview → {preview} (stopped)
 //
-// The app runs on this computer's loopback address, so only a console on
-// the same computer can show it; a paired phone (role focus) never reaches
-// these routes — they are not in serverauth's focus table, and this handler
-// refuses one too (relaying the app to a phone is vibe redesign unit 7). 404 for an unknown project, 409 not_ready while the project
-// is still being made or could not be.
+// The app runs on this computer's loopback address. A paired phone (role
+// focus) may start and read the preview (vibe redesign unit 7) but gets no
+// address — it opens the app through the preview relay's ticket
+// (easy_preview_relay.go) — and cannot stop it: the 10-minute idle sweep
+// does. 404 for an unknown project, 409 not_ready while the project is
+// still being made or could not be.
 
 // easyPreviewSweep is how often idle previews are looked for.
 const easyPreviewSweep = time.Minute
@@ -54,10 +55,6 @@ func newEasyPreviews(workspace string) (*easyproject.Previews, func()) {
 // previewProject answers the ready project the request names, or writes the
 // error and answers false.
 func (e *easyProjectsAPI) previewProject(w http.ResponseWriter, r *http.Request) (easyproject.Project, bool) {
-	if serverauth.RoleFromRequest(r) == serverauth.RoleFocus {
-		writeError(w, http.StatusForbidden, "forbidden", "a paired phone cannot show a preview")
-		return easyproject.Project{}, false
-	}
 	p, err := e.creator.Store.Get(r.PathValue("id"))
 	if errors.Is(err, easyproject.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "no such project")
@@ -79,7 +76,7 @@ func (e *easyProjectsAPI) previewStatus(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"preview": e.previews.Status(p.ID)})
+	writeJSON(w, http.StatusOK, map[string]any{"preview": previewFor(r, e.previews.Status(p.ID))})
 }
 
 func (e *easyProjectsAPI) previewStart(w http.ResponseWriter, r *http.Request) {
@@ -87,10 +84,14 @@ func (e *easyProjectsAPI) previewStart(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"preview": e.previews.Start(p.ID, p.Folder)})
+	writeJSON(w, http.StatusOK, map[string]any{"preview": previewFor(r, e.previews.Start(p.ID, p.Folder))})
 }
 
 func (e *easyProjectsAPI) previewStop(w http.ResponseWriter, r *http.Request) {
+	if serverauth.RoleFromRequest(r) == serverauth.RoleFocus {
+		writeError(w, http.StatusForbidden, "forbidden", "a paired phone cannot stop a preview")
+		return
+	}
 	p, ok := e.previewProject(w, r)
 	if !ok {
 		return

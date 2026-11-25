@@ -32,8 +32,9 @@ import (
 // paired phone (role focus) may call them too (docs/plans/vibe-mode-redesign
 // unit 6): the request carries only an idea, so a phone chooses no folder,
 // tier or opt-in, and every id these routes take names a record in the easy
-// project store, never a session. Deleting a project and the preview stay
-// refused to a phone (easy_manage.go, easy_preview.go).
+// project store, never a session. Deleting a project and stopping its
+// preview stay refused to a phone (easy_manage.go, easy_preview.go); the
+// phone opens the app through the preview relay (easy_preview_relay.go).
 
 type easyProjectsAPI struct {
 	creator *easyproject.Creator
@@ -41,6 +42,9 @@ type easyProjectsAPI struct {
 	canRun func() bool
 	// previews run the projects' apps for the result screen (easy_preview.go).
 	previews *easyproject.Previews
+	// phone is the preview relay a paired phone opens the app through
+	// (easy_preview_relay.go); nil without one.
+	phone *easyPhonePreview
 	// pipelines reads the projects' focus pipelines; now stamps changes.
 	pipelines func() *focuspipeline.Store
 	// turnRunning reports a turn holding a session (a person's own turn
@@ -83,6 +87,10 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 	}
 	previews, stopPreviews := newEasyPreviews(api.sessions.WorkspaceDir())
 	easy.previews = previews
+	if api.driver != nil && api.driver.phonePreview != nil {
+		easy.phone = api.driver.phonePreview
+		easy.phone.previews.Store(previews)
+	}
 	if api.driver != nil {
 		// A preview must not outlive the server: it holds a port.
 		api.driver.onClose(stopPreviews)
@@ -95,6 +103,7 @@ func registerEasyProjects(mux *http.ServeMux, api *focusAPI, logger zerolog.Logg
 	mux.HandleFunc("GET /v1/easy/projects/{id}/preview", easy.previewStatus)
 	mux.HandleFunc("POST /v1/easy/projects/{id}/preview", easy.previewStart)
 	mux.HandleFunc("DELETE /v1/easy/projects/{id}/preview", easy.previewStop)
+	mux.HandleFunc("POST /v1/easy/projects/{id}/preview/ticket", easy.previewTicket)
 	mux.HandleFunc("POST /v1/easy/projects/{id}/changes", easy.change)
 	mux.HandleFunc("GET /v1/easy/projects/{id}/versions", easy.versions)
 	mux.HandleFunc("POST /v1/easy/projects/{id}/versions/{commit}/restore", easy.restore)

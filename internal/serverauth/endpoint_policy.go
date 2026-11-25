@@ -175,14 +175,20 @@ var focusEndpointRules = []EndpointPolicyRule{
 	// project's pipeline is a focus pipeline, so its plan gate, the leader's
 	// questions, its transcript and its turn feed are the focus routes above
 	// and below. Not here on purpose: DELETE /v1/easy/projects/:id (moves a
-	// folder on the desk) and /v1/easy/projects/:id/preview (the app answers
-	// only on the desk's loopback; unit 7).
+	// folder on the desk) and DELETE /v1/easy/projects/:id/preview (the
+	// phone starts a preview and the 10-minute idle sweep ends it).
 	focusRule([]string{http.MethodGet}, "/v1/easy/readiness", "whether this desk can make a vibe project"),
 	focusRule([]string{http.MethodGet, http.MethodPost}, "/v1/easy/projects", "vibe project list/create"),
 	focusRule([]string{http.MethodGet, http.MethodPatch}, "/v1/easy/projects/:id", "vibe project read, rename, archive"),
 	focusRule([]string{http.MethodPost}, "/v1/easy/projects/:id/changes", "vibe project change"),
 	focusRule([]string{http.MethodGet}, "/v1/easy/projects/:id/versions", "vibe project versions"),
 	focusRule([]string{http.MethodPost}, "/v1/easy/projects/:id/versions/:commit/restore", "vibe project going back"),
+	// The running app on the phone (unit 7, docs/decisions/vibe-phone-preview.md):
+	// start and read the preview, and get a one-use ticket into the preview
+	// relay, which serves the app on its own origin. The phone never gets
+	// the app's loopback address.
+	focusRule([]string{http.MethodGet, http.MethodPost}, "/v1/easy/projects/:id/preview", "vibe project preview start and status"),
+	focusRule([]string{http.MethodPost}, "/v1/easy/projects/:id/preview/ticket", "vibe project preview relay ticket"),
 	// The routes below name a session. Their handlers let a phone reach only
 	// focus pipeline sessions, or (§8) the device's own chat session
 	// (internal/tarsserver/focus_device_scope.go).

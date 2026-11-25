@@ -258,8 +258,9 @@ func TestUnknownRoleReachesNothing(t *testing.T) {
 }
 
 // Vibe redesign unit 6: a phone reaches the vibe (easy) project routes it
-// needs, and nothing new beside them — not deleting a project, not the
-// preview, not the desk's own setup.
+// needs, and nothing new beside them — not deleting a project, not
+// stopping the preview, not the desk's own setup. Unit 7 added starting and
+// reading the preview and its relay ticket.
 func TestFocusEndpointTableVibeRoutes(t *testing.T) {
 	allowed := []struct{ method, path string }{
 		{http.MethodGet, "/v1/easy/readiness"},
@@ -271,6 +272,9 @@ func TestFocusEndpointTableVibeRoutes(t *testing.T) {
 		{http.MethodPost, "/v1/easy/projects/p1/changes"},
 		{http.MethodGet, "/v1/easy/projects/p1/versions"},
 		{http.MethodPost, "/v1/easy/projects/p1/versions/abc123/restore"},
+		{http.MethodGet, "/v1/easy/projects/p1/preview"},
+		{http.MethodPost, "/v1/easy/projects/p1/preview"},
+		{http.MethodPost, "/v1/easy/projects/p1/preview/ticket"},
 	}
 	for _, tc := range allowed {
 		if !EndpointAllowsRole(tc.method, tc.path, RoleFocus) {
@@ -280,9 +284,11 @@ func TestFocusEndpointTableVibeRoutes(t *testing.T) {
 	denied := []struct{ method, path string }{
 		{http.MethodDelete, "/v1/easy/projects/p1"},
 		{http.MethodPut, "/v1/easy/projects/p1"},
-		{http.MethodGet, "/v1/easy/projects/p1/preview"},
-		{http.MethodPost, "/v1/easy/projects/p1/preview"},
 		{http.MethodDelete, "/v1/easy/projects/p1/preview"},
+		{http.MethodPatch, "/v1/easy/projects/p1/preview"},
+		{http.MethodGet, "/v1/easy/projects/p1/preview/ticket"},
+		{http.MethodDelete, "/v1/easy/projects/p1/preview/ticket"},
+		{http.MethodPost, "/v1/easy/projects/p1/preview/ticket/x"},
 		{http.MethodGet, "/v1/easy/projects/p1/changes"},
 		{http.MethodPost, "/v1/easy/projects/p1/versions"},
 		{http.MethodGet, "/v1/easy/projects/p1/versions/abc123/restore"},
