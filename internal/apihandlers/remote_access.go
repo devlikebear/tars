@@ -21,6 +21,7 @@ type remoteAccessAPIHandler struct {
 	logger     zerolog.Logger
 	runner     remoteaccess.Runner
 	targetURL  string
+	relayURL   string
 }
 
 type RemoteAccessOptions struct {
@@ -29,6 +30,10 @@ type RemoteAccessOptions struct {
 	Logger     zerolog.Logger
 	Runner     remoteaccess.Runner
 	TargetURL  string
+	// RelayTargetURL, when set, is the phone preview relay's listener: the
+	// switch then also maps Tailscale serve's relay port (8443) to it and
+	// the status reports it (docs/decisions/vibe-phone-preview.md).
+	RelayTargetURL string
 }
 
 type remoteAccessPreflightCheck struct {
@@ -38,12 +43,15 @@ type remoteAccessPreflightCheck struct {
 }
 
 type remoteAccessAPIStatusResponse struct {
-	DesiredEnabled   bool                         `json:"desired_enabled"`
-	DesiredHTTPSPort int                          `json:"desired_https_port"`
-	TargetURL        string                       `json:"target_url"`
-	URL              string                       `json:"url,omitempty"`
-	Status           remoteaccess.Status          `json:"status"`
-	Checks           []remoteAccessPreflightCheck `json:"checks"`
+	DesiredEnabled   bool   `json:"desired_enabled"`
+	DesiredHTTPSPort int    `json:"desired_https_port"`
+	TargetURL        string `json:"target_url"`
+	URL              string `json:"url,omitempty"`
+	// RelayURL is the phone preview relay's address, set only while
+	// Tailscale serves both TARS and the relay.
+	RelayURL string                       `json:"relay_url,omitempty"`
+	Status   remoteaccess.Status          `json:"status"`
+	Checks   []remoteAccessPreflightCheck `json:"checks"`
 }
 
 func NewRemoteAccessHandler(opts RemoteAccessOptions) http.Handler {
@@ -59,6 +67,7 @@ func NewRemoteAccessHandler(opts RemoteAccessOptions) http.Handler {
 		logger:     opts.Logger,
 		runner:     opts.Runner,
 		targetURL:  strings.TrimSpace(opts.TargetURL),
+		relayURL:   strings.TrimSpace(opts.RelayTargetURL),
 	}
 }
 
@@ -114,6 +123,12 @@ func (h *remoteAccessAPIHandler) handleEnable(w http.ResponseWriter, r *http.Req
 		httpapi.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_enable_failed"})
 		return
 	}
+	// One switch, two ports. A relay port another target holds does not
+	// fail the switch: the status shows the relay unserved and the phone's
+	// ticket answers relay_not_served.
+	if err := remoteaccess.EnableRelay(r.Context(), h.remoteOptions(port)); err != nil {
+		h.logger.Warn().Err(err).Msg("preview relay: tailscale serve port not mapped")
+	}
 	if err := h.patchDesiredState(true, port); err != nil {
 		h.logger.Error().Err(err).Str("path", h.configPath).Msg("failed to persist remote access enabled state")
 		httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": "remote_access_persist_failed"})
@@ -140,6 +155,9 @@ func (h *remoteAccessAPIHandler) handleDisable(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		httpapi.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_status_failed"})
 		return
+	}
+	if err := remoteaccess.DisableRelay(r.Context(), h.remoteOptions(port)); err != nil {
+		h.logger.Warn().Err(err).Msg("preview relay: tailscale serve port not removed")
 	}
 	if status.Installed && status.ServeActive && status.OwnedByTARS {
 		if err := remoteaccess.Disable(r.Context(), h.remoteOptions(port)); err != nil {
@@ -271,9 +289,10 @@ func (h *remoteAccessAPIHandler) currentHTTPSPort() int {
 
 func (h *remoteAccessAPIHandler) remoteOptions(port int) remoteaccess.Options {
 	return remoteaccess.Options{
-		Runner:    h.runner,
-		HTTPSPort: port,
-		TargetURL: h.targetURL,
+		Runner:         h.runner,
+		HTTPSPort:      port,
+		TargetURL:      h.targetURL,
+		RelayTargetURL: h.relayURL,
 	}
 }
 
@@ -283,6 +302,7 @@ func (h *remoteAccessAPIHandler) statusResponse(status remoteaccess.Status, chec
 		DesiredHTTPSPort: h.currentHTTPSPort(),
 		TargetURL:        h.targetURL,
 		URL:              remoteAccessURL(status, h.currentHTTPSPort()),
+		RelayURL:         status.RelayURL(),
 		Status:           status,
 		Checks:           checks,
 	}

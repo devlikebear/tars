@@ -76,6 +76,9 @@ var AppPackages = []string{
 	"onboarding",
 	"ops",
 	"plugin",
+	// previewrelay serves a vibe project's app to the paired phone on an
+	// origin of its own (docs/decisions/vibe-phone-preview.md).
+	"previewrelay",
 	"proofverifier",
 	"pulse",
 	"reflection",

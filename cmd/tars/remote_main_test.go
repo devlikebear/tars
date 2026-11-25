@@ -11,6 +11,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/consoleauth"
+	"github.com/devlikebear/tars/internal/remoteaccess"
 )
 
 func TestRootCommand_IncludesRemoteSubcommand(t *testing.T) {
@@ -210,7 +211,8 @@ func TestRemoteAccessCLIRendersLiveStatusURLAndOwnedMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	if output := stdout.String(); !strings.Contains(output, "installed, logged in") ||
-		!strings.Contains(output, "mac.tail.ts.net") || !strings.Contains(output, "serving on https:9443") {
+		!strings.Contains(output, "mac.tail.ts.net") || !strings.Contains(output, "serving on https:9443") ||
+		!strings.Contains(output, "preview relay: port 8443 not served") {
 		t.Fatalf("plain remote status=%q", output)
 	}
 	stdout.Reset()
@@ -299,5 +301,29 @@ func writeFakeTailscale(t *testing.T, binDir, statusJSON, serveJSON string) {
 		"exit 0\n"
 	if err := os.WriteFile(filepath.Join(binDir, "tailscale"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRemoteRelayLine(t *testing.T) {
+	on := remoteaccess.Status{TailnetURL: "mac.ts.net", ServeActive: true, OwnedByTARS: true, ServePort: 443}
+	cases := []struct {
+		relay *remoteaccess.RelayStatus
+		main  bool
+		want  string
+	}{
+		{&remoteaccess.RelayStatus{Active: true, OwnedByTARS: true, Port: 8443}, true, "preview relay: https://mac.ts.net:8443"},
+		{&remoteaccess.RelayStatus{Active: true, Port: 8443}, true, "port 8443 is used by another Serve target"},
+		{&remoteaccess.RelayStatus{Port: 8443}, false, "off (remote access is off)"},
+		{&remoteaccess.RelayStatus{Port: 8443}, true, "port 8443 not served"},
+	}
+	for _, tc := range cases {
+		status := on
+		if !tc.main {
+			status = remoteaccess.Status{TailnetURL: "mac.ts.net"}
+		}
+		status.Relay = tc.relay
+		if got := relayLine(status); !strings.Contains(got, tc.want) {
+			t.Errorf("relayLine = %q, want %q", got, tc.want)
+		}
 	}
 }

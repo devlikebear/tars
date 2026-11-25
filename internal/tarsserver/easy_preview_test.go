@@ -72,8 +72,12 @@ func TestEasyPreviewRoutes(t *testing.T) {
 	if code, _ := previewOf(t, h, http.MethodPost, "fedcba9876543210", serverauth.RoleUser); code != http.StatusConflict {
 		t.Fatalf("project not ready: %d", code)
 	}
-	if code, _ := previewOf(t, h, http.MethodPost, ready.ID, serverauth.RoleFocus); code != http.StatusForbidden {
-		t.Fatalf("phone: %d", code)
+	// A phone reads the preview (unit 7) but cannot stop it.
+	if code, p := previewOf(t, h, http.MethodGet, ready.ID, serverauth.RoleFocus); code != http.StatusOK || p.State != easyproject.PreviewStopped {
+		t.Fatalf("phone status: %d %+v", code, p)
+	}
+	if code, _ := previewOf(t, h, http.MethodDelete, ready.ID, serverauth.RoleFocus); code != http.StatusForbidden {
+		t.Fatalf("phone stop: %d", code)
 	}
 
 	// The stand-in exits at once: the preview fails with a code.

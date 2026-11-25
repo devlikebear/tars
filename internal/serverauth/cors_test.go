@@ -89,7 +89,7 @@ func TestAppCORSActualRequests(t *testing.T) {
 }
 
 // The vibe routes a phone reaches get CORS like the rest of the device
-// table; the ones it does not (delete, the preview) stay untouched.
+// table; the ones it does not (delete, stopping the preview) stay untouched.
 func TestAppCORSVibeRoutes(t *testing.T) {
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/v1/easy/projects"},
@@ -98,6 +98,8 @@ func TestAppCORSVibeRoutes(t *testing.T) {
 		{http.MethodPost, "/v1/easy/projects/p1/changes"},
 		{http.MethodPost, "/v1/easy/projects/p1/versions/c1/restore"},
 		{http.MethodGet, "/v1/easy/readiness"},
+		{http.MethodGet, "/v1/easy/projects/p1/preview"},
+		{http.MethodPost, "/v1/easy/projects/p1/preview/ticket"},
 	} {
 		h, reached := corsHandler()
 		rec := corsRequest(h, http.MethodOptions, tc.path, "capacitor://localhost", tc.method)
@@ -107,7 +109,7 @@ func TestAppCORSVibeRoutes(t *testing.T) {
 	}
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodDelete, "/v1/easy/projects/p1"},
-		{http.MethodGet, "/v1/easy/projects/p1/preview"},
+		{http.MethodDelete, "/v1/easy/projects/p1/preview"},
 	} {
 		h, reached := corsHandler()
 		rec := corsRequest(h, http.MethodOptions, tc.path, "capacitor://localhost", tc.method)

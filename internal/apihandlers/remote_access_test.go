@@ -189,3 +189,92 @@ func (r *remoteAccessTestRunner) Run(_ context.Context, name string, args ...str
 	}
 	return out, "", nil
 }
+
+// One switch, two ports: with a relay target the switch also maps and
+// removes the phone preview relay's serve port, and the status names it.
+func TestRemoteAccessAPI_RelayFollowsTheSwitch(t *testing.T) {
+	workspace := t.TempDir()
+	store := consoleauth.NewStore(workspace)
+	if err := store.SetPassword(consoleauth.RoleAdmin, "admin secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetPassword(consoleauth.RoleUser, "user secret"); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte("api_auth_mode: required\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		APIConfig:     config.APIConfig{APIAuthMode: "required"},
+	}
+	statusJSON := `{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`
+	newHandler := func(serve string, extra map[string]string) (http.Handler, *remoteAccessTestRunner) {
+		outputs := map[string]string{"tailscale status --json": statusJSON, "tailscale serve status --json": serve}
+		for k, v := range extra {
+			outputs[k] = v
+		}
+		runner := newRemoteAccessTestRunner(outputs)
+		return NewRemoteAccessHandler(RemoteAccessOptions{
+			Config: cfg, ConfigPath: configPath, Logger: zerolog.Nop(), Runner: runner,
+			RelayTargetURL: remoteaccess.DefaultRelayTargetURL,
+		}), runner
+	}
+	post := func(h http.Handler, path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`)))
+		return rec
+	}
+
+	// Off → on: both ports are mapped.
+	h, runner := newHandler(`{}`, map[string]string{
+		"tailscale serve --https=443 --bg http://127.0.0.1:43180":  "",
+		"tailscale serve --https=8443 --bg http://127.0.0.1:43181": "",
+	})
+	if rec := post(h, "/v1/admin/remote-access/enable"); rec.Code != http.StatusOK {
+		t.Fatalf("enable = %d %s", rec.Code, rec.Body.String())
+	}
+	if !containsCommand(runner.commands, "tailscale serve --https=8443 --bg http://127.0.0.1:43181") {
+		t.Fatalf("relay port not mapped: %v", runner.commands)
+	}
+
+	// On: the status names the relay's address.
+	both := `{"Web": {
+		"mac.tail.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:43180"}}},
+		"mac.tail.ts.net:8443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:43181"}}}
+	}}`
+	h, runner = newHandler(both, map[string]string{
+		"tailscale serve --https=8443 off": "",
+		"tailscale serve --https=443 off":  "",
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/admin/remote-access/status", nil))
+	var status remoteAccessAPIStatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.RelayURL != "https://mac.tail.ts.net:8443" || status.Status.Relay == nil || !status.Status.Relay.OwnedByTARS {
+		t.Fatalf("status = %s", rec.Body.String())
+	}
+
+	// On → off: both ports are removed.
+	if rec := post(h, "/v1/admin/remote-access/disable"); rec.Code != http.StatusOK {
+		t.Fatalf("disable = %d %s", rec.Code, rec.Body.String())
+	}
+	if !containsCommand(runner.commands, "tailscale serve --https=8443 off") || !containsCommand(runner.commands, "tailscale serve --https=443 off") {
+		t.Fatalf("disable commands = %v", runner.commands)
+	}
+
+	// A relay port another target holds does not fail the switch.
+	foreign := `{"Web": {"mac.tail.ts.net:8443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:9999"}}}}}`
+	h, runner = newHandler(foreign, map[string]string{
+		"tailscale serve --https=443 --bg http://127.0.0.1:43180": "",
+	})
+	if rec := post(h, "/v1/admin/remote-access/enable"); rec.Code != http.StatusOK {
+		t.Fatalf("enable with a foreign relay port = %d %s", rec.Code, rec.Body.String())
+	}
+	if containsCommand(runner.commands, "tailscale serve --https=8443 --bg http://127.0.0.1:43181") {
+		t.Fatalf("took another target's port: %v", runner.commands)
+	}
+}

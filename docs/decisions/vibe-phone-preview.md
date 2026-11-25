@@ -1,6 +1,6 @@
 # Decision: The running app of a vibe project on the paired iPhone
 
-Status: proposed (design note for unit 7 of `docs/plans/vibe-mode-redesign/README.md`; no code yet).
+Status: accepted 2026-11-25 (option 1b; server half built — see "Owner's answers" and "As built" at the end).
 Date: 2026-11-25.
 
 ## Context
@@ -29,7 +29,7 @@ Throwaway experiment on 2026-11-25 (scratch folder, not in this PR): a project s
 | E10 | Capacitor iOS 8.6.0 `WebViewDelegationHandler.swift` (from the npm package) | A top-level navigation or `window.open` to a host outside `server.allowNavigation` is cancelled and handed to `UIApplication.shared.open` (Safari); a **non-top-level frame (iframe) to an outside host falls through to allow** |
 | E11 | Tailscale docs (kb/1312 serve, kb/1242 serve CLI, Funnel CLI, Tailscale Services), read 2026-11-25 | ACLs "apply to Serve just like any other service". Only Funnel restricts ports (443/8443/10000). Serve adds `Tailscale-User-Login`, strips spoofed copies, and omits it for tagged devices. A separate hostname needs Tailscale Services: tagged host, admin-defined `svc:` name, v1.86+ |
 
-**Unverified** (marked where used): that `tailscale serve` keeps 443 and 8443 active side by side on one node (the CLI takes `--https=<port>` and the serve config is a map keyed by `host:port`, which `remoteaccess.parseServeConfig` already iterates, but no page says so in words); whether `--set-path` strips its prefix (moot, see option 1b); that WKWebView in this app drops cookies in a cross-origin iframe (WebKit blocks third-party cookies by default — expected, not measured here); and SFSafariViewController cookie behavior on current iOS.
+**Unverified** (marked where used): ~~that `tailscale serve` keeps 443 and 8443 active side by side on one node~~ — verified 2026-11-25 on the desk (tailscale 1.104.6 daemon): `serve --https=8443 --bg` beside an existing 443 → TARS mapping kept both in `serve status --json` (`TCP` gains `"8443": {"HTTPS": true}`, `Web` gains `host:8443`), both answered over the tailnet, and `serve --https=8443 off` left the config byte-identical to before; whether `--set-path` strips its prefix (moot, see option 1b); that WKWebView in this app drops cookies in a cross-origin iframe (WebKit blocks third-party cookies by default — expected, not measured here); and SFSafariViewController cookie behavior on current iOS.
 
 ## Options
 
@@ -103,3 +103,20 @@ Server only, behind the existing Tailscale card: the relay listener with the den
 - WKWebView keeps the relay cookie in a cross-origin iframe after all → an in-app iframe becomes possible, but top level would still be preferred for sizing and isolation.
 - A Vite or Cloudflare plugin release breaks root-path proxying (host check, HMR token or explorer changes) → option 3 behind the same relay.
 - Review finds the remaining surface (the app's worker on the desk reaching loopback services) too wide to expose even to the owner's phone → option 4, with the app opened only after publishing.
+
+## Owner's answers (2026-11-25)
+
+1. **Safari first.** The phone opens the ticket URL top level (`window.open`, which the Capacitor shell hands to Safari). Opening inside the app (`@capacitor/browser`) is a later step.
+2. **8443 is fine, one switch.** The relay's serve port follows the existing remote access switch; there is no second toggle.
+3. **Live.** The phone sees the running development server, not the last saved build.
+4. **Start, not stop.** The phone may start and read a preview; it cannot stop one — the 10-minute idle sweep ends it (reading through the relay counts as looking).
+5. **No `Tailscale-User-Login` factor** in this step.
+
+## As built (server half)
+
+- `internal/previewrelay` (app layer, standard library only): tickets (32 random bytes, 60 s, single use, bound to project and device, kept as sha256 keys in memory), relay sessions (cookie `tars_preview`, HttpOnly, Secure, SameSite=Strict, host-only, Path=/; ended after an hour unused, when the device is no longer an active focus device — checked on every request — or when the preview stops), and the proxy (`ProxyRequest.SetURL` + Host rewritten to the development server's; WebSocket upgrades pass). Forwarded requests lose `tars_session`, `tars_preview`, `Authorization` and Tailscale's identity headers; responses cannot set `tars_session`/`tars_preview`. Refused before forwarding (403): `/cdn-cgi`, `/__debug`, `/__tars` (any case, after decoding up to four times and cleaning), `/@fs/` outside the project folder (as given or with symlinks resolved), and `Service-Worker: script`.
+- **Deviation:** `/__tars/enter` answers a 200 page that moves to `/` (meta refresh) instead of an HTTP redirect, so the navigation that first carries the Strict cookie is started by the relay's own page and is same-site whatever opened the ticket URL.
+- Listener on `127.0.0.1:43181` (`previewrelay.DefaultAddr`), started only by `tars serve`; a taken port leaves the relay down with a warning.
+- `remoteaccess`: `Options.RelayTargetURL`/`RelayHTTPSPort`, `Status.Relay`/`RelayURL()`, `EnableRelay`/`DisableRelay`. The server's start-up reconcile, shutdown, the console's switch (`/v1/admin/remote-access/enable|disable`) and `tars remote enable|disable` map and remove 8443 with 443; a relay port another target holds is left alone and does not fail the switch. Status: `relay_url` in `/v1/admin/remote-access/status`, a `preview relay:` line in `tars remote status`, a `phone preview` line in `tars doctor`.
+- `POST /v1/easy/projects/{id}/preview/ticket` (focus table; also user/admin): starts the preview and answers `{url, expires_at, preview}`; refusals are fixed codes (`internal/tarsserver/easy_preview_relay.go`). The focus role reaches `GET|POST …/preview`; `DELETE` stays refused (table and handler). A phone's preview never carries the loopback `url`.
+- Not built yet: readiness `preview` check, the demo desk's answer and the app's Try it (unit 8's folders), SFSafariViewController, the build fallback.

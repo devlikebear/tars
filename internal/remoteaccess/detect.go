@@ -15,6 +15,12 @@ const (
 	DefaultTailscaleBinary = "tailscale"
 	DefaultHTTPSPort       = 443
 	DefaultTargetURL       = "http://127.0.0.1:43180"
+	// DefaultRelayHTTPSPort is the second serve port, for the phone preview
+	// relay (docs/decisions/vibe-phone-preview.md): the app a vibe project
+	// made runs on its own origin, never on the console's.
+	DefaultRelayHTTPSPort = 8443
+	// DefaultRelayTargetURL is where the server's preview relay listens.
+	DefaultRelayTargetURL = "http://127.0.0.1:43181"
 )
 
 type Status struct {
@@ -25,6 +31,31 @@ type Status struct {
 	ServeActive bool   `json:"serve_active"`
 	ServePort   int    `json:"serve_port"`
 	OwnedByTARS bool   `json:"owned_by_tars"`
+	// Relay is the preview relay's serve port; set only when Options names
+	// a relay target.
+	Relay *RelayStatus `json:"relay,omitempty"`
+}
+
+// RelayStatus is Tailscale serve's mapping for the preview relay.
+type RelayStatus struct {
+	Active      bool `json:"active"`
+	Port        int  `json:"port"`
+	OwnedByTARS bool `json:"owned_by_tars"`
+}
+
+// RelayURL is the HTTPS origin a phone opens a preview at: the MagicDNS name
+// on the relay's serve port. It is "" unless both TARS's own serve port and
+// the relay's point at TARS — the relay is part of remote access, never a
+// way in on its own.
+func (s Status) RelayURL() string {
+	if s.URL() == "" || s.Relay == nil || !s.Relay.Active || !s.Relay.OwnedByTARS || s.Relay.Port <= 0 {
+		return ""
+	}
+	host := strings.TrimSuffix(strings.TrimSpace(s.TailnetURL), ".")
+	if s.Relay.Port == DefaultHTTPSPort {
+		return "https://" + host
+	}
+	return fmt.Sprintf("https://%s:%d", host, s.Relay.Port)
 }
 
 // URL is the HTTPS address a phone on the tailnet reaches this server at:
@@ -47,6 +78,11 @@ type Options struct {
 	Runner    Runner
 	HTTPSPort int
 	TargetURL string
+	// RelayTargetURL, when set, makes Detect also report the preview
+	// relay's serve port and EnableRelay/DisableRelay act on it.
+	RelayTargetURL string
+	// RelayHTTPSPort is the relay's serve port; DefaultRelayHTTPSPort when 0.
+	RelayHTTPSPort int
 }
 
 type Desired struct {
@@ -88,28 +124,96 @@ func Detect(ctx context.Context, opts Options) (Status, error) {
 		return status, nil
 	}
 
-	serve, err := detectServeConfig(ctx, opts)
+	raw, err := readServeConfig(ctx, opts)
+	if err != nil {
+		return status, err
+	}
+	serve, err := parseServeConfig(raw, opts.HTTPSPort, opts.TargetURL)
 	if err != nil {
 		return status, err
 	}
 	status.ServeActive = serve.active
 	status.ServePort = serve.port
 	status.OwnedByTARS = serve.owned
+	if opts.RelayTargetURL != "" {
+		relay, err := parseServeConfig(raw, opts.RelayHTTPSPort, opts.RelayTargetURL)
+		if err != nil {
+			return status, err
+		}
+		status.Relay = &RelayStatus{Active: relay.active, Port: opts.RelayHTTPSPort, OwnedByTARS: relay.owned}
+	}
 	return status, nil
 }
 
-func detectServeConfig(ctx context.Context, opts Options) (serveConfigStatus, error) {
+func readServeConfig(ctx context.Context, opts Options) (string, error) {
 	statusOut, statusErrOut, err := opts.Runner.Run(ctx, opts.Binary, "serve", "status", "--json")
 	if err == nil {
-		return parseServeConfig(statusOut, opts.HTTPSPort, opts.TargetURL)
+		return statusOut, nil
 	}
 	statusErr := commandError("tailscale serve status --json", statusErrOut, err)
 
 	configOut, configErrOut, configErr := opts.Runner.Run(ctx, opts.Binary, "serve", "get-config", "--all")
 	if configErr != nil {
-		return serveConfigStatus{}, fmt.Errorf("%v; fallback %v", statusErr, commandError("tailscale serve get-config --all", configErrOut, configErr))
+		return "", fmt.Errorf("%v; fallback %v", statusErr, commandError("tailscale serve get-config --all", configErrOut, configErr))
 	}
-	return parseServeConfig(configOut, opts.HTTPSPort, opts.TargetURL)
+	return configOut, nil
+}
+
+// ErrRelayPortTaken means the relay's serve port is TARS's own serve port
+// or is used by another serve target; the relay is then not served.
+var ErrRelayPortTaken = errors.New("tailscale serve relay port is used by a different target")
+
+// EnableRelay maps the relay's serve port to Options.RelayTargetURL. It
+// is the second half of turning remote access on (one switch, two ports):
+// callers run it after Enable succeeded. Verified on tailscale 1.104 that
+// serve keeps 443 and 8443 active side by side on one node.
+func EnableRelay(ctx context.Context, opts Options) error {
+	opts = normalizeOptions(opts)
+	if opts.RelayTargetURL == "" {
+		return nil
+	}
+	if opts.RelayHTTPSPort == opts.HTTPSPort {
+		return ErrRelayPortTaken
+	}
+	status, err := Detect(ctx, opts)
+	if err != nil {
+		return err
+	}
+	if !status.Installed || !status.LoggedIn {
+		return errors.New("tailscale is not ready")
+	}
+	if status.Relay.Active && status.Relay.OwnedByTARS {
+		return nil
+	}
+	if status.Relay.Active {
+		return ErrRelayPortTaken
+	}
+	_, stderr, err := opts.Runner.Run(ctx, opts.Binary, "serve", fmt.Sprintf("--https=%d", opts.RelayHTTPSPort), "--bg", opts.RelayTargetURL)
+	if err != nil {
+		return commandError("tailscale serve relay enable", stderr, err)
+	}
+	return nil
+}
+
+// DisableRelay removes the relay's serve port when it points at the relay;
+// a port another target uses is left alone.
+func DisableRelay(ctx context.Context, opts Options) error {
+	opts = normalizeOptions(opts)
+	if opts.RelayTargetURL == "" || opts.RelayHTTPSPort == opts.HTTPSPort {
+		return nil
+	}
+	status, err := Detect(ctx, opts)
+	if err != nil {
+		return err
+	}
+	if !status.Installed || status.Relay == nil || !status.Relay.Active || !status.Relay.OwnedByTARS {
+		return nil
+	}
+	_, stderr, err := opts.Runner.Run(ctx, opts.Binary, "serve", fmt.Sprintf("--https=%d", opts.RelayHTTPSPort), "off")
+	if err != nil {
+		return commandError("tailscale serve relay disable", stderr, err)
+	}
+	return nil
 }
 
 func Enable(ctx context.Context, opts Options) error {
@@ -186,6 +290,10 @@ func normalizeOptions(opts Options) Options {
 		opts.TargetURL = DefaultTargetURL
 	}
 	opts.TargetURL = strings.TrimSpace(opts.TargetURL)
+	opts.RelayTargetURL = strings.TrimSpace(opts.RelayTargetURL)
+	if opts.RelayHTTPSPort <= 0 {
+		opts.RelayHTTPSPort = DefaultRelayHTTPSPort
+	}
 	return opts
 }
 

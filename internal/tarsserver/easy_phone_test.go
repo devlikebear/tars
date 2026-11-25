@@ -88,8 +88,8 @@ func TestEasyProjectFromAPhone(t *testing.T) {
 }
 
 // A phone reaches easy projects by their own ids only: a session id is not
-// a project id, the preview and deleting stay refused, and the routes do
-// not open a plain session to the phone.
+// a project id, deleting and stopping the preview stay refused, and the
+// routes do not open a plain session to the phone.
 func TestEasyPhoneScope(t *testing.T) {
 	easyFixture(t)
 	f := newWorktreeFixture(t)
@@ -112,8 +112,11 @@ func TestEasyPhoneScope(t *testing.T) {
 		{http.MethodGet, "/v1/easy/projects/" + focusTask.ID, http.StatusNotFound},
 		{http.MethodPatch, "/v1/easy/projects/" + plain.ID, http.StatusNotFound},
 		{http.MethodGet, "/v1/easy/projects/" + focusTask.ID + "/versions", http.StatusNotFound},
-		{http.MethodGet, "/v1/easy/projects/" + id + "/preview", http.StatusForbidden},
-		{http.MethodPost, "/v1/easy/projects/" + id + "/preview", http.StatusForbidden},
+		{http.MethodGet, "/v1/easy/projects/" + id + "/preview", http.StatusOK},
+		{http.MethodDelete, "/v1/easy/projects/" + id + "/preview", http.StatusForbidden},
+		{http.MethodGet, "/v1/easy/projects/" + focusTask.ID + "/preview", http.StatusNotFound},
+		// No relay on this server: no ticket, and a reason the app can word.
+		{http.MethodPost, "/v1/easy/projects/" + id + "/preview/ticket", http.StatusServiceUnavailable},
 		{http.MethodDelete, "/v1/easy/projects/" + id, http.StatusForbidden},
 	} {
 		body := ""
