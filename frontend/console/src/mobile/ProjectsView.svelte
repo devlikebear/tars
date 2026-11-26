@@ -36,7 +36,7 @@
 
   function errorText(code: string): string {
     if (code === 'unpaired') return $t.phone.computers.unpairedHint
-    if (code === 'unreachable') return $t.mobileApp.failures.unreachable
+    if (code === 'unreachable') return $t.phone.failures.unreachable
     return $t.easy.board.errors[manageErrorKey(code)]
   }
 

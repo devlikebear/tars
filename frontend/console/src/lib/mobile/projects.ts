@@ -4,6 +4,7 @@
 // shows at phone width. Pure: the stores and screens only render this.
 import { boardBefore, columnOf, type EasyColumn, type EasyListed } from '../easyBoard.ts'
 import type { EasyReadiness, EasyView } from '../easy.ts'
+import type { PairedDesktop } from './desktops.ts'
 
 // A project as the phone lists it: the desk's record and board, and which
 // paired desktop it lives on.
@@ -123,4 +124,25 @@ export function deskLines(readiness: EasyReadiness | null | undefined): DeskLine
 // doubt; the desk refuses the idea itself if it cannot.
 export function deskTakesIdeas(online: boolean, readiness: EasyReadiness | null | undefined): boolean {
   return online && (readiness ? readiness.ready : true)
+}
+
+// The computers + New offers (screens/M-New): every paired one that
+// answers, in pairing order, and whether it can take an idea now.
+export type DeskChoice = { desktop: PairedDesktop; ready: boolean }
+
+export function deskChoices(
+  desktops: PairedDesktop[],
+  online: (d: PairedDesktop) => boolean,
+  readiness: (d: PairedDesktop) => EasyReadiness | null | undefined,
+): DeskChoice[] {
+  return desktops.filter((d) => online(d)).map((d) => ({ desktop: d, ready: deskTakesIdeas(true, readiness(d)) }))
+}
+
+// The computer an idea goes to: the one the person picked while it can
+// still take ideas, else the first that can. Nothing picked yet (the
+// screen's first look, with two or more computers on) is the first ready
+// one, never none.
+export function chosenDesk(choices: DeskChoice[], pickedID: string): PairedDesktop | undefined {
+  const ready = choices.filter((c) => c.ready)
+  return (ready.find((c) => c.desktop.id === pickedID) ?? ready[0])?.desktop
 }

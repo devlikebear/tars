@@ -2,6 +2,8 @@ package easyproject
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -152,5 +154,38 @@ func TestBoardChangedAtIsTheLatestChange(t *testing.T) {
 	pipe.FinishedAt, pipe.Saved = &t0, &fp.SavedVersion{Commit: "abc"}
 	if got := BoardOf(p, &pipe); got.State != StateDone {
 		t.Fatalf("old finished project = %+v", got)
+	}
+}
+
+// TestBoardStatesMatchTheConsole runs the cases the console's own test
+// (frontend/console/tests/easy.test.ts) runs through easyView: the phone's
+// project list reads BoardOf, a project's screen reads easyView, and the
+// two must never tell a person different things (a goal-mode retry read
+// "stuck" in the list and "making" on the screen).
+func TestBoardStatesMatchTheConsole(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "board_states.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Cases []struct {
+			Name     string       `json:"name"`
+			Project  Project      `json:"project"`
+			Pipeline *fp.Pipeline `json:"pipeline"`
+			State    State        `json:"state"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Cases) == 0 {
+		t.Fatal("no cases")
+	}
+	for _, c := range doc.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			if got := BoardOf(c.Project, c.Pipeline).State; got != c.State {
+				t.Fatalf("BoardOf state = %q, want %q", got, c.State)
+			}
+		})
 	}
 }

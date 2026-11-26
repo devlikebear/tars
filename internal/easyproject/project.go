@@ -159,35 +159,25 @@ func NameOf(idea string) string {
 // slugRunes caps a folder name made from the idea.
 const slugRunes = 40
 
-// Slug is a folder name made from the idea: lower-case ASCII letters and
-// digits joined by single hyphens. An idea with none (a Korean sentence,
-// say) gives "project"; the folder is still unique (NewFolder).
+// Slug is a folder name made from the idea: its letters and digits, in
+// any script (a Korean idea keeps its Hangul), lower-cased and joined by
+// single hyphens, at most slugRunes runes. Everything else — spaces,
+// punctuation, path separators, symbols — only separates words, so the
+// name is safe on every file system. An idea with no letter or digit at
+// all gives "project"; the folder is still unique (NewFolder).
 func Slug(idea string) string {
-	var b strings.Builder
-	hyphen := false
-	for _, r := range strings.ToLower(NameOf(idea)) {
-		switch {
-		case r < unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r)):
-			if hyphen && b.Len() > 0 {
-				b.WriteByte('-')
-			}
-			hyphen = false
-			b.WriteRune(r)
-		default:
-			hyphen = true
-		}
-		if b.Len() >= slugRunes {
-			break
-		}
-	}
-	slug := strings.Trim(b.String(), "-")
+	words := strings.FieldsFunc(strings.ToLower(NameOf(idea)), func(r rune) bool {
+		// A combining accent belongs to the letter before it.
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r)
+	})
+	slug := []rune(strings.Join(words, "-"))
 	if len(slug) > slugRunes {
-		slug = strings.Trim(slug[:slugRunes], "-")
+		slug = slug[:slugRunes]
 	}
-	if slug == "" {
-		return "project"
+	if s := strings.TrimFunc(string(slug), func(r rune) bool { return r == '-' || unicode.IsMark(r) }); s != "" {
+		return s
 	}
-	return slug
+	return "project"
 }
 
 // BaseDirEnv overrides where projects are made (tests, e2e).
@@ -209,6 +199,10 @@ func BaseDir() (string, error) {
 	return filepath.Join(home, DefaultBaseDirName), nil
 }
 
+// ErrFolderName is a folder name that is not one plain entry under the
+// projects folder.
+var ErrFolderName = errors.New("not a plain folder name")
+
 // maxFolderTries bounds the -2, -3, … suffixes NewFolder tries.
 const maxFolderTries = 100
 
@@ -224,6 +218,12 @@ func NewFolder(base, idea string) (string, error) {
 		name := slug
 		if i > 1 {
 			name = fmt.Sprintf("%s-%d", slug, i)
+		}
+		// The name is made from the person's idea: it must be one plain
+		// entry under base (Slug keeps no separator or dot, so this never
+		// refuses one it made; it is the check the path rests on).
+		if !filepath.IsLocal(name) || filepath.Base(name) != name {
+			return "", fmt.Errorf("%w: %q", ErrFolderName, name)
 		}
 		dir := filepath.Join(base, name)
 		err := os.Mkdir(dir, 0o755)

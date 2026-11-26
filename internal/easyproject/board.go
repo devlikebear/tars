@@ -147,8 +147,15 @@ func BoardOf(p Project, pipe *focuspipeline.Pipeline) Board {
 
 // stuckReason says why the team cannot go on by itself, or "" when it can:
 // the person stopped it, its current stage is blocked at a gate, or goal
-// mode ended without finishing.
+// mode ended without finishing. While goal mode is still on, a blocked
+// stage or gate is one it retries by itself in a moment (a failed turn
+// waits out its backoff at a blocked gate), so the team is still at work:
+// the console's easyView reads the same, and
+// testdata/board_states.json holds both to it.
 func stuckReason(p focuspipeline.Pipeline) string {
+	if p.GoalMode != nil && p.GoalMode.Enabled {
+		return ""
+	}
 	if p.Stopped() {
 		return StuckStopped
 	}

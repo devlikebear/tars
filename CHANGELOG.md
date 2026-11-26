@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.71.1] - 2026-11-27
+
+### Fixed
+
+- **Vibe mode on the iPhone**, from testing on a real phone:
+  - **+ New** lists every paired computer that answers when two or more are on (the picker was blank), with the ones not ready shown as such.
+  - The pairing sheet says "computer" (컴퓨터) like the rest of the app, not "desktop" (데스크톱).
+  - Forgetting a computer and removing a saved idea ask in the app's own sheet, in the phone's language, instead of the system dialog's English Cancel / OK.
+  - Back from a project opened through + New returns to Projects.
+  - A project goal mode is retrying reads "being made" in the Projects list, as on its own screen, instead of "stuck". The desk's board state (`easyproject.BoardOf`) and the screen's (`easyView`) are held to one shared set of cases (`internal/easyproject/testdata/board_states.json`).
+  - A finished project's bar is one row (the change box opens when asked for), and its version list shows once, on the Versions tab.
+  - Korean sentences with a computer's or project's name no longer show "이(가)" or "을(를)": they are written so the name needs no particle.
+- **Korean project folders keep their name.** An idea in Korean (or any other script) gives a folder of its own words, such as `~/TARS Projects/동네-독서모임-신청-페이지`, instead of `project`. Cloudflare's scaffolder accepts only ASCII names, so such a folder is scaffolded under an ASCII name and moved into place.
+
 ## [0.71.0] - 2026-11-24
 
 ### Added

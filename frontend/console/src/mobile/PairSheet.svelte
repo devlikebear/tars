@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Pairing with a desktop: its Tailscale address, the one-time code the
+  // Connecting this phone to a computer: its Tailscale address, the one-time code the
   // desk shows, and this phone's name for the desk's list. A scanned
   // tars-mobile://pair link arrives as `initial` and fills the first two.
   import { t } from '../i18n'
@@ -28,31 +28,31 @@
 
   async function submit(e: SubmitEvent) {
     e.preventDefault()
-    const desktop = await store.pair(address, code, phoneName || $t.mobileApp.defaultPhoneName)
+    const desktop = await store.pair(address, code, phoneName || $t.phone.pair.defaultPhoneName)
     if (desktop) onDone(desktop.name)
   }
 </script>
 
-<div class="sheet" role="dialog" aria-modal="true" aria-label={$t.mobileApp.pairTitle} data-testid="mobile-pair-sheet">
+<div class="sheet" role="dialog" aria-modal="true" aria-label={$t.phone.pair.title} data-testid="mobile-pair-sheet">
   <form onsubmit={submit}>
-    <h2>{$t.mobileApp.pairTitle}</h2>
-    <p class="hint">{$t.mobileApp.pairHint}</p>
+    <h2>{$t.phone.pair.title}</h2>
+    <p class="hint">{$t.phone.pair.hint}</p>
 
     <label>
-      <span>{$t.mobileApp.addressLabel}</span>
+      <span>{$t.phone.pair.addressLabel}</span>
       <input
         type="url"
         inputmode="url"
         autocapitalize="off"
         autocomplete="off"
         spellcheck="false"
-        placeholder={$t.mobileApp.addressPlaceholder}
+        placeholder={$t.phone.pair.addressPlaceholder}
         bind:value={address}
         data-testid="mobile-pair-address"
       />
     </label>
     <label>
-      <span>{$t.mobileApp.codeLabel}</span>
+      <span>{$t.phone.pair.codeLabel}</span>
       <input
         class="code"
         inputmode="numeric"
@@ -63,20 +63,20 @@
       />
     </label>
     <label>
-      <span>{$t.mobileApp.phoneNameLabel}</span>
-      <input placeholder={$t.mobileApp.defaultPhoneName} bind:value={phoneName} maxlength="64" data-testid="mobile-pair-name" />
-      <small>{$t.mobileApp.phoneNameHint}</small>
+      <span>{$t.phone.pair.phoneNameLabel}</span>
+      <input placeholder={$t.phone.pair.defaultPhoneName} bind:value={phoneName} maxlength="64" data-testid="mobile-pair-name" />
+      <small>{$t.phone.pair.phoneNameHint}</small>
     </label>
 
     {#if store.pairFailure}
-      <p class="error" role="alert">{$t.mobileApp.failures[store.pairFailure]}</p>
+      <p class="error" role="alert">{$t.phone.pair.failures[store.pairFailure]}</p>
     {/if}
 
     <div class="actions">
       <button type="submit" class="btn btn-primary" disabled={store.pairing} data-testid="mobile-pair-submit">
-        {store.pairing ? $t.mobileApp.pairing : $t.mobileApp.pair}
+        {store.pairing ? $t.phone.pair.pairing : $t.phone.pair.submit}
       </button>
-      <button type="button" class="btn btn-ghost" onclick={onCancel}>{$t.mobileApp.cancel}</button>
+      <button type="button" class="btn btn-ghost" onclick={onCancel}>{$t.phone.pair.cancel}</button>
     </div>
   </form>
 </div>

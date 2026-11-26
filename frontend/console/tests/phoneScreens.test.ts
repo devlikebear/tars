@@ -10,11 +10,12 @@ import type { EasyAPI, EasyPreviewTicket } from '../src/lib/api/easy.ts'
 import { easyView, hiddenWordsIn, type EasyProject, type EasyReadiness } from '../src/lib/easy.ts'
 import type { EasyBoardState, EasyListed } from '../src/lib/easyBoard.ts'
 import type { PairedDesktop } from '../src/lib/mobile/desktops.ts'
-import { deskLines, deskTakesIdeas, defaultPhoneTab, filterCounts, phoneSections, phoneTabs, waitingCount, type PhoneProject } from '../src/lib/mobile/projects.ts'
+import { chosenDesk, deskChoices, deskLines, deskTakesIdeas, defaultPhoneTab, filterCounts, phoneSections, phoneTabs, waitingCount, type PhoneProject } from '../src/lib/mobile/projects.ts'
 import { tryApp, tryAppFailure, tryAppWaitMs } from '../src/lib/mobile/tryApp.ts'
 import type { EasyPreview } from '../src/lib/easy.ts'
 import { phoneEn, phoneKo } from '../src/i18n/sections/phone.ts'
-import { mobileAppEn, mobileAppKo } from '../src/i18n/sections/mobileApp.ts'
+import { easyKo } from '../src/i18n/sections/easy.ts'
+import { readFileSync, readdirSync } from 'node:fs'
 import { compileSvelteModule } from './helpers/compileSvelteModule.ts'
 import type * as ProjectStoreModule from '../src/lib/mobile/projectStore.svelte.ts'
 import type { FocusPipeline } from '../src/lib/types.ts'
@@ -104,6 +105,24 @@ test("the Computers tab says in plain words what a desk still needs", () => {
   assert.equal(deskTakesIdeas(true, { ...ready, ready: false }), false)
   assert.equal(deskTakesIdeas(false, ready), false)
   assert.equal(deskTakesIdeas(true, null), true)
+})
+
+test('+ New offers every computer that answers, and picks a ready one when two or more are on', () => {
+  const desk = (id: string): PairedDesktop => ({ id, name: id, baseURL: `https://${id}`, token: 't', deviceID: 'd', pairedAt: '' })
+  const [home, office, laptop, off] = [desk('home'), desk('office'), desk('laptop'), desk('off')]
+  const ready: EasyReadiness = { ready: true, engine: 'ok', tools: 'ok' }
+  const readiness: Record<string, EasyReadiness | undefined> = { home: ready, office: ready, laptop: { ...ready, ready: false, engine: 'signed_out' } }
+  const choices = deskChoices([home, office, laptop, off], (d) => d.id !== 'off', (d) => readiness[d.id])
+  // Every computer that answers is listed; one not ready says so.
+  assert.deepEqual(choices.map((c) => [c.desktop.id, c.ready]), [['home', true], ['office', true], ['laptop', false]])
+  // Nothing picked yet: the first ready one (the picker was blank here).
+  assert.equal(chosenDesk(choices, '')?.id, 'home')
+  assert.equal(chosenDesk(choices, 'office')?.id, 'office')
+  // A pick that cannot take ideas, or is gone, falls back to a ready one.
+  assert.equal(chosenDesk(choices, 'laptop')?.id, 'home')
+  assert.equal(chosenDesk(choices, 'off')?.id, 'home')
+  assert.equal(chosenDesk(deskChoices([laptop], () => true, (d) => readiness[d.id]), ''), undefined)
+  assert.equal(chosenDesk([], ''), undefined)
 })
 
 const mac: PairedDesktop = { id: 'https://mac.ts.net', name: 'mac', baseURL: 'https://mac.ts.net', token: 't', deviceID: 'd', pairedAt: '' }
@@ -198,23 +217,44 @@ test('rename, archive and a new idea go to the desk the project is on; a refusal
   assert.deepEqual(calls[3], ['create', 'A vote page'])
 })
 
+// Every string a phone screen can show: the phone section and the easy
+// section the vibe screens share with the desk.
+function phoneTexts(sections: unknown[]): string[] {
+  const texts: string[] = []
+  const walk = (v: unknown) => {
+    if (typeof v === 'string') texts.push(v)
+    else if (typeof v === 'function') texts.push(String((v as (...a: unknown[]) => string)('맥북', 2)))
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk)
+  }
+  sections.forEach(walk)
+  return texts
+}
+
 test('no phone sentence uses a hidden word', () => {
-  // The phone section, and what the phone still shows of the older mobile
-  // section: the pairing sheet and its failures.
-  const pick = (m: typeof mobileAppEn) => ({
-    pair: [m.pairTitle, m.pairHint, m.addressLabel, m.codeLabel, m.phoneNameLabel, m.phoneNameHint, m.pair, m.pairing, m.cancel],
-    failures: m.failures,
-  })
-  for (const [lang, sections] of [['en', [phoneEn, pick(mobileAppEn)]], ['ko', [phoneKo, pick(mobileAppKo)]]] as const) {
-    const texts: string[] = []
-    const walk = (v: unknown) => {
-      if (typeof v === 'string') texts.push(v)
-      else if (typeof v === 'function') texts.push(String((v as (...a: unknown[]) => string)('x', 2)))
-      else if (v && typeof v === 'object') Object.values(v).forEach(walk)
-    }
-    sections.forEach(walk)
+  for (const [lang, phone] of [['en', phoneEn], ['ko', phoneKo]] as const) {
+    const texts = phoneTexts([phone])
     assert.ok(texts.length > 40)
     for (const text of texts) assert.deepEqual(hiddenWordsIn(text), [], `${lang}: ${text}`)
+  }
+})
+
+test('the phone calls the desk a computer everywhere, pairing included', () => {
+  for (const text of phoneTexts([phoneKo, easyKo])) assert.ok(!text.includes('데스크톱'), text)
+  for (const text of phoneTexts([phoneEn])) assert.ok(!/\bdesk(top)?s?\b/i.test(text), text)
+  // The pairing sheet reads the phone section, not the older mobile one.
+  const sheet = readFileSync(new URL('../src/mobile/PairSheet.svelte', import.meta.url), 'utf8')
+  assert.ok(!sheet.includes('mobileApp'), 'PairSheet still reads $t.mobileApp')
+})
+
+test('no Korean phone sentence leaves the particle to the reader, like 이(가)', () => {
+  for (const text of phoneTexts([phoneKo, easyKo])) assert.doesNotMatch(text, /\((가|이|를|을|으|은|는|와|과)\)/, text)
+})
+
+test('the phone screens ask in their own sheet, never the system confirm (its buttons are English)', () => {
+  const dir = new URL('../src/mobile/', import.meta.url)
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.svelte'))) {
+    const source = readFileSync(new URL(file, dir), 'utf8')
+    assert.doesNotMatch(source, /(^|[^.\w])confirm\(|window\.confirm/, file)
   }
 })
 

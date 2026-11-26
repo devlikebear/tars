@@ -27,6 +27,7 @@
   import MobileProject from './MobileProject.svelte'
   import MobilePipeline from './MobilePipeline.svelte'
   import PairSheet from './PairSheet.svelte'
+  import ConfirmSheet from './ConfirmSheet.svelte'
   import ProjectsView from './ProjectsView.svelte'
   import NewView from './NewView.svelte'
   import ComputersView from './ComputersView.svelte'
@@ -91,8 +92,12 @@
     void refresh()
   }
 
-  async function forget(desktop: PairedDesktop) {
-    if (!confirm(isDemoDesktop(desktop) ? $t.phone.computers.confirmForgetDemo : $t.phone.computers.confirmForget(desktop.name))) return
+  // Forgetting a computer asks first, in the phone's own sheet.
+  let forgetting = $state<PairedDesktop | null>(null)
+  async function forget() {
+    const desktop = forgetting
+    forgetting = null
+    if (!desktop) return
     await store.forget(desktop.id)
     void refresh()
   }
@@ -135,9 +140,13 @@
     if (desktop) void projects.refreshDesktop(desktop)
   }
 
-  // Back from a project: its state has likely changed.
+  // Back from a project goes to the Projects list, wherever the project was
+  // opened from (+ New hands an idea to a team and opens its project; back
+  // from there is the list it now sits in, not an emptied idea form). Its
+  // state has likely changed, so the list reads again.
   function close() {
     opened = null
+    tab = 'projects'
     void refresh()
   }
 
@@ -234,7 +243,7 @@
         {checking}
         onPair={(desktop) => openPair(desktop)}
         onDemo={tryDemo}
-        onForget={forget}
+        onForget={(desktop) => (forgetting = desktop)}
         onRefresh={() => void refresh()}
         onIdeas={() => (tab = 'new')}
       />
@@ -254,6 +263,15 @@
       {#if onlineDesktops.length === 0 && store.loaded}<span class="dot-warn" aria-hidden="true"></span>{/if}
     </button>
   </nav>
+{/if}
+
+{#if forgetting}
+  <ConfirmSheet
+    question={isDemoDesktop(forgetting) ? $t.phone.computers.confirmForgetDemo : $t.phone.computers.confirmForget(forgetting.name)}
+    confirmLabel={$t.phone.computers.forgetGo}
+    onConfirm={() => void forget()}
+    onCancel={() => (forgetting = null)}
+  />
 {/if}
 
 {#if pairOpen}

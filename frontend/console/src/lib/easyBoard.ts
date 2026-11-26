@@ -4,7 +4,7 @@
 // project stands. This file only places the server's states in the board's
 // columns, merges the pages it reads, and words the card's one line.
 
-import { easyBase, type EasyProject } from './easy.ts'
+import { easyBase, type EasyProject, type EasyView } from './easy.ts'
 
 // A project's board state, as the server gives it.
 export type EasyBoardState = 'starting' | 'failed' | 'your_turn' | 'working' | 'paused' | 'stuck' | 'done' | 'published'
@@ -61,6 +61,33 @@ export const COLUMN_STATES: Record<EasyColumn, EasyBoardState[]> = {
 export function columnOf(state: EasyBoardState): EasyColumn {
   for (const column of BOARD_COLUMNS) if (COLUMN_STATES[column].includes(state)) return column
   return 'working'
+}
+
+// The board state a project's own screen shows (easyView's phase), in
+// the board's words. The desk's list decides the same thing in Go
+// (easyproject.BoardOf); internal/easyproject/testdata/board_states.json
+// holds both to the same answer for every case, so the phone's Projects
+// list and a project's screen never disagree (a goal-mode retry is
+// "working" in both, never "stuck" in one).
+export function boardStateOfView(view: Pick<EasyView, 'phase' | 'saved'>): EasyBoardState {
+  switch (view.phase) {
+    case 'creating':
+      return 'starting'
+    case 'failed':
+      return 'failed'
+    case 'questions':
+    case 'approve':
+      return 'your_turn'
+    case 'limit':
+      return 'paused'
+    case 'stuck':
+      return 'stuck'
+    case 'finished':
+      // Saved a moment after finishing; until then the team is at it.
+      return view.saved === undefined ? 'working' : 'done'
+    default:
+      return 'working'
+  }
 }
 
 // How many projects a column holds, from the server's counts.

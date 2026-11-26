@@ -18,9 +18,15 @@ func TestSlug(t *testing.T) {
 	for idea, want := range map[string]string{
 		"A sign-up page for a book club":     "a-sign-up-page-for-a-book-club",
 		"  Todo   list!! v2  ":               "todo-list-v2",
-		"동네 독서모임 신청 페이지":                     "project",
-		"독서모임 sign-up page":                  "sign-up-page",
-		"Café menu\nwith prices on page two": "caf-menu",
+		"동네 독서모임 신청 페이지":                     "동네-독서모임-신청-페이지",
+		"독서모임 sign-up page":                  "독서모임-sign-up-page",
+		"Café menu\nwith prices on page two": "café-menu",
+		"Cafe\u0301 menu":                    "cafe\u0301-menu",
+		"日本語のページ":                            "日本語のページ",
+		"a/b\\c:d*e?f\"g<h>i|j":              "a-b-c-d-e-f-g-h-i-j",
+		"../../etc/passwd":                   "etc-passwd",
+		"!!! 🎉 ???":                          "project",
+		strings.Repeat("가나다 ", 20):           strings.TrimSuffix(strings.Repeat("가나다-", 10), "-"),
 		strings.Repeat("abc ", 30):           "abc-abc-abc-abc-abc-abc-abc-abc-abc-abc",
 	} {
 		if got := Slug(idea); got != want {

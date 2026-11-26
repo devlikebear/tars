@@ -10,7 +10,8 @@
   import type { IdeaStore } from '../lib/mobile/ideaStore.svelte'
   import type { ProjectStore } from '../lib/mobile/projectStore.svelte'
   import { ideaTitle, sortedIdeas, type Idea } from '../lib/mobile/ideas'
-  import { deskTakesIdeas } from '../lib/mobile/projects'
+  import { chosenDesk, deskChoices } from '../lib/mobile/projects'
+  import ConfirmSheet from './ConfirmSheet.svelte'
 
   interface Props {
     projects: ProjectStore
@@ -25,10 +26,17 @@
   let { projects, ideas, desktops, online, onOpen, onNotice }: Props = $props()
 
   const readiness = (d: PairedDesktop): EasyReadiness | null | undefined => projects.readiness[d.id]
-  const takers = $derived(desktops.filter((d) => deskTakesIdeas(online(d), readiness(d))))
+  // Every paired computer that answers; the idea goes to the one picked,
+  // else the first that can take it.
+  const choices = $derived(deskChoices(desktops, online, readiness))
   let chosenID = $state('')
-  const chosen = $derived(takers.find((d) => d.id === chosenID) ?? takers[0])
-  const onlineButNotReady = $derived(!chosen && desktops.some((d) => online(d)))
+  const chosen = $derived(chosenDesk(choices, chosenID))
+  const onlineButNotReady = $derived(!chosen && choices.length > 0)
+  let choosing = $state(false)
+  function pick(id: string) {
+    chosenID = id
+    choosing = false
+  }
 
   let idea = $state('')
   let sending = $state(false)
@@ -36,7 +44,7 @@
 
   function failureText(code: string): string {
     if (code === 'unpaired') return $t.phone.computers.unpairedHint
-    if (code === 'unreachable') return $t.mobileApp.failures.unreachable
+    if (code === 'unreachable') return $t.phone.failures.unreachable
     return $t.easy.errors[code] ?? $t.easy.errors.unknown
   }
 
@@ -76,9 +84,12 @@
     if (sent?.projectID) onOpen(sent.desktopID, sent.projectID)
   }
 
-  async function remove(item: Idea) {
-    if (!confirm($t.phone.new.confirmRemove)) return
-    await ideas.remove(item.id)
+  // Removing a saved idea asks first, in the phone's own sheet.
+  let removing = $state<Idea | null>(null)
+  async function remove() {
+    const item = removing
+    removing = null
+    if (item) await ideas.remove(item.id)
   }
 
   function sentProject(item: Idea): { desktopID: string; projectID: string } | null {
@@ -102,13 +113,29 @@
           <b>{$t.phone.new.deskLabel} {chosen.name}</b>
           <span>{$t.phone.new.deskReady}</span>
         </span>
-        {#if takers.length > 1}
-          <label class="sr-only" for="phone-desk">{$t.phone.new.change}</label>
-          <select id="phone-desk" bind:value={chosenID} data-testid="phone-new-desk-choose">
-            {#each takers as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
-          </select>
+        {#if choices.length > 1}
+          <button type="button" class="btn btn-ghost btn-sm" aria-expanded={choosing} onclick={() => (choosing = !choosing)} data-testid="phone-new-desk-change">{$t.phone.new.change}</button>
         {/if}
       </div>
+      {#if choosing}
+        <div class="choices" role="radiogroup" aria-label={$t.phone.new.choose} data-testid="phone-new-desk-choose">
+          {#each choices as c (c.desktop.id)}
+            <button
+              type="button"
+              role="radio"
+              class="choice"
+              aria-checked={c.desktop.id === chosen.id}
+              disabled={!c.ready}
+              onclick={() => pick(c.desktop.id)}
+              data-testid="phone-new-desk-option"
+              data-desktop={c.desktop.name}
+            >
+              <span class="choice-name">{c.desktop.name}</span>
+              <span class="choice-state">{c.ready ? $t.phone.new.deskReady : $t.phone.new.notReady}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     {:else}
       <p class="hint" data-testid="phone-new-nodesk">{onlineButNotReady ? $t.phone.new.deskNotReady : $t.phone.new.noDesk}</p>
     {/if}
@@ -145,7 +172,7 @@
                 {ideas.sending === item.id ? $t.phone.new.sending : $t.phone.new.send(chosen.name)}
               </button>
             {/if}
-            <button type="button" class="btn btn-ghost btn-sm" onclick={() => remove(item)}>{$t.phone.new.remove}</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick={() => (removing = item)}>{$t.phone.new.remove}</button>
           </div>
         </article>
       {/each}
@@ -153,6 +180,10 @@
     </div>
   {/if}
 </section>
+
+{#if removing}
+  <ConfirmSheet question={$t.phone.new.confirmRemove} confirmLabel={$t.phone.new.confirmRemoveGo} onConfirm={() => void remove()} onCancel={() => (removing = null)} />
+{/if}
 
 <style>
   .new {
@@ -228,14 +259,35 @@
     color: var(--text-secondary);
     font-size: var(--text-xs);
   }
-  select {
-    min-height: 36px;
+  .choices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .choice {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-primary);
     font: inherit;
     font-size: var(--text-sm);
-    color: var(--text-primary);
-    background: var(--surface-inset);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
+    text-align: left;
+  }
+  .choice[aria-checked='true'] {
+    border-color: var(--primary);
+  }
+  .choice:disabled {
+    opacity: 0.55;
+  }
+  .choice-state {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
   }
   .examples {
     display: flex;
