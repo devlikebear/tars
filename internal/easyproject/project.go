@@ -199,6 +199,10 @@ func BaseDir() (string, error) {
 	return filepath.Join(home, DefaultBaseDirName), nil
 }
 
+// ErrFolderName is a folder name that is not one plain entry under the
+// projects folder.
+var ErrFolderName = errors.New("not a plain folder name")
+
 // maxFolderTries bounds the -2, -3, … suffixes NewFolder tries.
 const maxFolderTries = 100
 
@@ -214,6 +218,12 @@ func NewFolder(base, idea string) (string, error) {
 		name := slug
 		if i > 1 {
 			name = fmt.Sprintf("%s-%d", slug, i)
+		}
+		// The name is made from the person's idea: it must be one plain
+		// entry under base (Slug keeps no separator or dot, so this never
+		// refuses one it made; it is the check the path rests on).
+		if !filepath.IsLocal(name) || filepath.Base(name) != name {
+			return "", fmt.Errorf("%w: %q", ErrFolderName, name)
 		}
 		dir := filepath.Join(base, name)
 		err := os.Mkdir(dir, 0o755)

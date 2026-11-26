@@ -177,6 +177,9 @@ func moveInto(from, to string) error {
 		return err
 	}
 	for _, e := range entries {
+		if !filepath.IsLocal(e.Name()) || filepath.Base(e.Name()) != e.Name() {
+			return fmt.Errorf("%w: %q", ErrFolderName, e.Name())
+		}
 		if err := os.Rename(filepath.Join(from, e.Name()), filepath.Join(to, e.Name())); err != nil {
 			return err
 		}
