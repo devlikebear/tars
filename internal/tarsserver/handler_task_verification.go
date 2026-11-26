@@ -187,6 +187,12 @@ func verifySessionTask(ctx context.Context, store *session.Store, sessionID, tas
 			return taskVerificationRun{}, verifyErr
 		}
 		parsed := parseVerificationProofInput(command, verified.InputJSON)
+		if len(verified.InputJSON) == 0 {
+			// The verifier could not run the command at all (it could not
+			// read the folder, say). Its own reason is what the failure
+			// card and the next fix turn should quote.
+			parsed.Message = verifierRefusal(verified.Summary, verified.Rationale)
+		}
 		status := string(verified.Status)
 		if verified.Status != workstore.ProofStatusPassed {
 			allPassed = false
@@ -270,6 +276,22 @@ func selectVerificationTaskIndex(tasks []session.Task, requestedTaskID string) (
 		}
 	}
 	return 0, nil
+}
+
+// verifierRefusal words a verification that ended without running its
+// command, from the verifier's summary and reason.
+func verifierRefusal(summary, rationale string) string {
+	summary, rationale = strings.TrimSpace(summary), strings.TrimSpace(rationale)
+	switch {
+	case summary == "" && rationale == "":
+		return "verification provenance was unavailable"
+	case summary == "":
+		return rationale
+	case rationale == "":
+		return summary
+	default:
+		return summary + ": " + rationale
+	}
 }
 
 func parseVerificationProofInput(command string, raw json.RawMessage) taskVerificationExecResponse {
