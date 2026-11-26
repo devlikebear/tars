@@ -360,7 +360,12 @@ type pathSnapshot struct {
 
 func (engine *Engine) snapshotPaths(ctx context.Context, requested []string) (pathSnapshot, error) {
 	paths := requested
-	if len(paths) == 0 {
+	// listed is true when the paths come from git's own listing rather than
+	// the requirement. That listing names every tracked file, also one the
+	// work deleted and has not committed yet, so a listed path that is gone
+	// is left out of the snapshot instead of failing it.
+	listed := len(paths) == 0
+	if listed {
 		tracked, err := engine.workspaceFiles(ctx)
 		if err != nil {
 			return pathSnapshot{}, err
@@ -383,6 +388,9 @@ func (engine *Engine) snapshotPaths(ctx context.Context, requested []string) (pa
 		}
 		info, err := rootFS.Lstat(filepath.FromSlash(relative))
 		if err != nil {
+			if listed && errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
 			return pathSnapshot{}, fmt.Errorf("path %q: %w", requestedPath, err)
 		}
 		if info.IsDir() {
