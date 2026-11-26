@@ -3,6 +3,8 @@ package easyproject
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -84,14 +86,37 @@ func (NPMScaffolder) Ready() error {
 
 // Scaffold runs the pinned scaffolder for dir (from its parent, naming the
 // folder) and installs the stack's other packages in it.
+//
+// The scaffolder takes only lower-case ASCII letters, digits and dashes for
+// a name, while a project's folder keeps the idea's own words (a Korean
+// idea gives a Hangul folder, Slug). Such a folder is scaffolded under an
+// ASCII name (ScaffoldName) in a staging folder inside it, and what the
+// scaffolder made is moved up into the folder.
 func (NPMScaffolder) Scaffold(ctx context.Context, dir string) error {
 	bin, err := findNPM()
 	if err != nil {
 		return err
 	}
-	create := append([]string{"--yes", "create-cloudflare@" + CreateCloudflareVersion, filepath.Base(dir)}, createCloudflareArgs...)
-	if err := runStep(ctx, filepath.Dir(dir), bin, filepath.Join(bin, "npx"), create...); err != nil {
+	name, from := filepath.Base(dir), filepath.Dir(dir)
+	staging := ""
+	if !validScaffoldName(name) {
+		staging = filepath.Join(dir, scaffoldStaging)
+		if err := os.Mkdir(staging, 0o755); err != nil {
+			return fmt.Errorf("scaffold: %w", err)
+		}
+		name, from = ScaffoldName(filepath.Base(dir)), staging
+	}
+	create := append([]string{"--yes", "create-cloudflare@" + CreateCloudflareVersion, name}, createCloudflareArgs...)
+	if err := runStep(ctx, from, bin, filepath.Join(bin, "npx"), create...); err != nil {
 		return fmt.Errorf("scaffold: %w", err)
+	}
+	if staging != "" {
+		if err := moveInto(filepath.Join(staging, name), dir); err != nil {
+			return fmt.Errorf("scaffold: %w", err)
+		}
+		if err := os.RemoveAll(staging); err != nil {
+			return fmt.Errorf("scaffold: %w", err)
+		}
 	}
 	if !isFile(filepath.Join(dir, "package.json")) {
 		return errors.New("scaffold: no package.json was written")
@@ -99,6 +124,62 @@ func (NPMScaffolder) Scaffold(ctx context.Context, dir string) error {
 	install := append([]string{"install", "--no-audit", "--no-fund"}, stackPackages...)
 	if err := runStep(ctx, dir, bin, filepath.Join(bin, "npm"), install...); err != nil {
 		return fmt.Errorf("install the stack's packages: %w", err)
+	}
+	return nil
+}
+
+// scaffoldStaging is the folder inside a project's folder where a project
+// whose folder name the scaffolder refuses is scaffolded first.
+const scaffoldStaging = ".tars-scaffold"
+
+// scaffoldNameMax is the scaffolder's own limit on a name's length.
+const scaffoldNameMax = 58
+
+// validScaffoldName reports whether the scaffolder takes name as it is:
+// lower-case ASCII letters, digits and dashes, not starting or ending with
+// a dash, shorter than its limit.
+func validScaffoldName(name string) bool {
+	if name == "" || len(name) > scaffoldNameMax || name[0] == '-' || name[len(name)-1] == '-' {
+		return false
+	}
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// ScaffoldName is the ASCII name a project is scaffolded under (and what
+// its app calls itself) when its folder name has other letters: the
+// folder's ASCII words, else "app-" and a short hash of the folder name,
+// so two Korean projects do not share one.
+func ScaffoldName(folder string) string {
+	words := strings.FieldsFunc(strings.ToLower(folder), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+	name := strings.Join(words, "-")
+	if len(name) > slugRunes {
+		name = strings.Trim(name[:slugRunes], "-")
+	}
+	if name != "" {
+		return name
+	}
+	sum := sha256.Sum256([]byte(folder))
+	return "app-" + hex.EncodeToString(sum[:4])
+}
+
+// moveInto moves every entry of from into to, which must not hold an
+// entry of the same name.
+func moveInto(from, to string) error {
+	entries, err := os.ReadDir(from)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := os.Rename(filepath.Join(from, e.Name()), filepath.Join(to, e.Name())); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -17,12 +17,20 @@ import (
 //
 //	go test -tags integration ./internal/easyproject -run TestLiveNPMScaffold -v
 func TestLiveNPMScaffold(t *testing.T) {
+	// A Korean idea gives a Hangul folder, which the scaffolder refuses as
+	// a name: it is scaffolded under an ASCII one and moved up.
+	for _, idea := range []string{"A sign-up page for a book club", "동네 독서모임 신청 페이지"} {
+		t.Run(idea, func(t *testing.T) { liveScaffold(t, idea) })
+	}
+}
+
+func liveScaffold(t *testing.T, idea string) {
 	s := NPMScaffolder{}
 	if err := s.Ready(); err != nil {
 		t.Skip("npm is not installed")
 	}
 	base := t.TempDir()
-	dir, err := NewFolder(base, "A sign-up page for a book club")
+	dir, err := NewFolder(base, idea)
 	if err != nil {
 		t.Fatal(err)
 	}

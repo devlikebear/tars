@@ -477,3 +477,15 @@ test('every workspace sentence exists in both languages', () => {
     assert.ok(section.status.questions)
   }
 })
+
+test('a project reads the same state on its screen as on the desk board (shared with easyproject.BoardOf)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { boardStateOfView } = await import('../src/lib/easyBoard.ts')
+  const doc = JSON.parse(readFileSync(new URL('../../../internal/easyproject/testdata/board_states.json', import.meta.url), 'utf8')) as {
+    cases: Array<{ name: string; project: EasyProject; pipeline: FocusPipeline | null; state: string }>
+  }
+  assert.ok(doc.cases.length > 0)
+  for (const c of doc.cases) {
+    assert.equal(boardStateOfView(easyView(c.project, c.pipeline)), c.state, c.name)
+  }
+})

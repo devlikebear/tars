@@ -7,6 +7,35 @@ export const phoneEn = {
   tabs: { projects: 'Projects', new: '+ New', computers: 'Computers' },
   tabsLabel: 'Sections',
 
+  // An in-app confirm sheet (ConfirmSheet.svelte): the system's own
+  // confirm() always says "Cancel" and "OK" in English.
+  confirm: { cancel: 'Cancel' },
+
+  // Why a computer cannot be reached from the lists.
+  failures: { unreachable: 'Can’t reach this computer. Is it on and awake, and is this phone on Tailscale?' },
+
+  // Connecting this phone to a computer (PairSheet.svelte).
+  pair: {
+    title: 'Connect to a computer',
+    hint: 'Scanning the QR code on the computer with the camera fills this in. You can also type what the computer shows under the code.',
+    addressLabel: 'Computer address',
+    addressPlaceholder: 'mac-mini.your-tailnet.ts.net',
+    codeLabel: 'Connection code',
+    phoneNameLabel: 'This phone’s name',
+    phoneNameHint: 'Shown in the computer’s list of phones.',
+    defaultPhoneName: 'iPhone',
+    submit: 'Connect',
+    pairing: 'Connecting…',
+    cancel: 'Cancel',
+    failures: {
+      invalid_address: 'Enter the computer’s Tailscale address.',
+      invalid_code: 'The code is wrong or expired. Make a new one on the computer.',
+      locked: 'Too many tries. Wait a few minutes, then try again.',
+      unreachable: 'Can’t reach this computer. Is it on and awake, and is this phone on Tailscale?',
+      failed: 'The computer refused to connect.',
+    },
+  },
+
   projects: {
     title: 'My projects',
     filters: { all: 'All', your_turn: 'Your turn', working: 'Being made', done: 'Finished' },
@@ -40,6 +69,9 @@ export const phoneEn = {
     open: 'Open',
     remove: 'Remove',
     confirmRemove: 'Remove this idea from the phone?',
+    confirmRemoveGo: 'Remove',
+    choose: 'Which computer makes it',
+    notReady: 'Not ready',
   },
 
   computers: {
@@ -72,6 +104,7 @@ export const phoneEn = {
     forget: 'Forget',
     confirmForget: (name: string) => `Forget ${name} on this phone?`,
     confirmForgetDemo: 'Remove the sample computer? You can add it again here.',
+    forgetGo: 'Forget',
     paired: (name: string) => `Connected to ${name}.`,
     notPaired: (host: string) => `This phone is not connected to ${host}. Connect it to open its projects here.`,
     refresh: 'Check again',
@@ -109,6 +142,31 @@ export const phoneKo: PhoneTranslations = {
   tabs: { projects: '프로젝트', new: '+ 새로 만들기', computers: '컴퓨터' },
   tabsLabel: '메뉴',
 
+  confirm: { cancel: '그만두기' },
+
+  failures: { unreachable: '이 컴퓨터에 연결할 수 없어요. 컴퓨터가 켜져 있고, 이 폰이 Tailscale에 연결돼 있는지 확인해 주세요.' },
+
+  pair: {
+    title: '컴퓨터와 연결하기',
+    hint: '컴퓨터에 뜬 QR 코드를 카메라로 찍으면 자동으로 채워져요. 코드 아래에 보이는 내용을 직접 입력해도 돼요.',
+    addressLabel: '컴퓨터 주소',
+    addressPlaceholder: 'mac-mini.your-tailnet.ts.net',
+    codeLabel: '연결 코드',
+    phoneNameLabel: '이 폰의 이름',
+    phoneNameHint: '컴퓨터의 폰 목록에 이 이름으로 보여요.',
+    defaultPhoneName: 'iPhone',
+    submit: '연결하기',
+    pairing: '연결하는 중…',
+    cancel: '그만두기',
+    failures: {
+      invalid_address: '컴퓨터의 Tailscale 주소를 입력해 주세요.',
+      invalid_code: '코드가 틀렸거나 시간이 지났어요. 컴퓨터에서 새 코드를 만들어 주세요.',
+      locked: '너무 여러 번 시도했어요. 몇 분 뒤에 다시 해 주세요.',
+      unreachable: '이 컴퓨터에 연결할 수 없어요. 컴퓨터가 켜져 있고, 이 폰이 Tailscale에 연결돼 있는지 확인해 주세요.',
+      failed: '컴퓨터가 연결을 받지 않았어요.',
+    },
+  },
+
   projects: {
     title: '내 프로젝트',
     filters: { all: '전체', your_turn: '내 차례', working: '만드는 중', done: '완성' },
@@ -117,14 +175,14 @@ export const phoneKo: PhoneTranslations = {
     noComputer: '먼저 컴퓨터를 연결해 주세요. 프로젝트는 컴퓨터에 있고, 이 폰이 보여 줘요.',
     empty: '아직 없어요. + 새로 만들기를 눌러 팀에게 아이디어를 맡겨 보세요.',
     emptyFilter: '지금은 여기에 없어요.',
-    notShown: (names: string) => `안 보이는 컴퓨터: ${names}이(가) 답하지 않았어요.`,
+    notShown: (names: string) => `답이 없어서 안 보이는 컴퓨터: ${names}`,
     menu: (name: string) => `${name} 더 보기`,
     rename: '이름 바꾸기',
     archive: '보관',
     cancel: '그만두기',
     save: '저장',
     nameLabel: '새 이름',
-    archived: (name: string) => `${name}을(를) 보관했어요. 컴퓨터의 TARS에서 다시 꺼낼 수 있어요.`,
+    archived: (name: string) => `‘${name}’ 프로젝트를 보관했어요. 컴퓨터의 TARS에서 다시 꺼낼 수 있어요.`,
   },
 
   new: {
@@ -136,12 +194,15 @@ export const phoneKo: PhoneTranslations = {
     save: '아이디어로 저장해 두기',
     saved: '저장했어요. 컴퓨터가 켜지면 여기서 보내요.',
     savedTitle: '저장해 둔 아이디어',
-    send: (name: string) => `${name}(으)로 보내기`,
+    send: (name: string) => `${name}에 보내기`,
     sending: '보내는 중…',
-    sentTo: (name: string) => `${name}(으)로 보냈어요`,
+    sentTo: (name: string) => `${name}에 보냈어요`,
     open: '열기',
     remove: '지우기',
     confirmRemove: '이 아이디어를 폰에서 지울까요?',
+    confirmRemoveGo: '지우기',
+    choose: '만들 컴퓨터 고르기',
+    notReady: '준비 안 됨',
   },
 
   computers: {
@@ -172,8 +233,9 @@ export const phoneKo: PhoneTranslations = {
     demoHint: '이 앱 안에 있는 연습용 컴퓨터예요. 아무 데도 보내지 않고, 실제로 만들지도 않아요.',
     demoAdded: '연습용 컴퓨터를 추가했어요. + 새로 만들기에서 만들어 보세요.',
     forget: '지우기',
-    confirmForget: (name: string) => `이 폰에서 ${name}을(를) 지울까요?`,
+    confirmForget: (name: string) => `이 폰에서 ‘${name}’ 컴퓨터를 지울까요?`,
     confirmForgetDemo: '연습용 컴퓨터를 지울까요? 여기서 다시 추가할 수 있어요.',
+    forgetGo: '지우기',
     paired: (name: string) => `${name}에 연결했어요.`,
     notPaired: (host: string) => `이 폰은 ${host}에 연결돼 있지 않아요. 연결하면 그 프로젝트를 여기서 열 수 있어요.`,
     refresh: '다시 확인',
@@ -193,9 +255,9 @@ export const phoneKo: PhoneTranslations = {
       errors: {
         not_ready: '앱이 아직 준비되지 않았어요. 팀이 다 만든 뒤에 다시 해 보세요.',
         could_not_start: (name: string) => `${name}에서 앱을 시작하지 못했어요. 다시 해 보거나, 그 컴퓨터의 TARS에서 이유를 확인해 보세요.`,
-        phone_off: (name: string) => `${name}이(가) 지금은 폰에서 앱을 열 수 없게 돼 있어요. 그 컴퓨터의 TARS에서 폰 연결을 켠 뒤 다시 해 보세요.`,
+        phone_off: (name: string) => `지금은 ${name}에서 폰으로 앱을 열 수 없게 돼 있어요. 그 컴퓨터의 TARS에서 폰 연결을 켠 뒤 다시 해 보세요.`,
         too_old: '그 컴퓨터의 TARS를 업데이트하면 이 폰에서 써 볼 수 있어요.',
-        no_answer: (name: string) => `${name}이(가) 답하지 않았어요. 켜져 있고 잠자기 상태가 아닌지 확인한 뒤 다시 해 보세요.`,
+        no_answer: (name: string) => `${name}에서 답이 없어요. 켜져 있고 잠자기 상태가 아닌지 확인한 뒤 다시 해 보세요.`,
         failed: '문제가 생겼어요. 다시 해 보세요.',
       },
     },

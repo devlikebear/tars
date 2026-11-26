@@ -1,0 +1,695 @@
+{
+  "_comment": "One project's state, as the desk's board (easyproject.BoardOf) and the console's screen (lib/easy.ts easyBoardState(easyView(...))) both read it. Both tests run every case, so the phone's project list and a project's own screen never disagree.",
+  "cases": [
+    {
+      "name": "setting the project up",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "creating",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z"
+      },
+      "pipeline": null,
+      "state": "starting"
+    },
+    {
+      "name": "setting the project up failed",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "failed",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "error_code": "scaffold_failed"
+      },
+      "pipeline": null,
+      "state": "failed"
+    },
+    {
+      "name": "leader writing the plan",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "plan",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "active"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "pending"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "pending"
+          }
+        ],
+        "cards": [],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": null
+      },
+      "state": "working"
+    },
+    {
+      "name": "question before the plan",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "plan",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "active"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "pending"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "pending"
+          }
+        ],
+        "cards": [
+          {
+            "id": "q",
+            "kind": "decision",
+            "stage": "plan",
+            "state": "unseen",
+            "title": "Which colour?",
+            "payload": {
+              "question": "Which colour?",
+              "options": [
+                "Blue",
+                "Green"
+              ]
+            }
+          }
+        ],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": null
+      },
+      "state": "your_turn"
+    },
+    {
+      "name": "plan to approve",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "plan",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "blocked"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "pending"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "pending"
+          }
+        ],
+        "cards": [
+          {
+            "id": "g",
+            "kind": "gate",
+            "stage": "plan",
+            "state": "unseen",
+            "title": "Approve the plan"
+          }
+        ],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "open_gate": "plan"
+      },
+      "state": "your_turn"
+    },
+    {
+      "name": "team making in goal mode",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "build",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "active"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "pending"
+          }
+        ],
+        "cards": [],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "goal_mode": {
+          "enabled": true
+        }
+      },
+      "state": "working"
+    },
+    {
+      "name": "a failed turn goal mode retries by itself",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "build",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "blocked"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "pending"
+          }
+        ],
+        "cards": [
+          {
+            "id": "gate-1",
+            "kind": "gate",
+            "stage": "build",
+            "state": "unseen",
+            "title": "blocked",
+            "payload": {
+              "reason": "turn_failed",
+              "error": "boom"
+            }
+          }
+        ],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "open_gate": "blocked",
+        "goal_mode": {
+          "enabled": true
+        }
+      },
+      "state": "working"
+    },
+    {
+      "name": "a failed turn with nobody retrying",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "build",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "blocked"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "pending"
+          }
+        ],
+        "cards": [
+          {
+            "id": "gate-1",
+            "kind": "gate",
+            "stage": "build",
+            "state": "unseen",
+            "title": "blocked",
+            "payload": {
+              "reason": "turn_failed",
+              "error": "boom"
+            }
+          }
+        ],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "open_gate": "blocked"
+      },
+      "state": "stuck"
+    },
+    {
+      "name": "stopped by the person",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "build",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "blocked"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "pending"
+          }
+        ],
+        "cards": [],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        }
+      },
+      "state": "stuck"
+    },
+    {
+      "name": "goal mode gave up",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "review",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "done"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "active"
+          }
+        ],
+        "cards": [],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "goal_mode": {
+          "enabled": false,
+          "end_reason": "exhausted"
+        }
+      },
+      "state": "stuck"
+    },
+    {
+      "name": "usage limit",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "build",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "blocked"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "pending"
+          }
+        ],
+        "cards": [
+          {
+            "id": "gate-1",
+            "kind": "gate",
+            "stage": "build",
+            "state": "unseen",
+            "title": "blocked",
+            "payload": {
+              "reason": "turn_failed",
+              "usage_limit": true,
+              "resets": "2:40pm (Asia/Seoul)"
+            }
+          }
+        ],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "open_gate": "blocked",
+        "goal_mode": {
+          "enabled": false,
+          "end_reason": "usage_limit"
+        }
+      },
+      "state": "paused"
+    },
+    {
+      "name": "finished, still saving",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "review",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "done"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "done"
+          }
+        ],
+        "cards": [],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "finished_at": "2026-11-01T10:00:00Z"
+      },
+      "state": "working"
+    },
+    {
+      "name": "finished and saved",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "review",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "done"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "done"
+          }
+        ],
+        "cards": [],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "finished_at": "2026-11-01T10:00:00Z",
+        "saved": {
+          "commit": "abc",
+          "at": "2026-11-01T10:00:00Z"
+        }
+      },
+      "state": "done"
+    }
+  ]
+}

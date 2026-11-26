@@ -97,11 +97,17 @@
     if (id) onOpen(id)
   }
 
+  // "Change it like this" opens its box in the bar only when pressed, so
+  // the finished project's bar stays one row.
+  let changeOpen = $state(false)
   let changeRequest = $state('')
   const changeError = $derived(store.changeError === null ? '' : $t.easy.errors[store.changeError] || $t.easy.errors.unknown)
   async function submitChange(event: SubmitEvent) {
     event.preventDefault()
-    if (await store.change(changeRequest)) changeRequest = ''
+    if (await store.change(changeRequest)) {
+      changeRequest = ''
+      changeOpen = false
+    }
   }
 
   let currentNumber = $state<number | undefined>(undefined)
@@ -270,13 +276,16 @@
           </div>
           {#if sayError}<p class="error" role="alert" data-testid="easy-say-error">{sayError}</p>{/if}
         </form>
-      {:else if view.phase === 'finished' && easyCanChange(view)}
+      {:else if view.phase === 'finished' && easyCanChange(view) && changeOpen}
         <form class="say-form" onsubmit={submitChange} data-testid="easy-change">
           <label class="sr-only" for="phone-change-input">{$t.easy.change.title}</label>
           <textarea id="phone-change-input" rows="2" data-testid="easy-change-input" placeholder={$t.easy.change.placeholder} bind:value={changeRequest} disabled={store.changing}></textarea>
-          <button type="submit" class="btn btn-secondary" data-testid="easy-change-submit" disabled={store.changing}>
-            {store.changing ? $t.easy.change.submitting : $t.easy.change.title}
-          </button>
+          <div class="row">
+            <button type="button" class="btn btn-ghost" onclick={() => (changeOpen = false)} disabled={store.changing}>{$t.phone.projects.cancel}</button>
+            <button type="submit" class="btn btn-primary" data-testid="easy-change-submit" disabled={store.changing}>
+              {store.changing ? $t.easy.change.submitting : $t.easy.change.title}
+            </button>
+          </div>
           {#if changeError}<p class="error" role="alert" data-testid="easy-change-error">{changeError}</p>{/if}
         </form>
       {/if}
@@ -302,10 +311,19 @@
         <button type="button" class="btn btn-primary go" data-testid="easy-recreate" disabled={store.recreating} onclick={recreate}>
           {store.recreating ? $t.easy.states.failed.retrying : $t.easy.states.failed.retry}
         </button>
-      {:else if view.phase === 'finished'}
-        <button type="button" class="btn btn-primary go" data-testid="easy-publish" disabled aria-describedby="phone-publish-later">{$t.easy.result.publish}</button>
+      {:else if view.phase === 'finished' && !changeOpen}
+        <!-- One row: what the person can do now, and publishing, which
+             comes later. The change box opens only when asked for. -->
+        <div class="row">
+          {#if easyCanChange(view)}
+            <button type="button" class="btn btn-primary" data-testid="phone-change-open" onclick={() => (changeOpen = true)}>{$t.easy.change.title}</button>
+          {/if}
+          <button type="button" class="btn btn-secondary" data-testid="easy-publish" disabled aria-describedby="phone-publish-later">{$t.easy.result.publish}</button>
+        </div>
       {/if}
-      <span class="hint" id="phone-publish-later" data-testid="easy-message">{barHint()}</span>
+      {#if !(view.phase === 'finished' && changeOpen)}
+        <span class="hint" id="phone-publish-later" data-testid="easy-message">{barHint()}</span>
+      {/if}
     </footer>
   {/if}
 </div>
@@ -469,6 +487,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+  /* The list stays mounted on every tab of a finished project (the tab
+     names the current version), but shows only on Versions: without this,
+     display: flex above wins over the hidden attribute and the list showed
+     under My app and again on Versions. */
+  .versions[hidden] {
+    display: none;
   }
   /* The versions as one column: a phone has no room for the desk's strip
      of three. */

@@ -517,7 +517,7 @@ export const easyKo: EasyTranslations = {
       cancel: '취소',
     },
     remove: {
-      title: (name: string) => `“${name}”을(를) 지울까요?`,
+      title: (name: string) => `“${name}” 프로젝트를 지울까요?`,
       body: 'TARS에서 이 프로젝트가 사라져요. 폴더는 프로젝트 폴더 옆 “.deleted” 폴더로 옮겨 두니, 실수였다면 직접 찾을 수 있어요.',
       confirm: '지우기',
       cancel: '그대로 두기',
@@ -730,7 +730,7 @@ export const easyKo: EasyTranslations = {
     all: (n: number) => `버전 모두 보기 (${n})`,
     fewer: '접기',
     confirm: {
-      title: (name: string) => `${name}(으)로 되돌릴까요?`,
+      title: (name: string) => `‘${name}’ 버전으로 되돌릴까요?`,
       body: '그 버전의 파일이 새 버전으로 돌아와요. 목록에서 사라지는 버전은 없어서 지금 버전으로 다시 올 수 있어요. 앱에 쌓인 정보는 그대로예요.',
       go: '되돌리기',
       cancel: '지금 버전 두기',
@@ -769,7 +769,7 @@ export const easyKo: EasyTranslations = {
         '아래 줄을 복사해 붙여 넣고 Return을 누르세요:',
         '설치가 끝나면 이 화면으로 돌아오세요.',
       ],
-      other: (name: string) => `이 컴퓨터에 ${name}을(를) 설치한 뒤 이 화면으로 돌아오세요.`,
+      other: (name: string) => `이 컴퓨터에 ${name} 설치를 마친 뒤 이 화면으로 돌아오세요.`,
     },
     sign_in: {
       title: (name: string) => `${name}에 로그인하기`,
