@@ -152,7 +152,7 @@ func (d *focusDriver) goalStep(sessionID string) {
 	}
 	step := focuspipeline.NextGoalStep(p, d.now())
 	if step.Kind == focuspipeline.GoalGate && step.Gate == focuspipeline.GateBlocked {
-		step = focuspipeline.GoalCheckRetry(p, step, d.goalWorkTree(p))
+		step = focuspipeline.GoalCheckRetry(p, step, d.goalWorkTree(p), d.now())
 	}
 	log := d.logger.With().Str("session_id", sessionID).Str("step", step.Kind).Logger()
 	switch step.Kind {

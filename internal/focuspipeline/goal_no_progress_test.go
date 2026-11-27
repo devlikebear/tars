@@ -3,6 +3,7 @@ package focuspipeline
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // goalBlockedOn is a pipeline in goal mode whose build stage is blocked on
@@ -69,24 +70,31 @@ func TestGoalCheckRetry(t *testing.T) {
 		p.GoalMode.LastRetry, p.GoalMode.EmptyRetries = last, empty
 		return p
 	}
+	same := func(tree string) *GoalRetryMark { return &GoalRetryMark{Failure: failure, Tree: tree, Since: t0} }
+	past := t0.Add(GoalEmptyRetryWindow)
 	cases := []struct {
 		name      string
 		p         Pipeline
 		tree      string
+		now       time.Time
 		wantEnd   bool
 		wantEmpty int
 		wantMark  bool
+		wantSince time.Time
 	}{
-		{name: "first retry", p: with(nil, 0), tree: "T1", wantMark: true},
-		{name: "same failure, same tree", p: with(&GoalRetryMark{Failure: failure, Tree: "T1"}, 0), tree: "T1", wantEmpty: 1, wantMark: true},
-		{name: "the limit of empty retries", p: with(&GoalRetryMark{Failure: failure, Tree: "T1"}, GoalEmptyRetryLimit-1), tree: "T1", wantEnd: true, wantEmpty: GoalEmptyRetryLimit},
-		{name: "the tree changed", p: with(&GoalRetryMark{Failure: failure, Tree: "T1"}, GoalEmptyRetryLimit-1), tree: "T2", wantMark: true},
-		{name: "the failure changed", p: with(&GoalRetryMark{Failure: "other", Tree: "T1"}, GoalEmptyRetryLimit-1), tree: "T1", wantMark: true},
-		{name: "tree unreadable", p: with(&GoalRetryMark{Failure: failure, Tree: "T1"}, GoalEmptyRetryLimit-1), tree: ""},
+		{name: "first retry", p: with(nil, 0), tree: "T1", now: t0, wantMark: true, wantSince: t0},
+		{name: "same failure, same tree", p: with(same("T1"), 0), tree: "T1", now: past, wantEmpty: 1, wantMark: true, wantSince: t0},
+		{name: "the limit of empty retries", p: with(same("T1"), GoalEmptyRetryLimit-1), tree: "T1", now: past, wantEnd: true, wantEmpty: GoalEmptyRetryLimit},
+		// A failure that passes later by itself (a port, a server warming
+		// up) is retried through the window, however many rounds it takes.
+		{name: "same failure, same tree, within the window", p: with(same("T1"), GoalEmptyRetryLimit+3), tree: "T1", now: past.Add(-time.Second), wantEmpty: GoalEmptyRetryLimit + 4, wantMark: true, wantSince: t0},
+		{name: "the tree changed", p: with(same("T1"), GoalEmptyRetryLimit-1), tree: "T2", now: past, wantMark: true, wantSince: past},
+		{name: "the failure changed", p: with(&GoalRetryMark{Failure: "other", Tree: "T1", Since: t0}, GoalEmptyRetryLimit-1), tree: "T1", now: past, wantMark: true, wantSince: past},
+		{name: "tree unreadable", p: with(same("T1"), GoalEmptyRetryLimit-1), tree: "", now: past},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			step := GoalCheckRetry(c.p, NextGoalStep(c.p, t0), c.tree)
+			step := GoalCheckRetry(c.p, NextGoalStep(c.p, c.now), c.tree, c.now)
 			if c.wantEnd {
 				if step.Kind != GoalEnd || step.Reason != GoalEndNoProgress || step.EmptyRetries != c.wantEmpty {
 					t.Fatalf("step = %+v", step)
@@ -95,6 +103,9 @@ func TestGoalCheckRetry(t *testing.T) {
 			}
 			if step.Kind != GoalGate || step.Action != GateRetry || step.EmptyRetries != c.wantEmpty || (step.Retry != nil) != c.wantMark {
 				t.Fatalf("step = %+v", step)
+			}
+			if step.Retry != nil && !step.Retry.Since.Equal(c.wantSince) {
+				t.Fatalf("run since %v, want %v", step.Retry.Since, c.wantSince)
 			}
 			applied := GoalApplied(c.p, step, t0)
 			if applied.GoalMode.EmptyRetries != c.wantEmpty || (applied.GoalMode.LastRetry != nil) != c.wantMark {
@@ -105,7 +116,7 @@ func TestGoalCheckRetry(t *testing.T) {
 
 	// Other steps pass through untouched.
 	gate := GoalStep{Kind: GoalGate, Gate: GatePlan, Action: GateApprove}
-	if got := GoalCheckRetry(blocked, gate, "T1"); got.Retry != nil || got.Kind != GoalGate {
+	if got := GoalCheckRetry(blocked, gate, "T1", past); got.Retry != nil || got.Kind != GoalGate {
 		t.Fatalf("plan gate step = %+v", got)
 	}
 }
@@ -113,8 +124,11 @@ func TestGoalCheckRetry(t *testing.T) {
 func TestGoalModeEndsAfterEmptyRetries(t *testing.T) {
 	p := goalBlockedOn(t, verifyFailing("npm test", 1, "boom"))
 	retries := 0
+	now := t0
 	for range DefaultGoalPushes {
-		step := GoalCheckRetry(p, NextGoalStep(p, t0), "T1")
+		// Each round of the mock team takes two minutes.
+		now = now.Add(2 * time.Minute)
+		step := GoalCheckRetry(p, NextGoalStep(p, now), "T1", now)
 		if step.Kind == GoalEnd {
 			if step.Reason != GoalEndNoProgress {
 				t.Fatalf("end = %+v", step)
@@ -131,8 +145,10 @@ func TestGoalModeEndsAfterEmptyRetries(t *testing.T) {
 		// The round fails the same way twice and blocks again.
 		p = goalFailTwice(t, p, verifyFailing("npm test", 1, "boom"))
 	}
-	if retries != GoalEmptyRetryLimit {
-		t.Fatalf("retries before the end = %d, want %d", retries, GoalEmptyRetryLimit)
+	// Two empty retries, then a third inside the five-minute window; the
+	// fourth reading is past it.
+	if want := 3; retries != want {
+		t.Fatalf("retries before the end = %d, want %d", retries, want)
 	}
 	ended, ok := EndGoal(p, GoalEndNoProgress, t0)
 	last := ended.Cards[len(ended.Cards)-1]

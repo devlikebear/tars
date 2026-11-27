@@ -92,6 +92,17 @@ const (
 // loop: nothing in the next retry's input differs from the last two.
 const GoalEmptyRetryLimit = 2
 
+// GoalEmptyRetryWindow is the least time a run of empty retries must span,
+// from the first retry of the run to now, before it ends goal mode. Some
+// failures pass later with no file changed: a check that fails while a
+// port frees, a server warms up or a rate limit lifts. A fast model gets
+// through several rounds in seconds, so the count alone would end goal
+// mode on a failure that was about to go away (the console's
+// easy-workspace e2e has a check that fails for its first 12 seconds).
+// Five minutes outlasts that kind of wait and costs a handful of rounds;
+// the run that motivated this rule spent far longer on its twenty retries.
+const GoalEmptyRetryWindow = 5 * time.Minute
+
 // GoalStallGrace is how long a pipeline must have sat unchanged before goal
 // mode treats it as stalled: a step the server is about to start is not one.
 const GoalStallGrace = 20 * time.Second
@@ -145,9 +156,13 @@ type GoalMode struct {
 // gate's failure (GoalRetryFailure) and the session's working tree
 // fingerprint (focusprobe.WorkTreeState), both read by the server, never
 // taken from a turn's report.
+//
+// Since is when the run of empty retries this mark belongs to began: the
+// time of the first retry that saw this failure on this tree.
 type GoalRetryMark struct {
-	Failure string `json:"failure"`
-	Tree    string `json:"tree"`
+	Failure string    `json:"failure"`
+	Tree    string    `json:"tree"`
+	Since   time.Time `json:"since"`
 }
 
 // GoalActive reports whether the pipeline is in goal mode.
@@ -477,12 +492,14 @@ func GoalRetryFailure(p Pipeline) string {
 // failure as at the last retry (GoalRetryFailure) and the tree is the
 // same as it was then: the round that retry started changed nothing and
 // failed the same way. Once GoalEmptyRetryLimit retries in a row were
-// empty, the step becomes the end of goal mode (GoalEndNoProgress); any
+// empty and that run spans at least GoalEmptyRetryWindow (from its first
+// retry to now), the step becomes the end of goal mode
+// (GoalEndNoProgress); any
 // other retry comes back carrying what it saw, for GoalApplied to record,
 // which resets the run when the failure or the tree changed. Any other
 // step is returned as is.
-// Pure: the tree is read by the caller.
-func GoalCheckRetry(p Pipeline, step GoalStep, tree string) GoalStep {
+// Pure: the tree is read by the caller and now passed in.
+func GoalCheckRetry(p Pipeline, step GoalStep, tree string, now time.Time) GoalStep {
 	if step.Kind != GoalGate || step.Gate != GateBlocked || step.Action != GateRetry || !p.GoalActive() {
 		return step
 	}
@@ -490,11 +507,14 @@ func GoalCheckRetry(p Pipeline, step GoalStep, tree string) GoalStep {
 	if failure == "" || tree == "" {
 		return step // nothing to compare: not empty, and the run breaks
 	}
-	step.Retry = &GoalRetryMark{Failure: failure, Tree: tree}
+	step.Retry = &GoalRetryMark{Failure: failure, Tree: tree, Since: now.UTC()}
 	if last := p.GoalMode.LastRetry; last != nil && last.Failure == failure && last.Tree == tree {
 		step.EmptyRetries = p.GoalMode.EmptyRetries + 1
+		if !last.Since.IsZero() {
+			step.Retry.Since = last.Since
+		}
 	}
-	if step.EmptyRetries >= GoalEmptyRetryLimit {
+	if step.EmptyRetries >= GoalEmptyRetryLimit && now.Sub(step.Retry.Since) >= GoalEmptyRetryWindow {
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndNoProgress, EmptyRetries: step.EmptyRetries}
 	}
 	return step

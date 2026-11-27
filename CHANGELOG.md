@@ -10,7 +10,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Fixed
 
-- **Goal mode stops retrying when the retries change nothing.** Before retrying a gate blocked on a failed check, goal mode reads the project's working tree (the same git fingerprint that proves a review fix changed nothing). When two retries in a row come back blocked on the same failed check with the tree exactly as before, goal mode ends (`no_progress`) instead of spending the rest of its 20 retries on the same nothing; the gate is left to the person with a notice and a notification, as when the budget runs out. In vibe mode the project shows as stuck, and **Try again** turns goal mode back on with a fresh budget.
+- **Goal mode stops retrying when the retries change nothing.** Before retrying a gate blocked on a failed check, goal mode reads the project's working tree (the same git fingerprint that proves a review fix changed nothing). When two retries in a row come back blocked on the same failed check with the tree exactly as before, and that run has lasted at least five minutes (so a check that fails briefly while a server starts or a port frees still gets retried), goal mode ends (`no_progress`) instead of spending the rest of its 20 retries on the same nothing; the gate is left to the person with a notice and a notification, as when the budget runs out. In vibe mode the project shows as stuck, and **Try again** turns goal mode back on with a fresh budget.
 
 ## [0.71.1] - 2026-11-27
 
