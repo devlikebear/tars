@@ -503,6 +503,84 @@
       "state": "stuck"
     },
     {
+      "name": "goal mode saw no progress",
+      "project": {
+        "id": "0123456789abcdef",
+        "name": "A page",
+        "idea": "A page",
+        "folder": "~/TARS Projects/a-page",
+        "status": "ready",
+        "created_at": "2026-11-01T09:00:00Z",
+        "updated_at": "2026-11-01T09:00:00Z",
+        "session_id": "s1"
+      },
+      "pipeline": {
+        "version": 1,
+        "session_id": "s1",
+        "goal": "A page",
+        "current": "review",
+        "stages": [
+          {
+            "id": "plan",
+            "kind": "plan",
+            "status": "done"
+          },
+          {
+            "id": "build",
+            "kind": "build",
+            "status": "done"
+          },
+          {
+            "id": "review",
+            "kind": "review",
+            "status": "blocked"
+          }
+        ],
+        "cards": [
+          {
+            "id": "g1",
+            "kind": "gate",
+            "stage": "review",
+            "turn": 4,
+            "title": "Review blocked",
+            "payload": {
+              "reason": "repeated",
+              "failure": {
+                "command": "npm test",
+                "exit_code": 1,
+                "iteration": 2
+              }
+            },
+            "state": "open",
+            "created_at": "2026-11-01T10:00:00Z"
+          }
+        ],
+        "updated_at": "2026-11-01T10:00:00Z",
+        "save_version": true,
+        "plan": {
+          "goal": "A page",
+          "tasks": [
+            {
+              "title": "Make the page",
+              "done": "It shows"
+            }
+          ],
+          "stages": [
+            "plan",
+            "build",
+            "review"
+          ],
+          "verify": []
+        },
+        "goal_mode": {
+          "enabled": false,
+          "end_reason": "no_progress"
+        },
+        "open_gate": "blocked"
+      },
+      "state": "stuck"
+    },
+    {
       "name": "usage limit",
       "project": {
         "id": "0123456789abcdef",
