@@ -170,6 +170,12 @@ test('a stuck project: its blocked step to try again, the failed check, the coun
   assert.equal(stuck.phase, 'stuck')
   assert.deepEqual(stuck.retry, { cardId: 'g7' })
   assert.equal(stuck.stoppedAt, 'maker')
+  // Goal mode that stopped on retries changing nothing reads the same way,
+  // with the same blocked step for Try again.
+  const noProgress = { ...ended, pushes: 2, end_reason: 'no_progress' } as FocusPipeline['goal_mode']
+  const idle = easyView(project(), pipeline({ current: 'make', stages: make, open_gate: 'blocked', cards: [gate], goal_mode: noProgress }))
+  assert.equal(idle.phase, 'stuck')
+  assert.deepEqual(idle.retry, { cardId: 'g7' })
   assert.deepEqual(easyStuck(stuck), {
     label: 'The newest member is at the top', report: { screen: 'Members', expected: 'at the top', seen: 'at the bottom' }, timedOut: undefined, passed: 1, total: 2,
   })

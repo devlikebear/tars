@@ -22,7 +22,12 @@ import (
 //     turn, a PR that did not appear) is retried, and a pipeline that sits
 //     idle with a turn owed or nothing owed at all is pushed with one;
 //   - a turn that failed on the provider's usage limit ends goal mode: the
-//     limit lifts in hours, and every retry until then is refused.
+//     limit lifts in hours, and every retry until then is refused;
+//   - a retry of a verification failure that comes back as the same
+//     failure on an unchanged working tree is empty: after
+//     GoalEmptyRetryLimit of them in a row goal mode ends
+//     (GoalEndNoProgress, GoalCheckRetry) instead of spending the rest of
+//     the budget on the same nothing.
 //
 // Retries, pushes and answer turns draw on a budget (MaxPushes): an agent
 // that asks again after every "decide yourself" is a loop like any other.
@@ -62,8 +67,15 @@ const (
 	// re-asking whether to keep an end-to-end goal that contradicted the
 	// task). The question is left to the developer.
 	GoalEndRepeatedQuestion = "repeated_question"
-	GoalEndCancelled        = "cancelled"
-	GoalEndDisabled         = "disabled"
+	// GoalEndNoProgress: GoalEmptyRetryLimit retries in a row of a blocked
+	// gate came back blocked on the same verification failure with the
+	// working tree exactly as before (GoalCheckRetry). Seen in a real run:
+	// twenty retries, each ending with the team reporting nothing in the
+	// code was wrong, none changing a file. Another retry is the same
+	// nothing again, so the gate is left to the person.
+	GoalEndNoProgress = "no_progress"
+	GoalEndCancelled  = "cancelled"
+	GoalEndDisabled   = "disabled"
 )
 
 // Push budget.
@@ -71,6 +83,14 @@ const (
 	DefaultGoalPushes = 20
 	MaxGoalPushes     = 100
 )
+
+// GoalEmptyRetryLimit is how many empty retries in a row (GoalCheckRetry)
+// end goal mode. Not one: a single retry that changed nothing can be a team
+// that spent it reading before it acts (each retry is a fresh round of at
+// least a fix turn and a verification), and one more costs a round, not
+// the budget. Two in a row with the same failure and the same tree is a
+// loop: nothing in the next retry's input differs from the last two.
+const GoalEmptyRetryLimit = 2
 
 // GoalStallGrace is how long a pipeline must have sat unchanged before goal
 // mode treats it as stalled: a step the server is about to start is not one.
@@ -110,10 +130,24 @@ type GoalMode struct {
 	StartedAt time.Time  `json:"started_at"`
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
 	EndReason string     `json:"end_reason,omitempty"`
+	// LastRetry is what the last retry of a blocked gate saw (its failure
+	// and the working tree), and EmptyRetries how many retries in a row
+	// found both unchanged from the retry before (GoalCheckRetry).
+	LastRetry    *GoalRetryMark `json:"last_retry,omitempty"`
+	EmptyRetries int            `json:"empty_retries,omitempty"`
 	// PermissionSet says the server put the session in the auto permission
 	// mode for goal mode, and RestorePermission what it had before.
 	PermissionSet     bool   `json:"permission_set,omitempty"`
 	RestorePermission string `json:"restore_permission,omitempty"`
+}
+
+// GoalRetryMark is what goal mode saw when it retried a blocked gate: the
+// gate's failure (GoalRetryFailure) and the session's working tree
+// fingerprint (focusprobe.WorkTreeState), both read by the server, never
+// taken from a turn's report.
+type GoalRetryMark struct {
+	Failure string `json:"failure"`
+	Tree    string `json:"tree"`
 }
 
 // GoalActive reports whether the pipeline is in goal mode.
@@ -136,6 +170,11 @@ type GoalStep struct {
 	Push, FailedTurn bool
 	// Reason is why goal mode ends (GoalEnd).
 	Reason string
+	// Retry and EmptyRetries are what a blocked gate's retry saw and how
+	// many empty retries in a row it makes (GoalCheckRetry); GoalApplied
+	// records them.
+	Retry        *GoalRetryMark
+	EmptyRetries int
 	// Until is when to look again (GoalWait with a backoff).
 	Until time.Time
 }
@@ -174,10 +213,14 @@ func EndGoal(p Pipeline, reason string, now time.Time) (Pipeline, bool) {
 	// restore before this).
 	next.GoalMode.PermissionSet, next.GoalMode.RestorePermission = false, ""
 	switch reason {
-	case GoalEndExhausted, GoalEndPRClosed, GoalEndE2EFailed, GoalEndUsageLimit, GoalEndRepeatedQuestion, GoalEndCancelled:
-		next.addCard(CardNotice, 0, NoticeGoalEnded, map[string]any{
+	case GoalEndExhausted, GoalEndPRClosed, GoalEndE2EFailed, GoalEndUsageLimit, GoalEndRepeatedQuestion, GoalEndNoProgress, GoalEndCancelled:
+		payload := map[string]any{
 			"reason": reason, "pushes": next.GoalMode.Pushes, "max_pushes": next.GoalMode.MaxPushes,
-		}, at)
+		}
+		if reason == GoalEndNoProgress {
+			payload["empty_retries"] = GoalEmptyRetryLimit
+		}
+		next.addCard(CardNotice, 0, NoticeGoalEnded, payload, at)
 	}
 	next.UpdatedAt = at
 	return next, true
@@ -215,6 +258,11 @@ func GoalApplied(p Pipeline, step GoalStep, now time.Time) Pipeline {
 	if step.Push {
 		g.Pushes++
 	}
+	if step.Kind == GoalGate && step.Gate == GateBlocked {
+		// Every retry replaces the mark: one without a failure or a tree
+		// (a failed turn, an unreadable tree) breaks the run of empty ones.
+		g.LastRetry, g.EmptyRetries = step.Retry, step.EmptyRetries
+	}
 	if step.FailedTurn {
 		g.Failures++
 	}
@@ -234,7 +282,9 @@ func GoalApplied(p Pipeline, step GoalStep, now time.Time) Pipeline {
 //     blocked gate goal mode spent its budget on (GoalEndExhausted): the
 //     team got stuck, and the person's "Try again" gives it a new budget
 //     instead of leaving it to wait at every later step with no one to
-//     answer.
+//     answer. The same holds for a gate goal mode stopped retrying because
+//     the retries changed nothing (GoalEndNoProgress): the person's own
+//     words, or their go-ahead, is what differs this time.
 //
 // Goal mode turned off by a person, or ended for any other reason, stays
 // off.
@@ -253,7 +303,7 @@ func GoalDueOnApproval(p Pipeline, gate, action string) bool {
 		switch g.EndReason {
 		case GoalEndUsageLimit:
 			return action == GateRetry && p.UsageLimitStop() != nil
-		case GoalEndExhausted:
+		case GoalEndExhausted, GoalEndNoProgress:
 			return p.UsageLimitStop() == nil
 		}
 	}
@@ -386,6 +436,66 @@ func goalBlockedStep(p Pipeline, g GoalMode, spent bool, now time.Time) GoalStep
 				return GoalStep{Kind: GoalWait, Until: until}
 			}
 		}
+	}
+	return step
+}
+
+// GoalRetryFailure identifies the verification failure the open blocked
+// gate stopped on, for comparing one retry with the next: the failed
+// commands with their exit codes and time-outs, and the check's own report
+// when it printed one. The output excerpt is left out — a log line with a
+// time or a build hash differs on every run of the same failure, and the
+// working tree comparison beside it already says whether anything could
+// have changed. "" when the gate carries no verification failure (a failed
+// or interrupted turn, a missing PR): those retries are never empty.
+func GoalRetryFailure(p Pipeline) string {
+	f := p.openBlockedFact().Failure
+	if f == nil {
+		return ""
+	}
+	var b strings.Builder
+	failed := 0
+	for _, r := range f.Results {
+		if r.Passed || r.Skipped {
+			continue
+		}
+		failed++
+		fmt.Fprintf(&b, "%s\x00%d\x00%t\x01", strings.TrimSpace(r.Command), r.ExitCode, r.TimedOut)
+	}
+	if failed == 0 {
+		fmt.Fprintf(&b, "%s\x00%d\x00%t\x01", strings.TrimSpace(f.Command), f.ExitCode, f.TimedOut)
+	}
+	if c := f.Check; c != nil {
+		fmt.Fprintf(&b, "check\x00%s\x00%s\x00%s", c.Screen, c.Expected, c.Seen)
+	}
+	return b.String()
+}
+
+// GoalCheckRetry looks at a step NextGoalStep returned with the working
+// tree the server just read (tree, "" when it could not be read). A retry
+// of the open blocked gate is empty when the gate stopped on the same
+// failure as at the last retry (GoalRetryFailure) and the tree is the
+// same as it was then: the round that retry started changed nothing and
+// failed the same way. Once GoalEmptyRetryLimit retries in a row were
+// empty, the step becomes the end of goal mode (GoalEndNoProgress); any
+// other retry comes back carrying what it saw, for GoalApplied to record,
+// which resets the run when the failure or the tree changed. Any other
+// step is returned as is.
+// Pure: the tree is read by the caller.
+func GoalCheckRetry(p Pipeline, step GoalStep, tree string) GoalStep {
+	if step.Kind != GoalGate || step.Gate != GateBlocked || step.Action != GateRetry || !p.GoalActive() {
+		return step
+	}
+	failure := GoalRetryFailure(p)
+	if failure == "" || tree == "" {
+		return step // nothing to compare: not empty, and the run breaks
+	}
+	step.Retry = &GoalRetryMark{Failure: failure, Tree: tree}
+	if last := p.GoalMode.LastRetry; last != nil && last.Failure == failure && last.Tree == tree {
+		step.EmptyRetries = p.GoalMode.EmptyRetries + 1
+	}
+	if step.EmptyRetries >= GoalEmptyRetryLimit {
+		return GoalStep{Kind: GoalEnd, Reason: GoalEndNoProgress, EmptyRetries: step.EmptyRetries}
 	}
 	return step
 }

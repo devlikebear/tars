@@ -1,11 +1,13 @@
 package tarsserver
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/serverauth"
 )
@@ -34,6 +36,12 @@ import (
 // session had is put back when goal mode ends, unless it was changed
 // meanwhile. POST /v1/chat/cancel (Stop) ends goal mode: it never pushes a
 // turn the person stopped.
+//
+// Before retrying a blocked gate that stopped on a verification failure the
+// watcher reads the session's working tree (focusprobe.WorkTreeState, the
+// same fingerprint that proves a review fix turn changed nothing), and
+// focuspipeline.GoalCheckRetry ends goal mode (GoalEndNoProgress) once
+// retries keep coming back to the same failure on the same tree.
 
 // focusGoalTick is how often the watcher looks at the pipelines in goal mode.
 const focusGoalTick = 2 * time.Second
@@ -143,6 +151,9 @@ func (d *focusDriver) goalStep(sessionID string) {
 		return
 	}
 	step := focuspipeline.NextGoalStep(p, d.now())
+	if step.Kind == focuspipeline.GoalGate && step.Gate == focuspipeline.GateBlocked {
+		step = focuspipeline.GoalCheckRetry(p, step, d.goalWorkTree(p))
+	}
 	log := d.logger.With().Str("session_id", sessionID).Str("step", step.Kind).Logger()
 	switch step.Kind {
 	case focuspipeline.GoalWait:
@@ -188,9 +199,38 @@ func (d *focusDriver) goalStep(sessionID string) {
 		d.start(sessionID, focuspipeline.Action{Kind: focuspipeline.ActionSendTurn, Prompt: step.Prompt}, serverauth.RoleAdmin)
 	}
 	log.Info().Str("gate", step.Gate).Str("action", step.Action).Str("card", step.CardID).Str("decision", step.Decision).Bool("push", step.Push).Msg("focus goal: decided")
-	d.auditGoal(sessionID, "decided", map[string]any{
+	details := map[string]any{
 		"step": step.Kind, "gate": step.Gate, "action": step.Action, "card": step.CardID, "decision": step.Decision, "push": step.Push,
-	})
+	}
+	if step.Retry != nil {
+		details["empty_retries"] = step.EmptyRetries
+	}
+	d.auditGoal(sessionID, "decided", details)
+}
+
+// goalWorkTree is the fingerprint of the session's working tree when the
+// open blocked gate stopped on a verification failure, for GoalCheckRetry;
+// "" when there is no such failure (nothing to compare, so no git run) or
+// the tree cannot be read — which GoalCheckRetry treats as unknown, never
+// as unchanged.
+func (d *focusDriver) goalWorkTree(p focuspipeline.Pipeline) string {
+	if focuspipeline.GoalRetryFailure(p) == "" {
+		return ""
+	}
+	dir, err := d.sessions.GetCurrentDir(p.SessionID)
+	if err != nil || strings.TrimSpace(dir) == "" {
+		return ""
+	}
+	ctx := d.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	state, err := focusprobe.WorkTreeState(ctx, dir)
+	if err != nil {
+		d.logger.Debug().Err(err).Str("session_id", p.SessionID).Msg("focus goal: work tree state before retry failed")
+		return ""
+	}
+	return state
 }
 
 // goalStarted puts the session of a pipeline that just entered goal mode in
@@ -251,7 +291,11 @@ func (d *focusDriver) endGoal(sessionID, reason string) (focuspipeline.Pipeline,
 		return p, false
 	}
 	d.logger.Info().Str("session_id", sessionID).Str("reason", reason).Msg("focus goal: ended")
-	d.auditGoal(sessionID, "ended", map[string]any{"reason": reason, "pushes": p.GoalMode.Pushes})
+	details := map[string]any{"reason": reason, "pushes": p.GoalMode.Pushes}
+	if reason == focuspipeline.GoalEndNoProgress {
+		details["empty_retries"] = focuspipeline.GoalEmptyRetryLimit
+	}
+	d.auditGoal(sessionID, "ended", details)
 	d.announceGoalEnd(sessionID, p, reason)
 	return p, true
 }
@@ -264,7 +308,8 @@ func (d *focusDriver) announceGoalEnd(sessionID string, p focuspipeline.Pipeline
 	switch reason {
 	case focuspipeline.GoalEndFinished:
 		title = "Goal reached"
-	case focuspipeline.GoalEndExhausted, focuspipeline.GoalEndPRClosed, focuspipeline.GoalEndE2EFailed, focuspipeline.GoalEndUsageLimit, focuspipeline.GoalEndRepeatedQuestion:
+	case focuspipeline.GoalEndExhausted, focuspipeline.GoalEndPRClosed, focuspipeline.GoalEndE2EFailed, focuspipeline.GoalEndUsageLimit, focuspipeline.GoalEndRepeatedQuestion,
+		focuspipeline.GoalEndNoProgress:
 		title, severity = "Goal mode stopped", "warning"
 	default:
 		return // the developer's own stop needs no announcement
