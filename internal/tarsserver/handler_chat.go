@@ -24,6 +24,7 @@ import (
 	"github.com/devlikebear/tars/internal/sessionoverride"
 	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
+	"github.com/devlikebear/tars/internal/toolbridge"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
@@ -1193,6 +1194,9 @@ type chatToolingOptions struct {
 	// Unattended gates the tools of turns nobody watches (cron, Telegram)
 	// by their session's permission mode; nil runs them as before.
 	Unattended *unattendedPermissions
+	// ToolBridge serves a claude-code-cli turn its TARS tools over MCP
+	// (chat_tool_bridge.go); nil leaves such a turn with the CLI's own tools.
+	ToolBridge *toolbridge.Bridge
 	// FocusEvents hears about every turn and question, for the focus event
 	// stream; nil tells no one.
 	FocusEvents *focusEventHub

@@ -49,6 +49,7 @@ pkg/agentloop field RunOptions.ClaudeCodePermissionDeny
 pkg/agentloop field RunOptions.ClaudeCodePermissionHandler
 pkg/agentloop field RunOptions.ClaudeCodePermissionMode
 pkg/agentloop field RunOptions.ClaudeCodeSkills
+pkg/agentloop field RunOptions.ClaudeCodeTurnHold
 pkg/agentloop field RunOptions.MaxIterations
 pkg/agentloop field RunOptions.OnDelta
 pkg/agentloop field RunOptions.OnReasoningDelta
@@ -160,6 +161,7 @@ pkg/llm field ChatOptions.ClaudeCodePermissionDeny
 pkg/llm field ChatOptions.ClaudeCodePermissionHandler
 pkg/llm field ChatOptions.ClaudeCodePermissionMode
 pkg/llm field ChatOptions.ClaudeCodeSkills
+pkg/llm field ChatOptions.ClaudeCodeTurnHold
 pkg/llm field ChatOptions.OnDelta
 pkg/llm field ChatOptions.OnProviderTool
 pkg/llm field ChatOptions.OnReasoningDelta
@@ -399,6 +401,7 @@ pkg/llm method Router.TierForRole
 pkg/llm method Tier.String
 pkg/llm method Tier.Valid
 pkg/llm method ToolChoice.String
+pkg/llm method TurnHold.Begin
 pkg/llm method UpstreamSessionError.Error
 pkg/llm method UpstreamSessionError.Unwrap
 pkg/llm type AnthropicClient
@@ -449,6 +452,7 @@ pkg/llm type ToolChoice
 pkg/llm type ToolChoiceMode
 pkg/llm type ToolFunctionSchema
 pkg/llm type ToolSchema
+pkg/llm type TurnHold
 pkg/llm type UpstreamSessionError
 pkg/llm type Usage
 pkg/llm var ErrImageBillingRequired

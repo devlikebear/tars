@@ -132,6 +132,7 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 	if opts.ClaudeCodePermissionHandler != nil {
 		opts.ClaudeCodePermissionHandler = clock.untimed(opts.ClaudeCodePermissionHandler)
 	}
+	defer opts.ClaudeCodeTurnHold.attach(clock)()
 
 	baseEnv := os.Environ()
 	if opts.ClaudeCodeHarness != nil && opts.ClaudeCodeHarness.IsolateEnvironment {
