@@ -90,6 +90,9 @@ var AppPackages = []string{
 	"sessionworktree",
 	"skillhub",
 	"tarsserver",
+	// toolbridge serves a CLI provider turn its TARS tools over MCP on a
+	// loopback port.
+	"toolbridge",
 	"workscheduler",
 	"workstore",
 }

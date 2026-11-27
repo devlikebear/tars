@@ -105,3 +105,51 @@ func (c *claudeCodeTurnClock) stop() {
 	c.mu.Unlock()
 	c.cancel(context.Canceled)
 }
+
+// TurnHold lets work the CLI is waiting on, but that runs outside it, stop
+// the idle clock of a claude-code-cli call. A tool served back to the CLI
+// over MCP is such work: the CLI prints nothing while TARS runs it, and a
+// long one would otherwise look like a hung process. Pass one hold as
+// ChatOptions.ClaudeCodeTurnHold and call Begin around the work.
+//
+// A hold is safe to use when no call is running: Begin then does nothing.
+type TurnHold struct {
+	mu    sync.Mutex
+	clock *claudeCodeTurnClock
+}
+
+// Begin stops the idle clock of the call in flight, if any, until the
+// returned function is called. Holds may overlap.
+func (h *TurnHold) Begin() (end func()) {
+	if h == nil {
+		return func() {}
+	}
+	h.mu.Lock()
+	clock := h.clock
+	h.mu.Unlock()
+	if clock == nil {
+		return func() {}
+	}
+	clock.hold()
+	var once sync.Once
+	// Released on the clock that was held, even if the call has since ended
+	// and another began.
+	return func() { once.Do(clock.release) }
+}
+
+// attach makes clock the one Begin stops, until detach.
+func (h *TurnHold) attach(clock *claudeCodeTurnClock) (detach func()) {
+	if h == nil {
+		return func() {}
+	}
+	h.mu.Lock()
+	h.clock = clock
+	h.mu.Unlock()
+	return func() {
+		h.mu.Lock()
+		if h.clock == clock {
+			h.clock = nil
+		}
+		h.mu.Unlock()
+	}
+}

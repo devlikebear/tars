@@ -89,3 +89,35 @@ func TestClaudeCodeTurnClockFollowsParent(t *testing.T) {
 		t.Fatalf("a caller cancel must not read as a timeout: err=%v cause=%v", ctx.Err(), context.Cause(ctx))
 	}
 }
+
+// A TARS tool served back to the CLI over MCP runs outside it: the CLI
+// prints nothing meanwhile, and that silence is not a hung process.
+func TestTurnHoldStopsTheClockOfTheCallInFlight(t *testing.T) {
+	hold := &TurnHold{}
+	// No call running: nothing to stop, and nothing breaks.
+	hold.Begin()()
+
+	ctx, clock := newClaudeCodeTurnClock(context.Background(), 60*time.Millisecond)
+	defer clock.stop()
+	detach := hold.attach(clock)
+
+	end := hold.Begin()
+	time.Sleep(200 * time.Millisecond)
+	if ctx.Err() != nil {
+		t.Fatalf("the tool's run time was charged to the turn: %v", context.Cause(ctx))
+	}
+	end()
+	end() // a second call must not release someone else's hold
+	select {
+	case <-ctx.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("the clock did not start again after the hold")
+	}
+
+	detach()
+	hold.Begin()() // the ended call's clock is no longer touched
+
+	var none *TurnHold
+	none.Begin()()
+	none.attach(clock)()
+}

@@ -17,6 +17,10 @@ var configYAMLRootAliases = map[string][]string{
 }
 
 var configYAMLPathAliases = map[string]string{
+	// The claude_code_cli keys carry no llm_ prefix, so the documented nested
+	// path does not resolve by joining its segments.
+	"llm.claude_code_cli.permission_mode":     "claude_code_cli_permission_mode",
+	"llm.claude_code_cli.tars_tools":          "claude_code_cli_tars_tools",
 	"initiative.thresholds.quiet_requested":   "initiative_threshold_quiet_requested",
 	"initiative.thresholds.user_strained":     "initiative_threshold_user_strained",
 	"initiative.thresholds.special_day":       "initiative_threshold_special_day",

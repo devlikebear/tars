@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **TARS tools in claude-code-cli chats.** A claude-code-cli turn ran only Claude Code's own tools: the provider never read the tool schemas TARS hands a native provider, so `memory`, `cron`, `tasks`, `session`, `subagents_run`, `usage_report` and the rest did not exist for it. Each chat turn now serves its TARS tools to the CLI as an MCP server named `tars` (`mcp__tars__<name>`), on a loopback port behind a token that lives only as long as the turn. Tools Claude Code already has (files, shell, web) and the tools of the session's MCP servers are not served a second time. Claude Code's permission system asks about these calls like any other MCP tool. `llm.claude_code_cli.tars_tools: false` turns it off.
+
+### Fixed
+
+- `llm.claude_code_cli.permission_mode` in the config file was never read from its documented nested path (only the flat key and the environment variable worked).
+
 ## [0.71.1] - 2026-11-27
 
 ### Fixed
