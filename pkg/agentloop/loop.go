@@ -174,6 +174,9 @@ type RunOptions struct {
 	// from the person's own "always allow" choices (see
 	// llm.ChatOptions.ClaudeCodePermissionAllow). Other providers ignore it.
 	ClaudeCodePermissionAllow []string
+	// ClaudeCodeTurnHold is forwarded to ChatOptions on every iteration (see
+	// llm.ChatOptions.ClaudeCodeTurnHold). Other providers ignore it.
+	ClaudeCodeTurnHold *llm.TurnHold
 	// ToolAuthorizer, when set, is asked before each tool call runs and may
 	// deny it (see ToolAuthorizer). Nil runs every allowed call.
 	ToolAuthorizer ToolAuthorizer
@@ -243,6 +246,7 @@ toolPhase:
 			// Set after the aligned block: gofmt would widen every key above.
 			ClaudeCodePermissionHandler: opts.ClaudeCodePermissionHandler,
 			ClaudeCodePermissionAllow:   opts.ClaudeCodePermissionAllow,
+			ClaudeCodeTurnHold:          opts.ClaudeCodeTurnHold,
 		})
 		if err != nil {
 			// A session an earlier iteration saved (or the caller resumed)

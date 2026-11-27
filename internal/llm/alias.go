@@ -20,6 +20,7 @@ type (
 	ClaudeCodeCLIClient      = pkgllm.ClaudeCodeCLIClient
 	ClaudeCodeHarnessOptions = pkgllm.ClaudeCodeHarnessOptions
 	ClaudeCodeMCPServer      = pkgllm.ClaudeCodeMCPServer
+	TurnHold                 = pkgllm.TurnHold
 	ClaudeCodeSkill          = pkgllm.ClaudeCodeSkill
 	Client                   = pkgllm.Client
 	ClientConfig             = pkgllm.ClientConfig

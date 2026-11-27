@@ -114,6 +114,13 @@ type LLMConfig struct {
 	// Empty/unknown values degrade to "auto" inside the provider. Other
 	// providers ignore this.
 	ClaudeCodeCLIPermissionMode string
+	// ClaudeCodeCLITarsTools serves the session's TARS tools (memory, cron,
+	// sessions, tasks, ...) to a claude-code-cli chat turn as an MCP server
+	// named "tars". On by default; an explicit false leaves such a turn with
+	// Claude Code's own tools only. Tools Claude Code already has (files,
+	// shell, web) are never served. Other providers ignore this.
+	ClaudeCodeCLITarsTools    bool
+	claudeCodeCLITarsToolsSet bool
 }
 
 // LLMProviderSettings is one entry in the named provider pool. It holds

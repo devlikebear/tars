@@ -189,6 +189,12 @@ llm:
   # Empty / unknown values degrade to "auto" inside the provider.
   claude_code_cli:
     permission_mode: auto
+    # Serve the session's TARS tools (memory, cron, sessions, tasks, ...) to a
+    # claude-code-cli chat turn as an MCP server named "tars" (the tools show
+    # up as mcp__tars__<name>). Tools Claude Code already has (files, shell,
+    # web) are never served. false leaves the turn with Claude Code's own
+    # tools only.
+    tars_tools: true
 
 memory:
   semantic:

@@ -298,6 +298,10 @@ type ChatOptions struct {
 	// already granted — never reach the handler. Nil keeps the one-shot `-p`
 	// invocation. Other providers ignore this field.
 	ClaudeCodePermissionHandler ClaudeCodePermissionHandler
+	// ClaudeCodeTurnHold, when set, lets the caller stop the claude-code-cli
+	// idle clock while the CLI waits on work the caller runs for it (a TARS
+	// tool served over MCP). Other providers ignore this field.
+	ClaudeCodeTurnHold *TurnHold
 	// ClaudeCodePermissionAllow are Claude Code permission rules (e.g.
 	// "Bash(npm test:*)") to allow without asking, written beside the deny
 	// rules in the --settings file. They widen authority, so callers must

@@ -66,6 +66,10 @@ func executeChatLoop(
 	ctx = apptool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
 	ctx = tool.WithLineEmitter(ctx, stream)
 
+	// A CLI provider never sees TARS tool schemas; serve them to it over MCP.
+	bridge := openChatToolBridge(ctx, deps, state, afterToolHook)
+	defer bridge.close()
+
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")
 	state.turnToolCalls = toolCallRecords
 	onTurnEnd := buildChatTurnEndHook(deps, state, stream)
@@ -111,7 +115,8 @@ func executeChatLoop(
 		PersistUpstreamSession:   true,
 		WorkDir:                  state.cwd,
 		AddDirs:                  addDirs,
-		ClaudeCodeMCPServers:     state.claudeCodeMCPServers,
+		ClaudeCodeMCPServers:     bridge.servers,
+		ClaudeCodeTurnHold:       bridge.hold,
 		ClaudeCodePermissionMode: permissionMode,
 		ClaudeCodeSkills:         state.claudeCodeSkills,
 		ClaudeCodePermissionDeny: permissionDeny,

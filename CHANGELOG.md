@@ -8,9 +8,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [0.71.2] - 2026-11-27
 
+### Added
+
+- **TARS tools in claude-code-cli chats.** A claude-code-cli turn ran only Claude Code's own tools: the provider never read the tool schemas TARS hands a native provider, so `memory`, `cron`, `tasks`, `session`, `subagents_run`, `usage_report` and the rest did not exist for it. Each chat turn now serves its TARS tools to the CLI as an MCP server named `tars` (`mcp__tars__<name>`), on a loopback port behind a token that lives only as long as the turn. Tools Claude Code already has (files, shell, web) and the tools of the session's MCP servers are not served a second time. Claude Code's permission system asks about these calls like any other MCP tool. `llm.claude_code_cli.tars_tools: false` turns it off.
+
 ### Fixed
 
 - **Goal mode stops retrying when the retries change nothing.** Before retrying a gate blocked on a failed check, goal mode reads the project's working tree (the same git fingerprint that proves a review fix changed nothing). When two retries in a row come back blocked on the same failed check with the tree exactly as before, and that run has lasted at least five minutes (so a check that fails briefly while a server starts or a port frees still gets retried), goal mode ends (`no_progress`) instead of spending the rest of its 20 retries on the same nothing; the gate is left to the person with a notice and a notification, as when the budget runs out. In vibe mode the project shows as stuck, and **Try again** turns goal mode back on with a fresh budget.
+- `llm.claude_code_cli.permission_mode` in the config file was never read from its documented nested path (only the flat key and the environment variable worked).
 
 ## [0.71.1] - 2026-11-27
 
