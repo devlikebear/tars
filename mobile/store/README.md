@@ -15,13 +15,9 @@ The app is iPhone only (`TARGETED_DEVICE_FAMILY = 1`). An iPad runs it in iPhone
 
 ## Screenshots
 
-`screenshots/iphone-6.3/` holds captures from the iPhone 18 Pro simulator (1206 × 2622), release build, English, showing the demo desk. App Store Connect asks for the 6.9-inch size (1320 × 2868); the aspect ratio is the same to within two pixels, so scale them:
+`screenshots/iphone-6.9/` holds the 1.1.0 captures from the iPhone 17 Pro Max simulator (iOS 27.0, 1320 × 2868, the 6.9-inch size App Store Connect asks for, so no scaling), release build, English, on the sample computer: + New, the leader's questions, the blueprint, the team making it, check results, the finished app with **Try it**, and My projects. 1.0.0's 6.3-inch captures are in git history.
 
-```bash
-mkdir -p /tmp/tars-6.9 && for f in mobile/store/screenshots/iphone-6.3/*.png; do sips --resampleWidth 1320 "$f" --out /tmp/tars-6.9/up.png >/dev/null && sips --cropToHeightWidth 2868 1320 /tmp/tars-6.9/up.png --out "/tmp/tars-6.9/$(basename "$f")" >/dev/null; done; rm /tmp/tars-6.9/up.png
-```
-
-To take them again: build the release bundle (`cd mobile && npm run sync`), run it in the simulator with `-AppleLanguages "(en)"`, set the clock with `xcrun simctl status_bar <device> override --time 9:41`, add the demo desk, and capture with `xcrun simctl io <device> screenshot`.
+To take them again: build the release bundle (`cd mobile && npm run sync`) and the app for a 6.9-inch simulator (`xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination "id=<device>" build`), install and launch it with `-AppleLanguages "(en)"`, set the clock with `xcrun simctl status_bar <device> override --time 9:41`, add the sample computer on the Computers tab, make "A to-do list I can tick off" from + New, and capture each step with `xcrun simctl io <device> screenshot`. The sample computer is ready to capture at each step after a few seconds.
 
 ## Listing
 
@@ -113,10 +109,10 @@ For 1.1.0 (drafted 2026-11-28; 1.0.0's are in git history). They go in "App Revi
 > 1. Open the app. On the Computers tab, tap "Try the sample computer".
 > 2. Tap "+ New". Type an idea, for example "A to-do list I can check off", and send it to the sample computer.
 > 3. The project opens. The team's leader asks a question or two: pick an answer, or tap "You decide".
-> 4. Open the Blueprint tab: it lists the screens, what gets saved and the checks. Tap Approve.
-> 5. Follow Progress and Check results for about a minute: the team makes the app, one check fails at first, the team fixes it, and the project finishes.
+> 4. The blueprint appears: the screens, what gets saved and the checks. Tap "Make it like this".
+> 5. Follow Progress for about a minute: the team makes the app and runs the checks, and the project finishes. Open "Check results" to see each check passed.
 > 6. Open "My app" and tap "Try it". On the sample computer it explains that there is no real app to open; on a real computer it opens the app in Safari, as the attached recording shows.
-> 7. Ask for a change in your own words, open Versions and go back to the first version, then rename or archive the project from the Projects tab.
+> 7. Tap "Change it like this" and ask for a change in your own words; open the Version tab to go back to an earlier version; rename or archive the project from the ⋯ menu on the Projects tab.
 >
 > The attached recording, from a real iPhone (the interface is in Korean there), shows the real thing: pairing by scanning the QR code in TARS's Settings on a Mac, a project started from the phone, the blueprint approved, the finished app opened with Try it, and a change made.
 >
