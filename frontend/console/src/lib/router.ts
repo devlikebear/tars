@@ -26,7 +26,7 @@ export type Route =
   | { view: 'onboarding'; reentry?: boolean }
   // Easy mode (docs/decisions/vibe-coder-identity.md §4): the make screen
   // (home), the project board and its archive, or one project's progress.
-  | { view: 'easy'; projectId?: string; page?: 'projects' | 'archive' }
+  | { view: 'easy'; projectId?: string; page?: 'projects' | 'archive' | 'settings' }
 
 export function resolveRoute(pathname: string): Route {
   let path = pathname.trim()
@@ -65,8 +65,8 @@ export function resolveRoute(pathname: string): Route {
   if (path === easyPrefix || path.startsWith(`${easyPrefix}/`)) {
     const projectId = decodeURIComponent(path.slice(easyPrefix.length + 1).split('/')[0]?.trim() || '')
     // Project ids are 16 hex digits, so they never read "projects" or
-    // "archive" (internal/easyproject validID).
-    if (projectId === 'projects' || projectId === 'archive') return { view: 'easy', page: projectId }
+    // "archive" or "settings" (internal/easyproject validID).
+    if (projectId === 'projects' || projectId === 'archive' || projectId === 'settings') return { view: 'easy', page: projectId }
     return projectId ? { view: 'easy', projectId } : { view: 'easy' }
   }
 

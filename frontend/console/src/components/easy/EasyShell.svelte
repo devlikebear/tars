@@ -10,7 +10,7 @@
   import { t } from '../../i18n'
   import { getEasyReadiness, listEasyBoard } from '../../lib/api/easy'
   import { easyBase } from '../../lib/easy'
-  import { easyArchivePath, easyProjectsPath, shellPollMs } from '../../lib/easyBoard'
+  import { easyProjectsPath, easySettingsPath, shellPollMs } from '../../lib/easyBoard'
   import { consoleMode } from '../../lib/stores/consoleMode.svelte'
   import { easyReadiness } from '../../lib/stores/easyReadiness.svelte'
 
@@ -19,7 +19,7 @@
     tick = 0,
     onNavigate,
     children,
-  }: { active: 'make' | 'projects' | 'project'; tick?: number; onNavigate: (path: string) => void; children: Snippet } = $props()
+  }: { active: 'make' | 'projects' | 'project' | 'settings'; tick?: number; onNavigate: (path: string) => void; children: Snippet } = $props()
 
   let waiting = $state(0)
   const ai = $derived(easyReadiness.ai)
@@ -83,6 +83,14 @@
       <span class="ai" data-testid="vibe-ai" data-state={ai}>
         <span class="dot {ai}" aria-hidden="true"></span>{$t.easy.shell.ai[ai]}
       </span>
+      <a
+        href={easySettingsPath}
+        class="settings"
+        class:current={active === 'settings'}
+        aria-current={active === 'settings' ? 'page' : undefined}
+        data-testid="vibe-nav-settings"
+        onclick={(e) => go(e, easySettingsPath)}
+      >{$t.easy.shell.settings}</a>
       {#if consoleMode.expert}
         <a href="/console" class="expert" data-testid="vibe-expert" onclick={(e) => go(e, '/console')}>{$t.easy.shell.expert}</a>
       {/if}
@@ -167,11 +175,14 @@
   .dot.notReady {
     background: var(--warning);
   }
-  .expert {
+  .expert,
+  .settings {
     color: var(--text-secondary);
     text-decoration: none;
   }
-  .expert:hover {
+  .expert:hover,
+  .settings:hover,
+  .settings.current {
     color: var(--text-primary);
   }
   .vibe-body {
