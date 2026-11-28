@@ -258,6 +258,7 @@ pkg/llm field ProviderOptions.AuthConfig
 pkg/llm field ProviderOptions.AuthMode
 pkg/llm field ProviderOptions.BaseURL
 pkg/llm field ProviderOptions.BetaFeatures
+pkg/llm field ProviderOptions.ClaudeCodeInheritMCP
 pkg/llm field ProviderOptions.MaxTokens
 pkg/llm field ProviderOptions.Model
 pkg/llm field ProviderOptions.OAuthProvider
@@ -371,6 +372,7 @@ pkg/llm method AntigravityCLIClient.Ask
 pkg/llm method AntigravityCLIClient.Chat
 pkg/llm method ClaudeCodeCLIClient.Ask
 pkg/llm method ClaudeCodeCLIClient.Chat
+pkg/llm method ClaudeCodeCLIClient.WithInheritedMCP
 pkg/llm method Client.Ask
 pkg/llm method Client.Chat
 pkg/llm method CodexRateLimitSource.LastCodexRateLimit

@@ -47,6 +47,7 @@ var configInputFields = []configInputField{
 	withYAMLPath(llmRoleDefaultsField("llm_role_defaults", []string{"LLM_ROLE_DEFAULTS_JSON", "TARS_LLM_ROLE_DEFAULTS_JSON"}), "llm.role_defaults"),
 	withYAMLPath(stringField("claude_code_cli_permission_mode", []string{"CLAUDE_CODE_CLI_PERMISSION_MODE", "TARS_CLAUDE_CODE_CLI_PERMISSION_MODE"}, func(cfg *Config) *string { return &cfg.ClaudeCodeCLIPermissionMode }, strings.TrimSpace), "llm.claude_code_cli.permission_mode"),
 	withYAMLPath(boolFieldWithPresence("claude_code_cli_tars_tools", []string{"CLAUDE_CODE_CLI_TARS_TOOLS", "TARS_CLAUDE_CODE_CLI_TARS_TOOLS"}, func(cfg *Config) *bool { return &cfg.ClaudeCodeCLITarsTools }, func(cfg *Config) *bool { return &cfg.claudeCodeCLITarsToolsSet }), "llm.claude_code_cli.tars_tools"),
+	withYAMLPath(boolField("claude_code_cli_inherit_mcp", []string{"CLAUDE_CODE_CLI_INHERIT_MCP", "TARS_CLAUDE_CODE_CLI_INHERIT_MCP"}, func(cfg *Config) *bool { return &cfg.ClaudeCodeCLIInheritMCP }), "llm.claude_code_cli.inherit_mcp"),
 	boolField("memory_semantic_enabled", []string{"MEMORY_SEMANTIC_ENABLED", "TARS_MEMORY_SEMANTIC_ENABLED"}, func(cfg *Config) *bool { return &cfg.MemorySemanticEnabled }),
 	stringField("memory_embed_provider", []string{"MEMORY_EMBED_PROVIDER", "TARS_MEMORY_EMBED_PROVIDER"}, func(cfg *Config) *string { return &cfg.MemoryEmbedProvider }, lowerTrimmedString),
 	stringField("memory_embed_base_url", []string{"MEMORY_EMBED_BASE_URL", "TARS_MEMORY_EMBED_BASE_URL"}, func(cfg *Config) *string { return &cfg.MemoryEmbedBaseURL }, strings.TrimSpace),

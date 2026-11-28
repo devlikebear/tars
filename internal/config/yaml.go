@@ -21,6 +21,7 @@ var configYAMLPathAliases = map[string]string{
 	// path does not resolve by joining its segments.
 	"llm.claude_code_cli.permission_mode":     "claude_code_cli_permission_mode",
 	"llm.claude_code_cli.tars_tools":          "claude_code_cli_tars_tools",
+	"llm.claude_code_cli.inherit_mcp":         "claude_code_cli_inherit_mcp",
 	"initiative.thresholds.quiet_requested":   "initiative_threshold_quiet_requested",
 	"initiative.thresholds.user_strained":     "initiative_threshold_user_strained",
 	"initiative.thresholds.special_day":       "initiative_threshold_special_day",

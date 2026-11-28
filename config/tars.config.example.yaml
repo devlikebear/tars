@@ -195,6 +195,13 @@ llm:
     # web) are never served. false leaves the turn with Claude Code's own
     # tools only.
     tars_tools: true
+    # Also load the MCP servers Claude Code is configured with outside TARS:
+    # user and project scope, plugins, and the connectors of the signed-in
+    # claude.ai account (mail, calendar, drive). Off by default: a run loads
+    # only the MCP servers configured here (extensions.mcp, a session's
+    # mcp_servers_extra) and the TARS tool bridge. Turn it on only if you
+    # want every TARS run, unattended ones included, to reach those.
+    inherit_mcp: false
 
 memory:
   semantic:

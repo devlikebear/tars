@@ -1145,3 +1145,65 @@ func TestAppendClaudeCodeHarnessArgs_restricted(t *testing.T) {
 		t.Fatalf("--restricted without the option: %q", args)
 	}
 }
+
+// A TARS run is not the CLI's user at their terminal: without the flag it
+// would also load every MCP server that user configured for themselves,
+// their claude.ai connectors (mail, calendar, drive) included.
+func TestClaudeCodeCLICallsLoadOnlyNamedMCPServers(t *testing.T) {
+	client := &ClaudeCodeCLIClient{cliPath: "claude", workDir: ".", model: "sonnet"}
+	count := func(c *ClaudeCodeCLIClient, opts ChatOptions) int {
+		t.Helper()
+		args, cleanup, err := c.callArgs([]ChatMessage{{Role: "user", Content: "hi"}}, opts)
+		if err != nil {
+			t.Fatalf("callArgs: %v", err)
+		}
+		defer cleanup()
+		n := 0
+		for _, arg := range args {
+			if arg == "--strict-mcp-config" {
+				n++
+			}
+		}
+		return n
+	}
+	if got := count(client, ChatOptions{}); got != 1 {
+		t.Fatalf("default call has %d --strict-mcp-config, want 1", got)
+	}
+	withServer := ChatOptions{ClaudeCodeMCPServers: []ClaudeCodeMCPServer{{Name: "tars", Transport: "http", URL: "http://127.0.0.1:1/mcp"}}}
+	if got := count(client, withServer); got != 1 {
+		t.Fatalf("call with its own server has %d --strict-mcp-config, want 1", got)
+	}
+	// The harness asks for it too; the flag is not given twice.
+	if got := count(client, ChatOptions{ClaudeCodeHarness: &ClaudeCodeHarnessOptions{StrictMCP: true}}); got != 1 {
+		t.Fatalf("harness call has %d --strict-mcp-config, want 1", got)
+	}
+	inheriting := client.WithInheritedMCP(true)
+	if got := count(inheriting, withServer); got != 0 {
+		t.Fatalf("inheriting call has %d --strict-mcp-config, want 0", got)
+	}
+	if got := count(client, ChatOptions{}); got != 1 {
+		t.Fatal("WithInheritedMCP changed the client it was called on")
+	}
+	var none *ClaudeCodeCLIClient
+	if none.WithInheritedMCP(true) != nil {
+		t.Fatal("a nil client stays nil")
+	}
+}
+
+func TestNewProviderPassesClaudeCodeInheritMCP(t *testing.T) {
+	stub := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", stub)
+	for _, inherit := range []bool{false, true} {
+		client, err := NewProvider(ProviderOptions{Provider: "claude-code-cli", Model: "sonnet", ClaudeCodeInheritMCP: inherit})
+		if err != nil {
+			t.Fatalf("new provider: %v", err)
+		}
+		cli, ok := client.(*ClaudeCodeCLIClient)
+		if !ok || cli.inheritMCP != inherit {
+			t.Fatalf("inherit=%v: client = %#v", inherit, client)
+		}
+	}
+}
