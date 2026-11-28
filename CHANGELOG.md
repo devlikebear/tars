@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-11-28
+
+Vibe mode is now the product, on the desk and on the iPhone. This release gathers what shipped in 0.71.1 through 0.71.4 since 0.71.0; the details are in those entries below.
+
+### Highlights
+
+- **Vibe mode by default.** The workbench and focus mode appear only when `console.expert_mode` is on (#1413). Vibe mode has its own shell, home and project board (#1415, #1412), a workspace with the leader's questions, the blueprint, making and checking (#1414, #1416), the finished app with versions, and plain-words paused, stuck and could-not-start states (#1417).
+- **Settings in vibe mode**: pair the iPhone, choose how the team thinks, turn expert mode on (#1428).
+- **The iPhone app is vibe mode on the phone**: Projects, + New and Computers; a project opened on the phone drives the desk (#1418, #1421, #1424). **Try it** opens a finished project's app in Safari through the preview relay on Tailscale port 8443 (#1420, #1422). Checked on a real iPhone: pairing, a project from the phone, plan approval, Try it, change, go back, rename and archive.
+- **TARS tools in claude-code-cli runs** (#1425, #1427).
+
+### Changed
+
+- **A claude-code-cli run loads only the MCP servers TARS names** (#1427). MCP servers set up for your own Claude Code work (including claude.ai connectors) no longer ride along. Configure an MCP server in TARS to give it to TARS runs, or set `llm.claude_code_cli.inherit_mcp: true` for the old behavior.
+
+### Fixed
+
+- Goal mode ends when retries change nothing, instead of spending its whole budget (#1426).
+- Verification no longer fails when the work deleted a tracked file (#1423).
+- Phone access after renaming the machine in Tailscale (#1429). Phones paired before a rename need pairing again.
+- A console page a server restart left blank reloads in the desktop app (#1410).
+
 ## [0.71.4] - 2026-11-28
 
 ### Changed
