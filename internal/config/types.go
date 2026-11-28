@@ -121,6 +121,13 @@ type LLMConfig struct {
 	// shell, web) are never served. Other providers ignore this.
 	ClaudeCodeCLITarsTools    bool
 	claudeCodeCLITarsToolsSet bool
+	// ClaudeCodeCLIInheritMCP lets claude-code-cli runs also load the MCP
+	// servers Claude Code is configured with outside TARS: user and project
+	// scope, plugins, and the connectors of the signed-in claude.ai account
+	// (mail, calendar, drive). Off by default: a run loads only the MCP
+	// servers TARS is configured with (extensions.mcp, a session's
+	// mcp_servers_extra) and the TARS tool bridge.
+	ClaudeCodeCLIInheritMCP bool
 }
 
 // LLMProviderSettings is one entry in the named provider pool. It holds

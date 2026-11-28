@@ -28,7 +28,7 @@ func (h *telegramInboundHandler) processMessage(
 	if h.store == nil {
 		return "", "", fmt.Errorf("session store is not configured")
 	}
-	chatClient, err := h.resolveChatClient()
+	chatClient, providerKind, err := h.resolveChatClient()
 	if err != nil {
 		return "", "", err
 	}
@@ -101,6 +101,21 @@ func (h *telegramInboundHandler) processMessage(
 		BlockedTools:  resolvedTools.Blocked,
 	}
 	h.tooling.Unattended.options(sessionID, h.workspaceDir, "telegram", "telegram").apply(&runOptions)
+	// A claude-code-cli run sees the skills and MCP servers TARS has, and
+	// its TARS tools over the bridge, as a console turn does.
+	bridge := openToolBridge(runCtx, toolBridgeRun{
+		bridge:   h.tooling.ToolBridge,
+		provider: providerKind,
+		registry: registry,
+		schemas:  injectedSchemas,
+		servers:  toClaudeCodeMCPServers(extSnapshot.MCPServers),
+		owner:    sessionID,
+		tracker:  h.tooling.UsageTracker,
+		logger:   h.logger,
+	})
+	defer bridge.close()
+	bridge.apply(&runOptions)
+	runOptions.ClaudeCodeSkills = toClaudeCodeSkills(extSnapshot.Skills)
 	resp, err := loop.Run(runCtx, llmMessages, runOptions)
 	if err != nil {
 		return "", sessionID, err

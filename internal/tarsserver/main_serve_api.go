@@ -38,7 +38,6 @@ import (
 	"github.com/devlikebear/tars/internal/skillhub/sources/hermes"
 	"github.com/devlikebear/tars/internal/skillhub/sources/openclaw"
 	"github.com/devlikebear/tars/internal/tool"
-	"github.com/devlikebear/tars/internal/toolbridge"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
@@ -519,9 +518,7 @@ func buildAPIMux(
 	chatTooling.ExecMaxBackgroundTimeoutMS = cfg.ToolsProcessMaxTimeoutMS
 	chatTooling.ExecSandbox = execSandboxFromConfig(cfg)
 	chatTooling.ClaudeCodeCLIPermissionMode = strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)
-	if cfg.ClaudeCodeCLITarsTools {
-		chatTooling.ToolBridge = toolbridge.New()
-	}
+	chatTooling.ToolBridge = toolBridgeFor(cfg)
 	chatTooling.WorkScheduler = workScheduler
 	chatTooling.WorkLedger = workLedger
 	overrideService := sessionoverride.NewService(sessionStore)

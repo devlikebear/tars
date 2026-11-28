@@ -103,6 +103,12 @@ func newCronPromptRunnerWithSessionContext(fallback agentRuntimePromptRunner, de
 			Tools:         tools,
 		}
 		deps.tooling.Unattended.options(state.sessionID, state.cwd, "cron", runLabel).apply(&runOptions)
+		// A claude-code-cli run sees the session's skills and MCP servers,
+		// and its TARS tools over the bridge, as a console turn does.
+		bridge := openChatToolBridge(runCtx, deps, state, tools, nil)
+		defer bridge.close()
+		bridge.apply(&runOptions)
+		runOptions.ClaudeCodeSkills = state.claudeCodeSkills
 		resp, err := loop.Run(runCtx, state.llmMessages, runOptions)
 		if err != nil {
 			return "", err

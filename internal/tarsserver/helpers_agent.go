@@ -238,6 +238,8 @@ func newAgentPromptRunnerWithToolsAndMemory(
 					ServiceTier:     resolved.ServiceTier,
 					MaxTokens:       resolved.MaxTokens,
 					BetaFeatures:    resolved.BetaFeatures,
+
+					ClaudeCodeInheritMCP: cfg.ClaudeCodeCLIInheritMCP,
 				})
 				if err != nil {
 					return "", err
@@ -318,6 +320,19 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			Tools:         tools,
 		}
 		subagentRunOptions(ctx, targetWorkspaceDir, label).apply(&runOptions)
+		// A claude-code-cli subagent gets the tools it was allowed over the
+		// bridge; without it only Claude Code's own tools exist for it.
+		bridge := openToolBridge(ctx, toolBridgeRun{
+			bridge:   toolBridgeFor(cfg),
+			provider: selection.Provider,
+			registry: registry,
+			schemas:  tools,
+			owner:    label,
+			tracker:  tracker,
+			logger:   logger,
+		})
+		defer bridge.close()
+		bridge.apply(&runOptions)
 		if runtimeExecutionRecorder != nil {
 			runOptions.BeforeTool = func(_ context.Context, evt agent.Event) error {
 				return runtimeExecutionRecorder(runtimeToolCallFromAgentEvent(agentruntime.RuntimeToolPhaseBefore, evt))
@@ -424,6 +439,8 @@ func resolveProviderOverrideClient(cfg config.Config, workspaceDir string, track
 		ServiceTier:  tierServiceTier,
 		MaxTokens:    tierMaxTokens,
 		BetaFeatures: tierBetaFeatures,
+
+		ClaudeCodeInheritMCP: cfg.ClaudeCodeCLIInheritMCP,
 	})
 	if err != nil {
 		return providerOverrideClient{}, err

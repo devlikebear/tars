@@ -149,11 +149,18 @@ func (c *sessionAutoResumeController) runAutoResumeTurn(ctx context.Context, can
 		func(string, string, string, string, string, string, ...bool) {},
 		nil,
 	)
-	resp, err := loop.Run(runCtx, state.llmMessages, agent.RunOptions{
-		MaxIterations: c.chatDeps.maxIters,
-		Tools:         state.injectedSchemas,
-		BlockedTools:  state.blockedTools,
-	})
+	runOptions := agent.RunOptions{
+		MaxIterations:    c.chatDeps.maxIters,
+		Tools:            state.injectedSchemas,
+		BlockedTools:     state.blockedTools,
+		ClaudeCodeSkills: state.claudeCodeSkills,
+	}
+	// A claude-code-cli run sees the session's MCP servers and its TARS
+	// tools over the bridge, as the turn it resumes did.
+	bridge := openChatToolBridge(runCtx, c.chatDeps, state, state.injectedSchemas, nil)
+	defer bridge.close()
+	bridge.apply(&runOptions)
+	resp, err := loop.Run(runCtx, state.llmMessages, runOptions)
 	if err != nil {
 		return "", err
 	}

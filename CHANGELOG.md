@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Changed
+
+- **A claude-code-cli run loads only the MCP servers TARS names.** The provider now passes `--strict-mcp-config` on every call. Without it the CLI also loaded every MCP server its user had set up for their own work — user and project scope, plugins, and the connectors of their claude.ai account (Gmail, Calendar, Drive, Notion) — into every TARS run, the ones nobody watches (cron, Telegram, subagents) included: 17 servers and 302 tools on one account. To give TARS runs an MCP server, configure it in TARS (`extensions.mcp.servers`, or a session's `mcp_servers_extra`). `llm.claude_code_cli.inherit_mcp: true` restores the old behavior. Installed Claude Code plugins, skills, hooks and CLAUDE.md are not affected.
+
+### Added
+
+- **TARS tools reach every claude-code-cli run, not only console turns.** Cron prompts that run in their session, Telegram turns, pulse auto-resume and subagent runs now open the tool bridge too, and the first three also pass the session's skills and MCP servers, which only console turns did.
+- **Tools of MCP servers Claude Code cannot mount** (websocket transport) are served to a claude-code-cli run through the tool bridge, as `mcp__tars__<server>__<tool>`.
+
 ## [0.71.3] - 2026-11-28
 
 ### Added
