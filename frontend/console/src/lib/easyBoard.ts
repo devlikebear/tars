@@ -306,6 +306,7 @@ export function manageable(state: EasyBoardState): boolean {
 // The vibe shell's routes.
 export const easyProjectsPath = `${easyBase}/projects`
 export const easyArchivePath = `${easyBase}/archive`
+export const easySettingsPath = `${easyBase}/settings`
 
 // How often the shell reads the count of projects waiting on the person and
 // the AI's readiness.
