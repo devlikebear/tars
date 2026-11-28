@@ -59,18 +59,20 @@ func newTelegramInboundHandler(
 	}
 }
 
-func (h *telegramInboundHandler) resolveChatClient() (llm.Client, error) {
+// resolveChatClient returns the chat client and the kind of its provider
+// (empty when only a bare client is configured).
+func (h *telegramInboundHandler) resolveChatClient() (llm.Client, string, error) {
 	if h == nil {
-		return nil, fmt.Errorf("telegram inbound handler is not configured")
+		return nil, "", fmt.Errorf("telegram inbound handler is not configured")
 	}
 	if h.llmRouter != nil {
-		client, _, err := h.llmRouter.ClientFor(llm.RoleChatMain)
-		return client, err
+		client, resolution, err := h.llmRouter.ClientFor(llm.RoleChatMain)
+		return client, resolution.Provider, err
 	}
 	if h.llmClient != nil {
-		return h.llmClient, nil
+		return h.llmClient, "", nil
 	}
-	return nil, fmt.Errorf("llm router is not configured")
+	return nil, "", fmt.Errorf("llm router is not configured")
 }
 
 func (h *telegramInboundHandler) HandleUpdate(ctx context.Context, update telegramUpdate) {

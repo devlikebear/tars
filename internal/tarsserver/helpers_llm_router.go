@@ -44,6 +44,8 @@ func buildLLMRouter(cfg config.Config, tracker *usage.Tracker) (llm.Router, erro
 			ServiceTier:     r.ServiceTier,
 			MaxTokens:       r.MaxTokens,
 			BetaFeatures:    r.BetaFeatures,
+
+			ClaudeCodeInheritMCP: cfg.ClaudeCodeCLIInheritMCP,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("tier %s: %w", r.Tier, err)

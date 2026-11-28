@@ -67,7 +67,7 @@ func executeChatLoop(
 	ctx = tool.WithLineEmitter(ctx, stream)
 
 	// A CLI provider never sees TARS tool schemas; serve them to it over MCP.
-	bridge := openChatToolBridge(ctx, deps, state, afterToolHook)
+	bridge := openChatToolBridge(ctx, deps, state, state.injectedSchemas, afterToolHook)
 	defer bridge.close()
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")

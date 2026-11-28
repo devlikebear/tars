@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +54,22 @@ type ClaudeCodeCLIClient struct {
 	cliPath string
 	workDir string
 	model   string
+	// inheritMCP lets a call load the MCP servers Claude Code is configured
+	// with outside TARS (see ProviderOptions.ClaudeCodeInheritMCP).
+	inheritMCP bool
+}
+
+// WithInheritedMCP returns a copy of the client whose calls also load the
+// MCP servers Claude Code is configured with outside TARS when inherit is
+// true. A client made by NewClaudeCodeCLIClient loads only the servers a
+// call names.
+func (c *ClaudeCodeCLIClient) WithInheritedMCP(inherit bool) *ClaudeCodeCLIClient {
+	if c == nil {
+		return nil
+	}
+	clone := *c
+	clone.inheritMCP = inherit
+	return &clone
 }
 
 // FindClaudeCodeCLIPath resolves the claude executable, honouring the path
@@ -263,6 +280,14 @@ func (c *ClaudeCodeCLIClient) callArgs(messages []ChatMessage, opts ChatOptions)
 	if err != nil {
 		cleanup()
 		return nil, func() {}, newProviderError(claudeCodeCLIProviderLabel, "request", err)
+	}
+	// Without this flag the CLI also loads every MCP server its user has
+	// configured for their own work: user and project scope, plugins, and
+	// the connectors of their claude.ai account (mail, calendar, drive). A
+	// TARS run is not that person at their terminal, and some runs have
+	// nobody watching, so only the servers TARS named are loaded.
+	if !c.inheritMCP && !slices.Contains(args, "--strict-mcp-config") {
+		args = append(args, "--strict-mcp-config")
 	}
 	if systemPrompt := buildClaudeCodeCLISystemPrompt(messages); systemPrompt != "" {
 		args = append(args, "--system-prompt", systemPrompt)

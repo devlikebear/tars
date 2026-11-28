@@ -455,6 +455,13 @@ type ProviderOptions struct {
 	ThinkingBudget  int
 	ServiceTier     string
 	BetaFeatures    []string
+	// ClaudeCodeInheritMCP lets a claude-code-cli call also load the MCP
+	// servers Claude Code is configured with outside the caller: user and
+	// project scope, plugins, and the connectors of the signed-in claude.ai
+	// account. False, the default, passes --strict-mcp-config so a call
+	// loads only the servers named in ChatOptions.ClaudeCodeMCPServers.
+	// Other providers ignore this field.
+	ClaudeCodeInheritMCP bool
 }
 
 // NewProvider builds a Client for the requested provider kind.
@@ -498,7 +505,11 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	}
 	if provider == "claude-code-cli" {
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
-		return NewClaudeCodeCLIClient(opts.WorkDir, opts.Model)
+		client, err := NewClaudeCodeCLIClient(opts.WorkDir, opts.Model)
+		if err != nil {
+			return nil, err
+		}
+		return client.WithInheritedMCP(opts.ClaudeCodeInheritMCP), nil
 	}
 	// antigravity-cli authenticates through the CLI's own Google login, so it
 	// is constructed before ResolveProviderCredential — there is no TARS-held
