@@ -26,6 +26,7 @@
   let loggedIn = $derived(Boolean(status?.logged_in ?? status?.LoggedIn))
   let serving = $derived(Boolean(status?.serve_active ?? status?.ServeActive))
   let ownedByTARS = $derived(Boolean(status?.owned_by_tars ?? status?.OwnedByTARS))
+  let staleHost = $derived(String(status?.stale_host ?? status?.StaleHost ?? ''))
   let hostName = $derived(String(status?.host_name ?? status?.HostName ?? ''))
   let tailnetURL = $derived(String(status?.tailnet_url ?? status?.TailnetURL ?? ''))
   let servePort = $derived(Number(status?.serve_port ?? status?.ServePort ?? data?.desired_https_port ?? httpsPort))
@@ -132,13 +133,15 @@
       <span class="remote-kicker">{$t.remoteAccess.kicker}</span>
       <h3>{$t.remoteAccess.title}</h3>
     </div>
-    <span class="remote-status" class:on={serving && ownedByTARS} class:warn={serving && !ownedByTARS}>
+    <span class="remote-status" class:on={serving && ownedByTARS} class:warn={(serving && !ownedByTARS) || (!serving && staleHost !== '')}>
       {#if loading}
         {$t.remoteAccess.status.checking}
       {:else if serving && ownedByTARS}
         {$t.remoteAccess.status.serving}
       {:else if serving}
         {$t.remoteAccess.status.portInUse}
+      {:else if staleHost}
+        {$t.remoteAccess.status.renamed}
       {:else if installed && loggedIn}
         {$t.remoteAccess.status.idle}
       {:else}
@@ -157,6 +160,10 @@
       {#if serving}<span>{$t.remoteAccess.https(servePort)}</span>{/if}
     </div>
 
+    {#if !serving && staleHost}
+      <div class="remote-message error" role="status">{$t.remoteAccess.staleHost(staleHost)}</div>
+    {/if}
+
     {#if data?.url}
       <div class="remote-url-row">
         <code>{data.url}</code>
@@ -169,7 +176,7 @@
         <span>{$t.remoteAccess.httpsPortLabel}</span>
         <input class="config-control-input" type="number" min="1" max="65535" bind:value={httpsPort} />
       </label>
-      {#if data?.desired_enabled}
+      {#if data?.desired_enabled && !(staleHost && !serving)}
         <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={handleDisable}>
           {busy ? $t.remoteAccess.working : $t.remoteAccess.disable}
         </button>

@@ -72,7 +72,10 @@ export function thinkingUpdate(values: ConfigValues, tier: string): Record<strin
 // phoneAccess is what the screen says about reaching this computer from a
 // phone, read from GET /v1/admin/remote-access/status. Pairing needs it to
 // be 'on': the pairing code carries the Tailscale address.
-export type PhoneAccess = 'checking' | 'noTailscale' | 'signedOut' | 'portTaken' | 'off' | 'on'
+// 'renamed' is a machine renamed in Tailscale: the old name still holds
+// TARS's sharing and the new one has none, so turning access on again
+// moves it to the new name.
+export type PhoneAccess = 'checking' | 'noTailscale' | 'signedOut' | 'portTaken' | 'renamed' | 'off' | 'on'
 
 export function phoneAccess(data: RemoteAccessResponse | null): PhoneAccess {
   if (!data) return 'checking'
@@ -83,6 +86,7 @@ export function phoneAccess(data: RemoteAccessResponse | null): PhoneAccess {
   if (!(s.installed ?? s.Installed)) return 'noTailscale'
   if (!(s.logged_in ?? s.LoggedIn)) return 'signedOut'
   if (serving) return 'portTaken'
+  if (text(s.stale_host ?? s.StaleHost)) return 'renamed'
   return 'off'
 }
 

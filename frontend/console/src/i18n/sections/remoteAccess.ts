@@ -11,6 +11,7 @@ export const remoteAccessEn = {
     checking: 'Checking',
     serving: 'Serving',
     portInUse: 'Port in use',
+    renamed: 'Old name',
     idle: 'Idle',
     notReady: 'Not ready',
   },
@@ -22,6 +23,7 @@ export const remoteAccessEn = {
   device: (name: string) => `Device: ${name}`,
   url: (url: string) => `URL: ${url}`,
   https: (port: number) => `HTTPS: ${port}`,
+  staleHost: (host: string) => `Serve still points at TARS under the old name ${host}, which the current name does not answer. Enable again to serve TARS under the current name; phones paired before need pairing again.`,
   copy: 'Copy',
   urlCopied: 'URL copied.',
 
@@ -61,6 +63,7 @@ export const remoteAccessKo: RemoteAccessTranslations = {
     checking: '확인 중',
     serving: '제공 중',
     portInUse: '포트 사용 중',
+    renamed: '예전 이름',
     idle: '대기 중',
     notReady: '준비 안 됨',
   },
@@ -72,6 +75,7 @@ export const remoteAccessKo: RemoteAccessTranslations = {
   device: (name) => `기기: ${name}`,
   url: (url) => `주소: ${url}`,
   https: (port) => `HTTPS 포트: ${port}`,
+  staleHost: (host) => `Serve가 아직 예전 이름 ${host}에서 TARS를 가리키고 있고, 지금 이름으로는 응답하지 않습니다. 다시 활성화하면 지금 이름으로 제공합니다. 전에 연결한 휴대폰은 다시 연결해야 합니다.`,
   copy: '복사',
   urlCopied: '주소를 복사했습니다.',
 

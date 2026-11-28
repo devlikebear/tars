@@ -220,7 +220,7 @@
           <span>
             {#if remoteFailed}
               {$t.easy.settings.phone.access.failed}
-            {:else if access === 'off' && blocker}
+            {:else if (access === 'off' || access === 'renamed') && blocker}
               {$t.easy.settings.phone.access[blocker]}
             {:else}
               {$t.easy.settings.phone.access[access]}
@@ -238,6 +238,11 @@
         {#if access === 'off' && !blocker}
           <button type="button" class="btn btn-primary btn-sm" disabled={remoteBusy} onclick={() => setPhoneAccess(true)} data-testid="easy-settings-access-on">
             {remoteBusy ? $t.easy.settings.phone.working : $t.easy.settings.phone.turnOn}
+          </button>
+        {/if}
+        {#if access === 'renamed' && !blocker}
+          <button type="button" class="btn btn-primary btn-sm" disabled={remoteBusy} onclick={() => setPhoneAccess(true)} data-testid="easy-settings-access-fix">
+            {remoteBusy ? $t.easy.settings.phone.working : $t.easy.settings.phone.fix}
           </button>
         {/if}
         {#if access === 'on' && remote?.desired_enabled}

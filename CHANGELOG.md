@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.71.4] - 2026-11-28
+
+### Fixed
+
+- **Phone access after renaming the machine in Tailscale.** Tailscale serve keeps a handler under the name it was added with, so after a rename TARS's 443 handler stayed under the old name while the current name answered nothing (TLS failed). TARS still counted it as serving: the vibe Settings screen said the phone could reach this computer, the pairing QR carried the dead address, and `tars remote status` said "serving". A serve handler (443 and the preview relay's 8443) now counts only under the machine's current MagicDNS name. One left under an old name is reported as `stale_host`: the console's Tailscale card shows **Old name**, the vibe Settings screen says the name changed and offers **Fix phone access**, and `tars remote status` / `tars doctor` say what is wrong and how to fix it. Turning remote access on (and the start-up reconcile) now adds the handler under the current name instead of skipping it as already served. The handler under the old name is never removed. Phones paired before the rename need pairing again.
+
 ## [0.71.3] - 2026-11-28
 
 ### Added

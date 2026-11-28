@@ -291,6 +291,19 @@ func TestRemoteAccessCLIRendersLiveStatusURLAndOwnedMutations(t *testing.T) {
 	if !strings.Contains(stdout.String(), "used by another Serve target") {
 		t.Fatalf("foreign Serve status=%q", stdout.String())
 	}
+
+	// Renamed in Tailscale: the handler is left under the old name.
+	writeFakeTailscale(t, binDir,
+		`{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`,
+		`{"Web":{"old-mac.tail.ts.net:9443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:43180"}}}}}`,
+	)
+	stdout.Reset()
+	if err := runRemoteStatus(context.Background(), remoteStatusOptions{httpsPort: 9443}, &stdout, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if out := stdout.String(); !strings.Contains(out, "serve: not serving: Tailscale serve still points at TARS under the old name old-mac.tail.ts.net") || strings.Contains(out, "serving on") {
+		t.Fatalf("renamed Serve status=%q", out)
+	}
 }
 
 func writeFakeTailscale(t *testing.T, binDir, statusJSON, serveJSON string) {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -31,6 +32,12 @@ type Status struct {
 	ServeActive bool   `json:"serve_active"`
 	ServePort   int    `json:"serve_port"`
 	OwnedByTARS bool   `json:"owned_by_tars"`
+	// StaleHost is the MagicDNS name TARS's serve handler still sits under
+	// when it is not the machine's current one (the machine was renamed in
+	// Tailscale): serve keeps the handler under the old name, and the
+	// current name has no handler, so nothing reaches TARS. ServeActive is
+	// false then; Enable adds the handler under the current name.
+	StaleHost string `json:"stale_host,omitempty"`
 	// Relay is the preview relay's serve port; set only when Options names
 	// a relay target.
 	Relay *RelayStatus `json:"relay,omitempty"`
@@ -41,6 +48,9 @@ type RelayStatus struct {
 	Active      bool `json:"active"`
 	Port        int  `json:"port"`
 	OwnedByTARS bool `json:"owned_by_tars"`
+	// StaleHost is the old MagicDNS name the relay's handler sits under,
+	// as Status.StaleHost.
+	StaleHost string `json:"stale_host,omitempty"`
 }
 
 // RelayURL is the HTTPS origin a phone opens a preview at: the MagicDNS name
@@ -128,19 +138,20 @@ func Detect(ctx context.Context, opts Options) (Status, error) {
 	if err != nil {
 		return status, err
 	}
-	serve, err := parseServeConfig(raw, opts.HTTPSPort, opts.TargetURL)
+	serve, err := parseServeConfig(raw, opts.HTTPSPort, opts.TargetURL, status.TailnetURL)
 	if err != nil {
 		return status, err
 	}
 	status.ServeActive = serve.active
 	status.ServePort = serve.port
 	status.OwnedByTARS = serve.owned
+	status.StaleHost = serve.staleHost
 	if opts.RelayTargetURL != "" {
-		relay, err := parseServeConfig(raw, opts.RelayHTTPSPort, opts.RelayTargetURL)
+		relay, err := parseServeConfig(raw, opts.RelayHTTPSPort, opts.RelayTargetURL, status.TailnetURL)
 		if err != nil {
 			return status, err
 		}
-		status.Relay = &RelayStatus{Active: relay.active, Port: opts.RelayHTTPSPort, OwnedByTARS: relay.owned}
+		status.Relay = &RelayStatus{Active: relay.active, Port: opts.RelayHTTPSPort, OwnedByTARS: relay.owned, StaleHost: relay.staleHost}
 	}
 	return status, nil
 }
@@ -322,9 +333,21 @@ type serveConfigStatus struct {
 	active bool
 	owned  bool
 	port   int
+	// staleHost is a host other than the current MagicDNS name whose
+	// handler on the port points at the target; set only when the current
+	// name has no handler on the port.
+	staleHost string
 }
 
-func parseServeConfig(raw string, httpsPort int, targetURL string) (serveConfigStatus, error) {
+// parseServeConfig reads the serve config's handler for httpsPort under
+// currentHost, the machine's MagicDNS name. Serve keys its handlers by
+// "host:port" and keeps a handler under the name it was added with, so
+// after the machine is renamed in Tailscale a handler under the old name
+// still shows up but answers nothing: TLS to the current name finds no
+// handler. Only a handler under currentHost counts; a TARS handler under
+// another name is reported as staleHost. With no currentHost known, any
+// host counts, as before.
+func parseServeConfig(raw string, httpsPort int, targetURL, currentHost string) (serveConfigStatus, error) {
 	if strings.TrimSpace(raw) == "" {
 		return serveConfigStatus{}, nil
 	}
@@ -333,36 +356,53 @@ func parseServeConfig(raw string, httpsPort int, targetURL string) (serveConfigS
 		return serveConfigStatus{}, fmt.Errorf("parse tailscale serve config: %w", err)
 	}
 	web, _ := payload["Web"].(map[string]any)
+	current := normalizeHost(currentHost)
 	var out serveConfigStatus
+	var stale []string
 	for hostPort, value := range web {
-		port, ok := parseHostPort(hostPort)
+		host, port, ok := parseHostPort(hostPort)
 		if !ok || port != httpsPort {
+			continue
+		}
+		owned := containsProxyTarget(value, targetURL)
+		if current != "" && normalizeHost(host) != current {
+			if owned {
+				stale = append(stale, normalizeHost(host))
+			}
 			continue
 		}
 		out.active = true
 		out.port = port
-		if containsProxyTarget(value, targetURL) {
+		if owned {
 			out.owned = true
 			return out, nil
 		}
 	}
+	if !out.active && len(stale) > 0 {
+		sort.Strings(stale)
+		out.staleHost = stale[0]
+	}
 	return out, nil
 }
 
-func parseHostPort(value string) (int, bool) {
-	_, portString, err := net.SplitHostPort(value)
+func normalizeHost(host string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+}
+
+func parseHostPort(value string) (string, int, bool) {
+	host, portString, err := net.SplitHostPort(value)
 	if err != nil {
 		idx := strings.LastIndex(value, ":")
 		if idx < 0 || idx == len(value)-1 {
-			return 0, false
+			return "", 0, false
 		}
-		portString = value[idx+1:]
+		host, portString = value[:idx], value[idx+1:]
 	}
 	port, err := strconv.Atoi(portString)
 	if err != nil {
-		return 0, false
+		return "", 0, false
 	}
-	return port, true
+	return host, port, true
 }
 
 func containsProxyTarget(value any, targetURL string) bool {
