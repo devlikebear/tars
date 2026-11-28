@@ -5,6 +5,7 @@
   import EasyBoard from './EasyBoard.svelte'
   import EasyHome from './EasyHome.svelte'
   import EasyProject from './EasyProject.svelte'
+  import EasySettings from './EasySettings.svelte'
   import EasySetup from './EasySetup.svelte'
   import EasyShell from './EasyShell.svelte'
 
@@ -13,7 +14,7 @@
     page,
     needsSetup = false,
     onNavigate,
-  }: { projectId?: string; page?: 'projects' | 'archive'; needsSetup?: boolean; onNavigate: (path: string) => void } = $props()
+  }: { projectId?: string; page?: 'projects' | 'archive' | 'settings'; needsSetup?: boolean; onNavigate: (path: string) => void } = $props()
 
   // A screen below changed a project: the shell reads its count again.
   let tick = $state(0)
@@ -23,11 +24,13 @@
 {#if needsSetup}
   <EasySetup {onNavigate} />
 {:else}
-  <EasyShell active={projectId ? 'project' : page ? 'projects' : 'make'} {tick} {onNavigate}>
+  <EasyShell active={projectId ? 'project' : page === 'settings' ? 'settings' : page ? 'projects' : 'make'} {tick} {onNavigate}>
     {#if projectId}
       {#key projectId}
         <EasyProject {projectId} {onNavigate} />
       {/key}
+    {:else if page === 'settings'}
+      <EasySettings {onNavigate} />
     {:else if page}
       {#key page}
         <EasyBoard archive={page === 'archive'} {onNavigate} onChanged={changed} />

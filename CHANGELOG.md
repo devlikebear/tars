@@ -15,6 +15,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - **TARS tools reach every claude-code-cli run, not only console turns.** Cron prompts that run in their session, Telegram turns, pulse auto-resume and subagent runs now open the tool bridge too, and the first three also pass the session's skills and MCP servers, which only console turns did.
 - **Tools of MCP servers Claude Code cannot mount** (websocket transport) are served to a claude-code-cli run through the tool bridge, as `mcp__tars__<server>__<tool>`.
 
+## [0.71.3] - 2026-11-28
+
+### Added
+
+- **Settings in vibe mode.** With expert mode off (the default) there was no settings screen at all, so a vibe-mode person could neither pair the iPhone app nor change the AI. The vibe shell now has a **Settings** link (`/console/easy/settings`): **Your phone** says in plain words whether the phone can reach this computer (Tailscale missing, not signed in, its port taken, off, on) and why turning it on cannot work yet, turns phone access on, and shows the existing phone card (pairing QR, paired phones, keep awake) in vibe-mode words; **The AI** names the engine and picks how the team thinks (most careful / balanced / fastest, with the model each uses); **Expert mode** turns the full workbench on or off. Changes that need a restart offer **Restart TARS** and never restart by themselves. A console without the owner role is told it cannot change these.
+
+### Fixed
+
+- The vibe-mode header no longer shows an empty box next to the language toggle: with auth off the account chip had neither a role nor **Sign out** to show.
+
 ## [0.71.2] - 2026-11-27
 
 ### Added

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import { EASY_BOTS, EASY_SCREEN_PARTS, EASY_STEPS, START_STEPS, checksPassed, currentVersion, hasBlueprint, easyCanChange, easyLimitResets, easyLive, easyRetryAction, easyStuck, easyView, engineName, hiddenWordsIn, previewPollMs, previewReachable, recreateEasyProject, restoreErrorKey, runEasySetup, startSteps, versionLabel, versionRows, type EasyProject, type EasyVersion } from '../src/lib/easy.ts'
 import { easyEn, easyKo } from '../src/i18n/sections/easy.ts'
+import { phonesEn, phonesKo } from '../src/i18n/sections/phones.ts'
 
 test('the first run sets TARS up and waits for it to come back set up', async () => {
   const answers: Array<Error | { needs_setup?: boolean }> = [{ needs_setup: true }, new Error('refused'), { needs_setup: false }]
@@ -61,6 +62,7 @@ test('the Start screen marks its three steps from the server\'s answer', () => {
   })
 })
 import { resolveRoute } from '../src/lib/router.ts'
+import { vibeOnlyRedirect } from '../src/lib/focus.ts'
 import type { FocusCard, FocusPipeline } from '../src/lib/types.ts'
 
 const project = (extra: Partial<EasyProject> = {}): EasyProject => ({
@@ -270,6 +272,26 @@ test('no easy-mode sentence uses a hidden word', () => {
   for (const bot of EASY_BOTS) assert.ok(easyEn.bots[bot] && easyKo.bots[bot], bot)
 })
 
+test('the settings screen speaks plainly, in both languages, phone card included', () => {
+  for (const [lang, section] of [['en', easyEn], ['ko', easyKo]] as const) {
+    const settings = section.settings
+    // The phone card's own words on this screen are the expert card's with
+    // these in their place; the ones left are checked here too.
+    const phones = { ...(lang === 'en' ? phonesEn : phonesKo), ...settings.phones }
+    const shown = [
+      phones.intro, phones.needsAddress, phones.answeredOnPhone(1, 2, 3), phones.pair, phones.newCode, phones.scanHint,
+      phones.codeLabel, phones.expired, phones.devicesTitle, phones.noDevices, phones.revoke, phones.revoked,
+      phones.keepAwakeTitle, phones.keepAwakeLabel, phones.keepAwakeHint, phones.keepAwakeActive, phones.keepAwakeNoPhone,
+      phones.keepAwakeFailed, phones.keepAwakeUnsupported,
+    ]
+    for (const text of shown) assert.deepEqual(hiddenWordsIn(text), [], `${lang}: ${text}`)
+    for (const tier of ['heavy', 'standard', 'light']) assert.ok(settings.ai.kinds[tier] && settings.ai.kindHints[tier], `${lang}: ${tier}`)
+    for (const key of ['checking', 'on', 'off', 'noTailscale', 'signedOut', 'portTaken', 'needsPassword', 'failed'] as const) {
+      assert.ok(settings.phone.access[key], `${lang}: ${key}`)
+    }
+  }
+})
+
 test('a finished project takes a change once its version is saved, and a change run shows the request', () => {
   const finished = pipeline({
     finished_at: 'x',
@@ -348,6 +370,8 @@ test('the easy routes', () => {
   assert.deepEqual(resolveRoute('/console/easy/0123456789abcdef'), { view: 'easy', projectId: '0123456789abcdef' })
   assert.deepEqual(resolveRoute('/console/easy/projects'), { view: 'easy', page: 'projects' })
   assert.deepEqual(resolveRoute('/console/easy/archive'), { view: 'easy', page: 'archive' })
+  assert.deepEqual(resolveRoute('/console/easy/settings'), { view: 'easy', page: 'settings' })
+  assert.equal(vibeOnlyRedirect(false, resolveRoute('/console/easy/settings')), null, 'settings stay reachable in vibe mode')
 })
 
 // The workspace (vibe redesign unit 4): questions, blueprint, steps, checks

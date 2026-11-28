@@ -220,7 +220,9 @@
       <StatusPill {serverHealth} {onNavigate} />
     {/if}
 
-    {#if authRole}
+    <!-- Vibe mode hides the role, so with no sign-out (auth off) the chip
+         would be an empty box. -->
+    {#if authRole && (!vibeOnly || onLogout)}
       <div class="auth-chip">
         {#if !vibeOnly}<span>{authRole}</span>{/if}
         {#if onLogout}

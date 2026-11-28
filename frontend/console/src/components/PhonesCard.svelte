@@ -34,6 +34,13 @@
   } from '../lib/devicePairing'
   import FolderPickerDialog from './FolderPickerDialog.svelte'
 
+  // vibe: the card on vibe mode's settings screen (EasySettings.svelte). It
+  // speaks in vibe mode's words and leaves out the folders a phone may
+  // start a focus task in — a vibe-mode phone makes projects, which need no
+  // folder.
+  let { vibe = false }: { vibe?: boolean } = $props()
+  let s = $derived(vibe ? { ...$t.phones, ...$t.easy.settings.phones } : $t.phones)
+
   let loading = $state(true)
   let busy = $state(false)
   let error = $state('')
@@ -59,7 +66,7 @@
 
   function messageFor(err: unknown): string {
     if (err instanceof APIRequestError) return err.message
-    return err instanceof Error ? err.message : $t.phones.genericError
+    return err instanceof Error ? err.message : s.genericError
   }
 
   async function load() {
@@ -130,7 +137,7 @@
   }
 
   async function revoke(device: PairedDevice) {
-    if (busy || !confirm($t.phones.confirmRevoke(device.name))) return
+    if (busy || !confirm(s.confirmRevoke(device.name))) return
     busy = true
     error = ''
     try {
@@ -179,12 +186,12 @@
     }
   }
 
-  function keepAwakeNote(s: KeepAwakeStatus): string {
-    if (!s.supported) return $t.phones.keepAwakeUnsupported
-    if (!s.enabled) return ''
-    if (s.active) return $t.phones.keepAwakeActive
-    if (s.reason === 'no_phone') return $t.phones.keepAwakeNoPhone
-    return $t.phones.keepAwakeFailed
+  function keepAwakeNote(status: KeepAwakeStatus): string {
+    if (!status.supported) return s.keepAwakeUnsupported
+    if (!status.enabled) return ''
+    if (status.active) return s.keepAwakeActive
+    if (status.reason === 'no_phone') return s.keepAwakeNoPhone
+    return s.keepAwakeFailed
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -204,11 +211,11 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<section class="phones-card" aria-label={$t.phones.ariaLabel} data-testid="phones-card">
+<section class="phones-card" aria-label={s.ariaLabel} data-testid="phones-card">
   <div class="phones-head">
     <div>
-      <span class="phones-kicker">{$t.phones.kicker}</span>
-      <h3>{$t.phones.title}</h3>
+      <span class="phones-kicker">{s.kicker}</span>
+      <h3>{s.title}</h3>
     </div>
     <button
       type="button"
@@ -217,14 +224,14 @@
       onclick={pair}
       data-testid="phones-pair"
     >
-      {busy ? $t.phones.working : code ? $t.phones.newCode : $t.phones.pair}
+      {busy ? s.working : code ? s.newCode : s.pair}
     </button>
   </div>
 
-  <p class="phones-muted">{$t.phones.intro}</p>
+  <p class="phones-muted">{s.intro}</p>
 
   {#if !loading && !baseURL}
-    <div class="phones-note" role="status">{$t.phones.needsAddress}</div>
+    <div class="phones-note" role="status">{s.needsAddress}</div>
   {/if}
 
   {#if code && qr}
@@ -233,70 +240,72 @@
         class="phones-qr"
         viewBox="0 0 {qr.size} {qr.size}"
         role="img"
-        aria-label={$t.phones.qrLabel}
+        aria-label={s.qrLabel}
         shape-rendering="crispEdges"
       >
         <rect width={qr.size} height={qr.size} fill="#fff" />
         <path d={qr.path} fill="#000" />
       </svg>
       <div class="phones-pairing-text">
-        <span class="phones-muted">{$t.phones.codeLabel}</span>
+        <span class="phones-muted">{s.codeLabel}</span>
         <code class="phones-code" data-testid="phones-code">{code.code}</code>
         <span class="phones-muted">{baseURL}</span>
         {#if left > 0}
-          <span class="phones-muted">{$t.phones.expiresIn(formatCountdown(left))}</span>
-          <span class="phones-muted">{$t.phones.scanHint}</span>
+          <span class="phones-muted">{s.expiresIn(formatCountdown(left))}</span>
+          <span class="phones-muted">{s.scanHint}</span>
         {:else}
-          <span class="phones-warn">{$t.phones.expired}</span>
+          <span class="phones-warn">{s.expired}</span>
         {/if}
       </div>
     </div>
   {/if}
 
   <div class="phones-section">
-    <h4>{$t.phones.devicesTitle}</h4>
+    <h4>{s.devicesTitle}</h4>
     {#if !loading && devices.length === 0}
-      <span class="phones-muted">{$t.phones.noDevices}</span>
+      <span class="phones-muted">{s.noDevices}</span>
     {/if}
     {#each devices as device (device.id)}
       <div class="phones-row" class:revoked={!device.active} data-testid="phones-device">
         <span class="phones-name">{device.name}</span>
-        <span class="phones-muted">{device.active ? $t.phones.pairedOn(formatDate(device.created_at)) : $t.phones.revoked}</span>
+        <span class="phones-muted">{device.active ? s.pairedOn(formatDate(device.created_at)) : s.revoked}</span>
         {#if device.active}
-          <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={() => revoke(device)}>{$t.phones.revoke}</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={() => revoke(device)}>{s.revoke}</button>
         {/if}
       </div>
     {/each}
-    {#if share}
-      <span class="phones-muted" data-testid="phones-answer-share">{$t.phones.answeredOnPhone(share.phone, share.total, share.pipelines)}</span>
+    {#if share && !vibe}
+      <span class="phones-muted" data-testid="phones-answer-share">{s.answeredOnPhone(share.phone, share.total, share.pipelines)}</span>
     {/if}
   </div>
 
+  {#if !vibe}
   <div class="phones-section">
     <div class="phones-section-head">
-      <h4>{$t.phones.foldersTitle}</h4>
+      <h4>{s.foldersTitle}</h4>
       <button type="button" class="btn btn-ghost btn-sm" disabled={loading || busy} onclick={() => (picking = true)} data-testid="phones-add-folder">
-        {$t.phones.addFolder}
+        {s.addFolder}
       </button>
     </div>
-    <span class="phones-muted">{$t.phones.foldersHint}</span>
+    <span class="phones-muted">{s.foldersHint}</span>
     {#if !loading && folders.length === 0}
-      <span class="phones-muted">{$t.phones.noFolders}</span>
+      <span class="phones-muted">{s.noFolders}</span>
     {/if}
     {#each folders as folder (folder.path)}
       <div class="phones-row" data-testid="phones-folder">
         <span class="phones-name">{folder.name}</span>
         <code class="phones-path">{folder.path}</code>
-        {#if !folder.exists}<span class="phones-warn">{$t.phones.missing}</span>{/if}
-        <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={() => removeFolder(folder.path)}>{$t.phones.remove}</button>
+        {#if !folder.exists}<span class="phones-warn">{s.missing}</span>{/if}
+        <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={() => removeFolder(folder.path)}>{s.remove}</button>
       </div>
     {/each}
   </div>
+  {/if}
 
   {#if keepAwake}
     {@const note = keepAwakeNote(keepAwake)}
     <div class="phones-section" data-testid="phones-keep-awake">
-      <h4>{$t.phones.keepAwakeTitle}</h4>
+      <h4>{s.keepAwakeTitle}</h4>
       <label class="phones-check">
         <input
           type="checkbox"
@@ -304,9 +313,9 @@
           disabled={savingAwake || (!keepAwake.supported && !keepAwake.enabled)}
           onchange={(e) => toggleKeepAwake(e.currentTarget.checked)}
         />
-        <span>{$t.phones.keepAwakeLabel}</span>
+        <span>{s.keepAwakeLabel}</span>
       </label>
-      <span class="phones-muted">{$t.phones.keepAwakeHint}</span>
+      <span class="phones-muted">{s.keepAwakeHint}</span>
       {#if note}
         <span class={keepAwake.reason === 'failed' ? 'phones-warn' : 'phones-muted'} data-testid="phones-keep-awake-note">{note}</span>
       {/if}
@@ -325,7 +334,7 @@
       class="phones-modal"
       role="dialog"
       aria-modal="true"
-      aria-label={$t.phones.addFolder}
+      aria-label={s.addFolder}
       tabindex="-1"
       onclick={(e) => e.stopPropagation()}
     >
