@@ -57,6 +57,8 @@ func checkDoctorPhonePreviewWith(report *doctorReport, cfg config.Config, probe 
 		report.add("warn", name, fmt.Sprintf("tailscale could not be read: %v", err))
 	case !status.Installed || !status.LoggedIn:
 		report.add("warn", name, "tailscale is not installed or not signed in")
+	case status.URL() == "" && status.StaleHost != "":
+		report.add("warn", name, staleHostAdvice(status))
 	case status.URL() == "":
 		report.add("warn", name, "remote access is on but Tailscale serve does not point at TARS")
 	case status.RelayURL() == "" && status.Relay != nil && status.Relay.Active:

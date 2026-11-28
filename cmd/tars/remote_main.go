@@ -100,6 +100,13 @@ func remoteCLIOptions(httpsPort int) remoteaccess.Options {
 	return remoteaccess.Options{HTTPSPort: httpsPort, RelayTargetURL: remoteaccess.DefaultRelayTargetURL}
 }
 
+// staleHostAdvice says what is wrong when TARS's serve handler is left
+// under the machine's old Tailscale name (remoteaccess.Status.StaleHost)
+// and how to fix it.
+func staleHostAdvice(status remoteaccess.Status) string {
+	return fmt.Sprintf("Tailscale serve still points at TARS under the old name %s, but this machine is now %s; run `tars remote enable` or restart tars serve to serve it under the new name (phones paired before need pairing again)", status.StaleHost, status.TailnetURL)
+}
+
 // relayLine is the one status line about the phone preview relay.
 func relayLine(status remoteaccess.Status) string {
 	switch {
@@ -137,6 +144,8 @@ func runRemoteStatus(ctx context.Context, opts remoteStatusOptions, stdout, _ io
 		serve = fmt.Sprintf("serving on https:%d", status.ServePort)
 	} else if status.ServeActive {
 		serve = fmt.Sprintf("port %d is used by another Serve target", status.ServePort)
+	} else if status.StaleHost != "" {
+		serve = "not serving: " + staleHostAdvice(status)
 	}
 	_, err = fmt.Fprintf(stdout, "tailscale: %s, %s\nhost: %s\nurl: %s\nserve: %s\n%s\n", availability, login, status.HostName, status.TailnetURL, serve, relayLine(status))
 	return err

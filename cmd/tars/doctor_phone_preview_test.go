@@ -35,6 +35,7 @@ func TestDoctorPhonePreview(t *testing.T) {
 		{"read error", true, serving, errors.New("boom"), true, "could not be read", "warn"},
 		{"signed out", true, remoteaccess.Status{Installed: true}, nil, true, "not signed in", "warn"},
 		{"serve not tars", true, remoteaccess.Status{Installed: true, LoggedIn: true, TailnetURL: "mac.ts.net"}, nil, true, "does not point at TARS", "warn"},
+		{"renamed", true, remoteaccess.Status{Installed: true, LoggedIn: true, TailnetURL: "mac.ts.net", StaleHost: "old-mac.ts.net"}, nil, true, "old name old-mac.ts.net", "warn"},
 		{"port taken", true, withRelay(remoteaccess.RelayStatus{Active: true, Port: 8443}), nil, true, "used by another target", "warn"},
 		{"not mapped", true, withRelay(remoteaccess.RelayStatus{Port: 8443}), nil, true, "not mapped", "warn"},
 		{"no listener", true, serving, nil, false, "nothing listens", "warn"},

@@ -60,6 +60,10 @@ test('phone access in plain states', () => {
   assert.equal(phoneAccess(remote({ installed: true, logged_in: true })), 'off')
   assert.equal(phoneAccess(remote({ installed: true, logged_in: true, serve_active: true })), 'portTaken')
   assert.equal(phoneAccess(remote({ Installed: true, LoggedIn: true, ServeActive: true, OwnedByTARS: true })), 'on')
+  // Renamed in Tailscale: the handler sits under the old name only.
+  assert.equal(phoneAccess(remote({ installed: true, logged_in: true, stale_host: 'chang-macbookpro.tailnet.ts.net' })), 'renamed')
+  // Another target under the current name still reads as taken.
+  assert.equal(phoneAccess(remote({ installed: true, logged_in: true, serve_active: true, stale_host: 'old.tailnet.ts.net' })), 'portTaken')
 })
 
 test('what blocks turning phone access on, in the order to fix it', () => {

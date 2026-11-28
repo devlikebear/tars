@@ -1889,6 +1889,10 @@ export type RemoteAccessStatus = {
   serve_active?: boolean
   serve_port?: number
   owned_by_tars?: boolean
+  // The old Tailscale name TARS's handler is still under after the machine
+  // was renamed (remoteaccess.Status.StaleHost); serve_active is false then.
+  stale_host?: string
+  StaleHost?: string
 }
 
 export type RemoteAccessCheck = {

@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.71.4] - 2026-11-28
+
 ### Changed
 
 - **A claude-code-cli run loads only the MCP servers TARS names.** The provider now passes `--strict-mcp-config` on every call. Without it the CLI also loaded every MCP server its user had set up for their own work — user and project scope, plugins, and the connectors of their claude.ai account (Gmail, Calendar, Drive, Notion) — into every TARS run, the ones nobody watches (cron, Telegram, subagents) included: 17 servers and 302 tools on one account. To give TARS runs an MCP server, configure it in TARS (`extensions.mcp.servers`, or a session's `mcp_servers_extra`). `llm.claude_code_cli.inherit_mcp: true` restores the old behavior. Installed Claude Code plugins, skills, hooks and CLAUDE.md are not affected.
@@ -14,6 +16,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - **TARS tools reach every claude-code-cli run, not only console turns.** Cron prompts that run in their session, Telegram turns, pulse auto-resume and subagent runs now open the tool bridge too, and the first three also pass the session's skills and MCP servers, which only console turns did.
 - **Tools of MCP servers Claude Code cannot mount** (websocket transport) are served to a claude-code-cli run through the tool bridge, as `mcp__tars__<server>__<tool>`.
+
+### Fixed
+
+- **Phone access after renaming the machine in Tailscale.** Tailscale serve keeps a handler under the name it was added with, so after a rename TARS's 443 handler stayed under the old name while the current name answered nothing (TLS failed). TARS still counted it as serving: the vibe Settings screen said the phone could reach this computer, the pairing QR carried the dead address, and `tars remote status` said "serving". A serve handler (443 and the preview relay's 8443) now counts only under the machine's current MagicDNS name. One left under an old name is reported as `stale_host`: the console's Tailscale card shows **Old name**, the vibe Settings screen says the name changed and offers **Fix phone access**, and `tars remote status` / `tars doctor` say what is wrong and how to fix it. Turning remote access on (and the start-up reconcile) now adds the handler under the current name instead of skipping it as already served. The handler under the old name is never removed. Phones paired before the rename need pairing again.
 
 ## [0.71.3] - 2026-11-28
 
